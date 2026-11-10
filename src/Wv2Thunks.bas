@@ -1,5 +1,11 @@
 Attribute VB_Name = "Wv2Thunks"
 ''''''''''''''''''''''''''''''''''
+' --- Wv2Thunks.bas English fork v1.1 ---
+'
+'   EnsureWebView2Loader no longer probes candidates with Dir$ (it raises on a
+'   malformed or unreachable path); LoadLibraryW is the existence test.
+''''''''''''''''''''''''''''''''''
+''''''''''''''''''''''''''''''''''
 ' --- Wv2Thunks.bas Stage N-4 (response body) ---
 '
 '   Changes in N-4:
@@ -2732,13 +2738,13 @@ Public Function EnsureWebView2Loader() As String
     cands(4) = Application.Path & "\ADDINS\Microsoft Power Query for Excel Integrated\bin\" & DLL_NAME
     On Error GoTo 0
 
+    ' LoadLibraryW itself is the existence test: Dir$ raises on a malformed or
+    ' unreachable path, and a 32-bit DLL simply fails to load and is skipped.
     For i = 1 To 4
         If Len(cands(i)) > Len(DLL_NAME) Then
-            If LenB(Dir$(cands(i))) > 0 Then
-                If LoadLibraryW(StrPtr(cands(i))) <> 0 Then
-                    EnsureWebView2Loader = cands(i)
-                    Exit Function
-                End If
+            If LoadLibraryW(StrPtr(cands(i))) <> 0 Then
+                EnsureWebView2Loader = cands(i)
+                Exit Function
             End If
         End If
     Next i

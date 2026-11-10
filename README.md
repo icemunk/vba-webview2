@@ -28,42 +28,53 @@ English fork of [tarboh/WebView2-For-Excel-VBA](https://github.com/tarboh/WebVie
 - Windows 10/11 with the **WebView2 Runtime** (preinstalled on current Windows).
 - **64-bit** Microsoft 365 / Office 2016+ Excel. 32-bit Office is not supported (the thunks are
   x64 code).
-- `WebView2Loader.dll` (x64) reachable by `Declare ... Lib "WebView2Loader.dll"` — see
+- `WebView2Loader.dll` (x64). Most Office installs already have one — see
   [Locating WebView2Loader.dll](#locating-webview2loaderdll).
 - Macros enabled for the workbook.
 
 ## Quick start
 
 1. Open `book/WebView2_v0.5.2.xlsm` (keep it outside OneDrive — AutoSave fights the import tools).
-2. In the VBA editor Immediate window run `Boot` (shows `UserForm1` and starts the tabbed
-   browser: 3 tabs + tab bar + navigation bar), or do it by hand:
+2. In the VBA editor's Immediate window run the smoke test. It opens example.com and prints
+   `Wv2.Demo: PASS`:
 
    ```vba
-   UserForm1.Show vbModeless
-   UserForm1.StartWebView2_Full
+   Wv2.Demo
    ```
 
-3. Automate a page:
+3. Automate a page from your own macro. Everything goes through the `Wv2` module:
 
    ```vba
-   Dim p As Wv2Pane
+   Dim pg As Wv2Pane
    Dim el As Wv2Element
-   Set p = UserForm1.CurrentBrowser.AddTabWithUrl("https://example.com")
-   Set el = p.WaitFor("h1", 10)          ' polls the DOM until the element exists
+   Set pg = Wv2.OpenBrowser("https://example.com")   ' shows the browser, waits for the load
+   If pg Is Nothing Then Exit Sub
+   Set el = pg.WaitFor("h1", 10)                     ' polls the DOM until the element exists
    If Not el Is Nothing Then Debug.Print el.InnerText
+   Wv2.CloseBrowser
    ```
+
+**Full guide: [`docs/USAGE.md`](docs/USAGE.md)** — first-time setup, the `Wv2` API, waiting,
+JavaScript, network capture, using it in your own workbook, and troubleshooting.
+
+The workbook in `book/` still holds the upstream code until you run the import step in the guide.
 
 Never break into the debugger or single-step while WebView2 is starting or busy (including while
 `EvalSync` waits) — the callback gate cannot protect that moment and Excel will crash.
 
 ## Locating WebView2Loader.dll
 
-The loader is not part of Windows. Office ships one (for example in
-`C:\Program Files\Microsoft Office\root\Office16\ADDINS\Microsoft Power Query for Excel Integrated\bin`),
-but `Declare` only finds a DLL that is on the DLL search path. Either put the x64
-`WebView2Loader.dll` from the [Microsoft.Web.WebView2](https://www.nuget.org/packages/Microsoft.Web.WebView2)
-NuGet package (`runtimes/win-x64/native/`) next to the workbook / on `PATH`, or make sure the Office
-copy is reachable. See `docs/REVIEW.md` for details.
+The loader is not part of Windows. At start-up the code looks for it in this order and loads the
+first one that works:
+
+1. the full path in the environment variable `WEBVIEW2_LOADER_PATH`;
+2. the workbook's folder;
+3. Excel's folder;
+4. the copy Office ships with Power Query (`...\Office16\ADDINS\Microsoft Power Query for Excel Integrated\bin`).
+
+If none is found you get a message box. Take the x64 `WebView2Loader.dll` from the
+[Microsoft.Web.WebView2](https://www.nuget.org/packages/Microsoft.Web.WebView2) NuGet package
+(`runtimes/win-x64/native/`) and put it next to the workbook.
 
 ## Repository layout
 
@@ -73,7 +84,7 @@ copy is reachable. See `docs/REVIEW.md` for details.
 | `forms/` | UserForms (imported by hand) |
 | `book/` | The workbook |
 | `tools/` | `export.ps1` / `import.ps1` round-trip, checks, `vtable.py` |
-| `docs/` | Design notes, the thunk write-up, the review |
+| `docs/` | **`USAGE.md` (how to use it)**, the review, the thunk write-up, design notes |
 
 Developer rules and workflow: [`CLAUDE.md`](CLAUDE.md).
 

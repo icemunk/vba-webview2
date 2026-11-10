@@ -16,6 +16,12 @@ Attribute VB_Exposed = False
 
 'UserForm UserForm1.frm
 '
+' English fork v1.1 (StartBrowser + TearDown)
+'   - Added StartBrowser(startUrl, withBars): one tab, optional tab/nav bars. It is
+'     what Wv2.OpenBrowser calls; macros should go through the Wv2 module.
+'   - The release sequence moved from UserForm_Terminate into TearDown, and every
+'     failed start now calls it, so a failed start can simply be retried.
+'
 ' Stage 9.18 (settings tab + search engine UI via AddHostObjectToScript)
 '   -- As a continuation of aligning the entries of the main body in 9.17 (UseSearchEngine / CurrentBrowser),
 '      a ? settings button is attached to the tab bar, and clicking it opens the search engine selection screen in a dedicated tab.
@@ -645,6 +651,7 @@ Public Sub StartWebView2_Spa()
     If Not m_browser.Init(hWnd_Frame, Wv2Log.AppFolder("Profile")) Then
         Debug.Print "StartWebView2_Spa: Wv2Browser.Init failed (state=" & _
                     m_browser.state & ")"
+        TearDown True
         Exit Sub
     End If
     Debug.Print "StartWebView2_Spa: Wv2Browser.Init OK"
@@ -710,7 +717,24 @@ End Sub
 
 Private Sub UserForm_Terminate()
     Debug.Print "UserForm1.Terminate start"
+    TearDown False      ' the frame window dies with the form and takes the WebViews with it
+    Debug.Print "UserForm1.Terminate done"
+End Sub
 
+' ============================================================
+' TearDown (English fork)
+'   The release sequence that used to live in UserForm_Terminate, shared with
+'   the start-up failure paths: a start that failed half-way used to leave
+'   m_browser set, so every later start was refused by AlreadyStarted until
+'   the form was closed, and a half-built tab bar stayed on screen.
+'
+'   closeViews = True also closes every WebView2 controller. Needed when the
+'   form stays open (a failed start): otherwise the tabs created so far would
+'   stay visible in the frame with nothing managing them. Unloading the form
+'   passes False - destroying the frame window closes them, and Close costs
+'   about 1.4 s per tab (K-4).
+' ============================================================
+Private Sub TearDown(ByVal closeViews As Boolean)
     ' --- 9.12b: drop the nav bar first (reverse order of creation) ---
     If Not m_navBar Is Nothing Then
         m_navBar.Shutdown
@@ -726,13 +750,60 @@ Private Sub UserForm_Terminate()
     ' 9.10e: cut the circular reference (Browser ? Pane) and then release.
     '   Shutdown cuts each Pane's m_browser back reference. If Set m_browser = Nothing
     '   is done without calling it, the circular reference prevents release and leaks (design principle 58).
-    If Not m_browser Is Nothing Then m_browser.Shutdown
+    If Not m_browser Is Nothing Then
+        If closeViews Then m_browser.CloseAll
+        m_browser.Shutdown
+    End If
 
     ' Release Wv2Browser (internally all Panes -> Environment in that order, design principle 43)
     Set m_browser = Nothing
-
-    Debug.Print "UserForm1.Terminate done"
 End Sub
+
+' ============================================================
+' StartBrowser (English fork) - the start-up entry used by Wv2.OpenBrowser
+'   One tab showing startUrl. withBars adds the tab bar and the navigation
+'   bar; without them the page fills the whole frame.
+'   Returns False (and releases everything) when any step fails. Does not
+'   wait for the page to load - Wv2.WaitLoaded does that.
+' ============================================================
+Public Function StartBrowser(ByVal startUrl As String, ByVal withBars As Boolean) As Boolean
+    If AlreadyStarted("StartBrowser") Then Exit Function
+    If hWnd_Frame = 0 Then
+        Debug.Print "StartBrowser: the form has no window yet (Show it first)"
+        Exit Function
+    End If
+
+    Set m_browser = New Wv2Browser
+    If Not m_browser.Init(hWnd_Frame, Wv2Log.AppFolder("Profile")) Then
+        Debug.Print "StartBrowser: Browser.Init failed (state=" & m_browser.state & ")"
+        TearDown True
+        Exit Function
+    End If
+
+    If m_browser.AddTabWithUrl(startUrl) Is Nothing Then
+        Debug.Print "StartBrowser: the first tab could not be created"
+        TearDown True
+        Exit Function
+    End If
+
+    If withBars Then
+        Set m_tabBar = New Wv2TabBar
+        If Not m_tabBar.Init(m_browser, hWnd_Frame, Wv2Log.AppFolder("TabBar")) Then
+            Debug.Print "StartBrowser: TabBar.Init failed"
+            TearDown True
+            Exit Function
+        End If
+        Set m_navBar = New Wv2NavBar
+        If Not m_navBar.Init(m_browser, hWnd_Frame, Wv2Log.AppFolder("NavBar")) Then
+            Debug.Print "StartBrowser: NavBar.Init failed"
+            TearDown True
+            Exit Function
+        End If
+    End If
+
+    UserForm_Resize
+    StartBrowser = True
+End Function
 ' ============================================================
 ' AlreadyStarted (English fork)
 '   Running a StartWebView2_* sub a second time used to replace m_browser /
@@ -759,6 +830,7 @@ Public Sub StartWebView2_Full()
     Set m_browser = New Wv2Browser
     If Not m_browser.Init(hWnd_Frame, Wv2Log.AppFolder("Profile")) Then
         Debug.Print "StartWebView2_Full: Browser.Init failed (state=" & m_browser.state & ")"
+        TearDown True
         Exit Sub
     End If
     Dim p As Wv2Pane
@@ -773,7 +845,7 @@ Public Sub StartWebView2_Full()
     Set m_tabBar = New Wv2TabBar
     If Not m_tabBar.Init(m_browser, hWnd_Frame, Wv2Log.AppFolder("TabBar")) Then
         Debug.Print "StartWebView2_Full: TabBar.Init failed"
-        Set m_tabBar = Nothing
+        TearDown True
         Exit Sub
     End If
 
@@ -781,7 +853,7 @@ Public Sub StartWebView2_Full()
     Set m_navBar = New Wv2NavBar
     If Not m_navBar.Init(m_browser, hWnd_Frame, Wv2Log.AppFolder("NavBar")) Then
         Debug.Print "StartWebView2_Full: NavBar.Init failed"
-        Set m_navBar = Nothing
+        TearDown True
         Exit Sub
     End If
 

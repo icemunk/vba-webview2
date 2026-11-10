@@ -8,6 +8,12 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 ''''''''''''''''''''''''''''''''''
+' --- Wv2Pane.cls  English fork v1.1 (LastNavigationOk) ---
+'
+'   Added LastNavigationOk so that callers (Wv2.WaitLoaded) can tell a finished
+'   load from a failed one. No other behaviour change.
+''''''''''''''''''''''''''''''''''
+''''''''''''''''''''''''''''''''''
 ' --- Wv2Pane.cls  Stage N-4 (response body) ---
 '
 '   *Built differently from N-1 to N-3. This is the first asynchronous one*
@@ -943,6 +949,7 @@ Private m_persistentTokens(HK_NavigationStarting To HK_WebResourceResponseReceiv
 '     SPA support (DOMContentLoaded, HistoryChanged, etc.) is planned to be redesigned
 '     all together when the comprehensive class is introduced.
 Private m_pageLoaded As Boolean
+Private m_lastNavOk As Boolean    ' English fork: IsSuccess of the last NavigationCompleted
 
 
 ' Added in 9.8c:
@@ -1646,6 +1653,14 @@ Public Property Get IsPageLoaded() As Boolean
     IsPageLoaded = m_pageLoaded
 End Property
 
+' --- LastNavigationOk (English fork) ---
+'   IsSuccess of the most recent NavigationCompleted. Read it after IsPageLoaded
+'   turned True: IsPageLoaded alone is also True for a failed load (DNS error,
+'   refused connection, cancelled). An HTTP error page (404, 500) is a success here.
+Public Property Get LastNavigationOk() As Boolean
+    LastNavigationOk = m_lastNavOk
+End Property
+
 ' --- DocumentTitle (added in 9.11c, read entry point of the title cache) ---
 '   Returns the latest title that View_OnDocumentTitleChanged saved.
 '   TabBar's PushSyncToJs reads it with Browser.PaneAt(i).DocumentTitle.
@@ -2123,6 +2138,7 @@ Private Sub View_OnNavigationCompleted_Core(ByVal pSender As LongPtr, ByVal pArg
     If pArgs = 0 Then
         Debug.Print "  pArgs is 0, so skipping IsSuccess retrieval"
         ' Even without pArgs it is valid as a page-load-complete notification
+        m_lastNavOk = True
         m_pageLoaded = True
         ' --- 9.12a: notify the URL state on this path too (do not bury it in the early return) ---
         NotifyUrlState pSender
@@ -2132,6 +2148,7 @@ Private Sub View_OnNavigationCompleted_Core(ByVal pSender As LongPtr, ByVal pArg
     ' Call args.get_IsSuccess to get success or failure
     Dim isOk As Boolean
     isOk = GetBoolProperty(pArgs, 3, "NavCompletedArgs.get_IsSuccess")
+    m_lastNavOk = isOk
     Debug.Print "  -> isSuccess: " & isOk
 
     ' Set the page-load-complete flag (added in 9.4c)

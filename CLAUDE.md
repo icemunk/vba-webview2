@@ -27,7 +27,7 @@ When in doubt, ask whether a change serves one of these two.
 
 | Path | Contents | Notes |
 |---|---|---|
-| `src/` | 8 standard modules + 9 classes | **Source of truth. Edit here.** |
+| `src/` | 9 standard modules + 9 classes | **Source of truth. Edit here.** `Wv2.bas` is the public entry point |
 | `src/document/` | `ThisWorkbook` / `Sheet1` | Reference only (import cannot replace them) |
 | `forms/` | `UserForm1` / `TimerForm` | Managed by hand; not auto-imported |
 | `book/` | `WebView2_v0.5.2.xlsm` | Current workbook; commit only at milestones |
@@ -68,8 +68,13 @@ powershell -ExecutionPolicy Bypass -File tools/import.ps1
 ### Opening the browser
 
 ```vba
-UserForm1.Show vbModeless      ' must be shown first, or hWnd_Frame is 0 and startup fails
+Set pg = Wv2.OpenBrowser("https://example.com")   ' the entry point for macros (module Wv2)
+Boot                                                ' the fixed 3-tab set-up the Test_* subs expect
 ```
+
+`Wv2` (`src/Wv2.bas`) is the only API a user macro should need: `OpenBrowser`, `NewTab`,
+`Navigate`, `WaitLoaded`, `Page`, `Eval`, `EvalText`, `CloseBrowser`, `Demo`. It calls
+`UserForm1.StartBrowser`. Keep `docs/USAGE.md` in step with it.
 
 ---
 
@@ -77,6 +82,7 @@ UserForm1.Show vbModeless      ' must be shown first, or hWnd_Frame is 0 and sta
 
 | File | Contents |
 |---|---|
+| `USAGE.md` | User guide: setup, the `Wv2` API, waiting, JS, network, troubleshooting |
 | `dev-notes-0-index.md` | **Start here.** Stage numbering, all design principles (1-122), all spec facts (1-80), roadmap, current state, open items |
 | `standard-thunk-method.md` | How the x64 thunk technique works |
 | `dev-notes-3-D-axis.md` | D-1 … D-7: page automation |

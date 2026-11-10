@@ -13,7 +13,8 @@ Option Explicit
 '   *ASCII aliases are provided, so use those* (Boot / BootNoQuiet / BootMaps).
 '   English fork: the Japanese-named subs were removed; their bodies now live in these.
 
-' Full startup set. *Always start from here* (includes LogStart so the log is confined to one run)
+' Full startup set for the Test_* subs (3 fixed tabs + bars; includes LogStart so the log is
+' confined to one run). *For your own macros use Wv2.OpenBrowser instead* (module Wv2).
 Sub Boot()
     Wv2Log.LogStart
     UserForm1.Show vbModeless

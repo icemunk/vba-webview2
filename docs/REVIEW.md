@@ -59,6 +59,19 @@ L = robustness.
 | — | M | **Source encoding.** VBA stores source in the project's ANSI code page. The book is code page 932 (Japanese); Western Windows uses 1252. Any Japanese left in `src/` would turn into `?` on import there. | The source is now **100% ASCII**. Comments were translated. Japanese test data (URL-encoding inputs, Japanese address samples, DOM text) is built with `ChrW(&Hxxxx&)`. A decode-back check proved every value is byte-identical to the original. The new `tools/check_ascii.py` gate runs in `import.ps1`. The three Japanese-named subs in `Module1` were folded into `Boot`/`BootNoQuiet`/`BootMaps`. |
 | — | L | `tools/vtable.py` had the original author's personal paths. | It now uses `WEBVIEW2_H`, or `tools/WebView2.h` (git-ignored). |
 
+**Second pass (entry point and start-up robustness):**
+
+| # | Sev | Issue | Fix |
+|---|---|---|---|
+| S1 | M | No simple way in. A macro had to know to show the form, call `StartWebView2_Full` (which always opens three fixed sites), then find the pane and build its own wait loop. | New module `Wv2` (`OpenBrowser`, `NewTab`, `Navigate`, `WaitLoaded`, `Page`, `Eval`, `EvalText`, `CloseBrowser`, `Demo`) and `UserForm1.StartBrowser(url, withBars)`. Guide: [`USAGE.md`](USAGE.md). |
+| S2 | M | A start that failed half-way left the form in a state where every retry was refused ("already started") and tabs created so far stayed on screen unmanaged. | The release sequence is now `UserForm1.TearDown`; every failed start calls it and closes the WebViews it created. |
+| S3 | L | Nothing told a finished load from a failed one: `IsPageLoaded` is also `True` after a DNS error. | New `Wv2Pane.LastNavigationOk`; `Wv2.WaitLoaded` and `Wv2.Navigate` return `False` for a failed load. |
+| S4 | L | `EnsureWebView2Loader` probed with `Dir$`, which raises on a malformed or unreachable `WEBVIEW2_LOADER_PATH`. | `LoadLibraryW` is now the only test. |
+
+**Known limit, not changed:** the thunk-recovery variable is keyed on the workbook's path (fix H1).
+If you *Save As* under a new name while the browser is open and then reset VBA, the old thunk
+region is not reclaimed until Excel closes. Close the browser before *Save As*.
+
 **Not changed (by design or low value):**
 - **L2:** `DoEvents` re-entrancy in the settings sync loops.
 - **L4:** request-body capture on non-seekable uploads. This is opt-in through `NetDetailOn`.
@@ -90,10 +103,11 @@ Before relying on this branch:
    powershell -ExecutionPolicy Bypass -File tools/import.ps1 -Apply -AllowNew
    python tools/check_book.py
    ```
+   `-AllowNew` is needed because the `Wv2` module is new.
    `UserForm1.frm` must be re-imported by hand: remove `UserForm1`, then import `forms/UserForm1.frm`.
 2. **Get the loader DLL.** Put `WebView2Loader.dll` (x64, from the NuGet package) next to the workbook, unless the
    Power Query copy exists.
-3. **Run the tests.** Run `Boot`, then the `Test_*` subs (with `UserForm1` shown), and read the verdict lines in the log. Pay special attention to:
+3. **Run the tests.** Run `Wv2.Demo` first (it must print PASS). Then run `Boot` and the `Test_*` subs (with `UserForm1` shown), and read the verdict lines in the log. Pay special attention to:
    - the settings tab (open Settings, then navigate that tab to a website);
    - restart (`StartWebView2_Full` twice);
    - the tab bar and nav bar after the `DENY_CORS` change.
