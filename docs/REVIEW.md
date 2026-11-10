@@ -73,7 +73,7 @@ L = robustness.
   - All 17 modules, both forms, the 8 tools.
   - `README.md`, `CLAUDE.md`, the docs index, the thunk write-up, and the D, E, K and N dev notes.
 - **How it was checked:** `tools/check_translation.py` strips comments and string literals and compares the remaining code token-for-token with the original. It reported "code identical" for every module before the fixes above were applied.
-- **Still Japanese:** the frozen history volumes `docs/dev-notes-1-foundation.ja.md`, `dev-notes-2-browser.ja.md` and `handover-at-D2.ja.md` (about 13k lines).
+- **Frozen history volumes** (`dev-notes-1-foundation.md`, `dev-notes-2-browser.md`, `handover-at-D2.md`, ~13k lines): also translated. Japanese is kept only where it is quoted data: test inputs, page titles seen in logs, and a few log lines quoted verbatim, each with an English gloss.
 
 ## Not verified
 

@@ -55,7 +55,7 @@ cannot be replaced by Import in the first place.
 | `src/document/` | `ThisWorkbook` / `Sheet1` | For reference (cannot be replaced by Import) |
 | `forms/` | `UserForm1` / `TimerForm` | Manual operation. Outside automatic import |
 | `book/` | `WebView2_v0.5.2.xlsm` | The current workbook. Commit only at milestones |
-| `docs/` | The 4 volumes of development notes + `standard-thunk-method.md` + `handover-at-D2.ja.md` | |
+| `docs/` | The 4 volumes of development notes + `standard-thunk-method.md` + `handover-at-D2.md` | |
 | `tools/` | `export.ps1` / `check_cp932.py` | |
 | `Old/` | Past workbooks, modules, and old development notes | **Do not touch** |
 | `CLAUDE.md` | Standing instructions to Claude | At the root |
@@ -150,7 +150,7 @@ confirmed that it detected the 4 gears at the correct lines and columns and retu
 2. **When saving the handover prompt into `docs/`, we replaced 5 escape sequences with prose.**
    If `\"` or `<` remain literally in a saved document, they would cause false hits in future greps
    (a problem the handover itself warns about). The meaning was not changed.
-3. **Added a note at the top of `docs/handover-at-D2.ja.md` saying "this is a historical record, not current rules."**
+3. **Added a note at the top of `docs/handover-at-D2.md` saying "this is a historical record, not current rules."**
    Claude Code has neither `present_files` nor `/home/claude/out/`, so reading it as is would be misleading.
 
 ### Checks performed and results

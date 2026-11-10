@@ -83,7 +83,7 @@ UserForm1.Show vbModeless      ' must be shown first, or hWnd_Frame is 0 and sta
 | `dev-notes-4-E-axis.md` | E-1 … E-4: dev environment / tooling |
 | `dev-notes-5-K-axis.md` | K-1 … K-5: foundation / tech-debt |
 | `dev-notes-6-N-axis.md` | N-1 … N-4: network inspection |
-| `dev-notes-1-foundation.ja.md`, `dev-notes-2-browser.ja.md`, `handover-at-D2.ja.md` | Frozen history, still in Japanese |
+| `dev-notes-1-foundation.md`, `dev-notes-2-browser.md`, `handover-at-D2.md` | Frozen history (preface to stage 9.32b, and the D-2 handover); translated |
 
 Append to the note for the relevant axis; keep the index's open-items section current.
 Notes are UTF-8 without BOM, CRLF.

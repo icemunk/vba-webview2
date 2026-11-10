@@ -12,8 +12,8 @@ in parallel from then on, we moved to a scheme that assigns a symbol to each axi
 
 | Symbol | Axis | Status | File |
 |---|---|---|---|
-| (no symbol, 1 to 9.2) | Establishing the thunk foundation | **Frozen** | `dev-notes-1-foundation.ja.md` |
-| (no symbol, 9.3a to 9.32b) | Browser feature work | Closed out at stage 9.32b. **Frozen** | `dev-notes-2-browser.ja.md` |
+| (no symbol, 1 to 9.2) | Establishing the thunk foundation | **Frozen** | `dev-notes-1-foundation.md` |
+| (no symbol, 9.3a to 9.32b) | Browser feature work | Closed out at stage 9.32b. **Frozen** | `dev-notes-2-browser.md` |
 | **D** | **DOM / automatic page control (MSHTML equivalent)** | D-7 complete. **Active** | `dev-notes-3-D-axis.md` |
 | **E** | **Development environment and tooling (repository / round trip with the workbook / inspectors)** | E-4 complete. **Active** | `dev-notes-4-E-axis.md` |
 | **N** | **Network investigation (equivalent of F12's Network tab + PowerShell generation)** | N-4 complete. **Active** | `dev-notes-6-N-axis.md` |
@@ -31,8 +31,8 @@ in parallel from then on, we moved to a scheme that assigns a symbol to each axi
 | File | Scope | Nature |
 |---|---|---|
 | **`dev-notes-0-index.md`** (this file) | Stage numbering scheme / table of contents of all stages / full list of design principles / full list of spec facts / concept / roadmap / open items / current workbook and file layout | **Always start reading here** |
-| `dev-notes-1-foundation.ja.md` | Preface to stage 9.2 | Frozen |
-| `dev-notes-2-browser.ja.md` | Stage 9.3a to stage 9.32b | Frozen |
+| `dev-notes-1-foundation.md` | Preface to stage 9.2 | Frozen |
+| `dev-notes-2-browser.md` | Stage 9.3a to stage 9.32b | Frozen |
 | `dev-notes-3-D-axis.md` | Stage D-1 onward | **Active, where to append (product code)** |
 | `dev-notes-4-E-axis.md` | Stage E-1 onward | **Active, where to append (development environment and tooling)** |
 | `dev-notes-5-K-axis.md` | Stage K-1 onward | **Active, where to append (foundation and debt repayment)** |
@@ -506,7 +506,7 @@ overwritten by the AutoSave of an Excel that had grabbed an old copy.
 | `src/document/` | `ThisWorkbook` / `Sheet1` (for reference. Cannot be replaced by Import) |
 | `forms/` | `UserForm1` / `TimerForm` (manual operation) |
 | `book/` | The current workbook. Commit only at milestones |
-| `docs/` | The 4-volume development notes + `standard-thunk-method.md` + `handover-at-D2.ja.md` |
+| `docs/` | The 4-volume development notes + `standard-thunk-method.md` + `handover-at-D2.md` |
 | `tools/` | `export.ps1` / `import.ps1` / `repair_book.ps1` / `check_cp932.py` / `check_vba.py` / `check_idents.py` / `check_book.py` |
 | `Old/` | Past workbooks, modules, and old development notes. **Do not touch** |
 | `CLAUDE.md` | Standing instructions that Claude Code reads automatically every session |
