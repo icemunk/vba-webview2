@@ -1,128 +1,115 @@
 Attribute VB_Name = "Module1"
 ''''''''''''''''''''''''''''''''''
-' --- Module1.bas  K-4d 段階 (検証の入口をここに置く) ---
+' --- Module1.bas  Stage K-4d (the entry point for verification lives here) ---
 '
-'   ★VBE で直に書いたコードは import.ps1 のたびに消える★
-'   src\ が正なので、書き戻すとブック側は src\Module1.bas の内容で上書きされる。
-'   検証でよく打つものは★ここに置く★こと。
+'   *Code written directly in the VBE is wiped on every import.ps1 run*
+'   src\ is the source of truth, so on write-back the workbook side is overwritten with the contents of src\Module1.bas.
+'   Put the things you often type during verification *here*.
 ''''''''''''''''''''''''''''''''''
 Option Explicit
 
-' ★★★ 日本語名は IME が要る = クラッシュの引き金 (仕様事実67) ★★★
-'   WebView2 を起動した Excel では、イミディエイトに IME で打つと落ちうる。
-'   ★英数字の別名を用意してあるのでそちらを使うこと★ (Boot / BootNoQuiet / BootMaps)。
-'   日本語名は残してあるが、打つと IME が起動して危ない。
+' *** Japanese names need the IME = trigger for the crash (spec fact 67) ***
+'   In an Excel that has launched WebView2, typing into the Immediate window with the IME can crash it.
+'   *ASCII aliases are provided, so use those* (Boot / BootNoQuiet / BootMaps).
+'   English fork: the Japanese-named subs were removed; their bodies now live in these.
 
+' Full startup set. *Always start from here* (includes LogStart so the log is confined to one run)
 Sub Boot()
-    実行用
-End Sub
-
-Sub BootNoQuiet()
-    実行用2
-End Sub
-
-Sub BootMaps()
-    実行用3
-End Sub
-
-
-' 起動一式。★毎回ここから★ (ログを 1 回分に閉じるため LogStart を含む)
-Sub 実行用()
     Wv2Log.LogStart
     UserForm1.Show vbModeless
     UserForm1.StartWebView2_Full
 End Sub
 
-' 解放前の静穏化を切る (K-4c)。★遅い解放を再現したいときだけ★
-'   既定は True (= 閉じる前に全タブを about:blank へ飛ばす)。
-Sub 実行用2()
+' Turn off the quieting before release (K-4c). *Only when you want to reproduce a slow release*
+'   Default is True (= send all tabs to about:blank before closing).
+Sub BootNoQuiet()
     UserForm1.CurrentBrowser.QuietOnShutdown = False
 End Sub
 
-' Maps を開く (本物の MapsOpen。K-4d の計測ログが出る)
-Sub 実行用3()
+' Open Maps (the real MapsOpen. The K-4d measurement log is emitted)
+Sub BootMaps()
     Wv2Maps.MapsOpen UserForm1.CurrentBrowser
 End Sub
 
 ' ============================================================
-' ★クラッシュの切り分け (K-5)★
+' *Isolating the crash (K-5)*
 '
-'   症状: Wv2Log.LogStart のあと何かログを書くと、そのあと
-'         ★イミディエイトで日本語入力オンにして 1 文字打つと Excel が落ちる★。
-'         日本語入力オフなら平気。日本語をコピペするのも平気。
+'   Symptom: after Wv2Log.LogStart, once anything is logged,
+'         *turning Japanese input on in the Immediate window and typing one character crashes Excel*.
+'         With Japanese input off it is fine. Pasting Japanese text is also fine.
 '
-'   ★実行前に必ず保存すること。落ちる前提の実験。★
+'   *Always save before running. These are experiments that assume a crash.*
 '
-'   使い方: 1 本実行 → イミディエイトで日本語入力オンにして 1 文字打つ
-'           → 落ちるかどうかを見る。★WebView2 もフォームも使わない★
+'   Usage: run one -> turn Japanese input on in the Immediate window and type one character
+'           -> see whether it crashes. *Neither WebView2 nor the form is used*
 '
-'     CrashTest1 … LogStart だけ (ヘッダー 3 行が書かれる)
-'     CrashTest2 … LogStart + LogI 1 行     ← ★最小再現の候補★
-'     CrashTest3 … CrashTest2 + LogStop     ← 落ちなければ★開いたファイルが原因★
-'     CrashTest4 … LogStart + LogW (WARN は自動で Close→Open する)
-'     CrashTest5 … LogEcho = False で LogI  ← 落ちなければ★Debug.Print が原因★
+'     CrashTest1 ... LogStart only (the 3 header lines are written)
+'     CrashTest2 ... LogStart + one LogI line     <- *candidate for the minimal repro*
+'     CrashTest3 ... CrashTest2 + LogStop     <- if it does not crash, *the open file is the cause*
+'     CrashTest4 ... LogStart + LogW (WARN automatically does Close -> Open)
+'     CrashTest5 ... LogI with LogEcho = False  <- if it does not crash, *Debug.Print is the cause*
 ' ============================================================
 Sub CrashTest1()
     Wv2Log.LogStart
-    Debug.Print "--- CrashTest1 済。日本語入力オンで 1 文字打ってみてください ---"
+    Debug.Print "--- CrashTest1 done. Turn Japanese input on and try typing one character ---"
 End Sub
 
 Sub CrashTest2()
     Wv2Log.LogStart
-    Wv2Log.LogI "テスト"
-    Debug.Print "--- CrashTest2 済。日本語入力オンで 1 文字打ってみてください ---"
+    Wv2Log.LogI "test"
+    Debug.Print "--- CrashTest2 done. Turn Japanese input on and try typing one character ---"
 End Sub
 
 Sub CrashTest3()
     Wv2Log.LogStart
-    Wv2Log.LogI "テスト"
-    Wv2Log.LogStop            ' ★ファイルを閉じる★
-    Debug.Print "--- CrashTest3 済 (ファイルは閉じた)。1 文字打ってみてください ---"
+    Wv2Log.LogI "test"
+    Wv2Log.LogStop            ' *close the file*
+    Debug.Print "--- CrashTest3 done (file closed). Try typing one character ---"
 End Sub
 
 Sub CrashTest4()
     Wv2Log.LogStart
-    Wv2Log.LogW "テスト"      ' WARN は LogFlush (Close → Open) を伴う
-    Debug.Print "--- CrashTest4 済。1 文字打ってみてください ---"
+    Wv2Log.LogW "test"      ' WARN involves LogFlush (Close -> Open)
+    Debug.Print "--- CrashTest4 done. Try typing one character ---"
 End Sub
 
 Sub CrashTest5()
     Wv2Log.LogStart
-    Wv2Log.LogEcho = False    ' ★Debug.Print を出さない★
-    Wv2Log.LogI "テスト"
+    Wv2Log.LogEcho = False    ' *do not emit Debug.Print*
+    Wv2Log.LogI "test"
     Wv2Log.LogEcho = True
-    Debug.Print "--- CrashTest5 済 (ログはファイルだけ)。1 文字打ってみてください ---"
+    Debug.Print "--- CrashTest5 done (log goes to the file only). Try typing one character ---"
 End Sub
 
 ' ============================================================
-' ★第 2 弾: Wv2Log すら関係ないかもしれない (K-5)★
+' *Round 2: maybe Wv2Log is not even involved (K-5)*
 '
-'   CrashTest1～5 (Wv2Log だけ) では★一度も落ちなかった★。
-'   落ちるのは LogStart の★あとに UserForm1.Show を通したとき★。
-'   逆順 (Show が先、LogStart が最後) では落ちない。
+'   With CrashTest1-5 (Wv2Log only) it *never crashed*.
+'   It crashes when *UserForm1.Show is run after* LogStart.
+'   In the reverse order (Show first, LogStart last) it does not crash.
 '
-'   → 疑いは ★「ファイルを開いたままモードレスフォームを表示する」★ こと。
-'     LogStart はログファイルを Open して★開きっぱなしにする★。
+'   -> The suspect is *"showing a modeless form while a file is left open"*.
+'     LogStart does an Open on the log file and *leaves it open*.
 '
-'   ★実行前に必ず保存すること。★
-'   1 本実行 → イミディエイトで日本語入力オンにして 1 文字打つ → 落ちるか見る。
+'   *Always save before running.*
+'   Run one -> turn Japanese input on in the Immediate window and type one character -> see whether it crashes.
 ' ============================================================
 
-' [6] パターン2 の Sub 版 (最小再現の確認)
+' [6] Sub version of pattern 2 (confirming the minimal repro)
 Sub CrashTest6()
     Wv2Log.LogStart
     UserForm1.Show vbModeless
 End Sub
 
-' [7] 順序を逆にするだけ (落ちなければ★順序が効く★と確定)
+' [7] Just reverse the order (if it does not crash, *order matters* is confirmed)
 Sub CrashTest7()
     UserForm1.Show vbModeless
     Wv2Log.LogStart
 End Sub
 
-' [8] ★Wv2Log を使わず、ただファイルを開いたまま Show する★
-'     落ちれば ★Wv2Log は無罪★。VBA の素の挙動ということになる。
-'     開いたファイルは Excel を閉じれば解放される (.tmp が残っても無害)。
+' [8] *Do not use Wv2Log; just Show with a file left open*
+'     If it crashes, *Wv2Log is innocent*. It is then plain VBA behavior.
+'     The open file is released when Excel is closed (a leftover .tmp is harmless).
 Sub CrashTest8()
     Dim crashPath As String
     Dim n As Long
@@ -130,13 +117,13 @@ Sub CrashTest8()
     crashPath = Environ$("APPDATA") & "\Wv2Browser\crashtest.tmp"
     n = FreeFile
     Open crashPath For Binary Access Write Shared As #n
-    ' ★わざと閉じない★
-    Debug.Print "CrashTest8: ファイルを開いたまま Show します (" & crashPath & ")"
+    ' *deliberately not closed*
+    Debug.Print "CrashTest8: calling Show with the file left open (" & crashPath & ")"
     UserForm1.Show vbModeless
 End Sub
 
-' [9] ★ファイルは開かず、Dir でログフォルダを列挙してから Show★
-'     LogStart は RotateOldLogs で Dir / Kill を使う。そちらが原因かを見る。
+' [9] *Do not open a file; enumerate the log folder with Dir, then Show*
+'     LogStart uses Dir / Kill in RotateOldLogs. See whether that is the cause.
 Sub CrashTest9()
     Dim f As String
     Dim n As Long
@@ -146,37 +133,37 @@ Sub CrashTest9()
         n = n + 1
         f = Dir
     Loop
-    Debug.Print "CrashTest9: ログを " & n & " 本列挙してから Show します"
+    Debug.Print "CrashTest9: enumerated " & n & " log file(s), now calling Show"
     UserForm1.Show vbModeless
 End Sub
 
 ' ============================================================
-' ★第 3 弾: Full と Spa の差はどこか (K-5)★
+' *Round 3: where is the difference between Full and Spa (K-5)*
 '
-'   実測: StartWebView2_Full → ★落ちる★ / StartWebView2_Spa → ★落ちない★
-'   差は 3 つ:
-'     (a) TabBar / NavBar の有無 (★NavBar にはアドレスバーの input がある★)
-'     (b) 中身が実サイトかローカル HTML か (bing には検索ボックスがある)
-'     (c) WebView2 コントローラの枚数 (Full は 5 枚、Spa は 1 枚)
+'   Measured: StartWebView2_Full -> *crashes* / StartWebView2_Spa -> *does not crash*
+'   There are 3 differences:
+'     (a) presence of TabBar / NavBar (*NavBar has the address bar input*)
+'     (b) whether the content is a real site or local HTML (bing has a search box)
+'     (c) number of WebView2 controllers (Full has 5, Spa has 1)
 '
-'   ★実行前に必ず保存すること。★
-'   実行 → コードウィンドウに触らずイミディエイトで日本語入力オンにして 1 文字。
+'   *Always save before running.*
+'   Run -> without touching the code window, turn Japanese input on in the Immediate window and type one character.
 ' ============================================================
 
-' [10] Spa + ★実サイトのタブを 1 枚★ (TabBar / NavBar は無し)
-'      落ちれば → ★(b) 中身が犯人★ (入力欄を持つページ)。UI 部品は無罪
-'      落ちなければ → ★(a) TabBar / NavBar が犯人★ の線が濃くなる
+' [10] Spa + *one real-site tab* (no TabBar / NavBar)
+'      If it crashes -> *(b) the content is the culprit* (a page with an input field). The UI parts are innocent
+'      If it does not crash -> the case for *(a) TabBar / NavBar is the culprit* gets stronger
 Sub CrashTest10()
     Wv2Log.LogStart
     UserForm1.Show vbModeless
     UserForm1.StartWebView2_Spa
     UserForm1.CurrentBrowser.AddTabWithUrl "https://www.bing.com"
-    Debug.Print "CrashTest10: Spa + bing (UI 部品なし)。1 文字打ってみてください"
+    Debug.Print "CrashTest10: Spa + bing (no UI parts). Try typing one character"
 End Sub
 
-' [11] Spa + ★about:blank を 3 枚★ (枚数だけ増やす。入力欄は無い)
-'      落ちれば → ★(c) コントローラの枚数が犯人★
-'      落ちなければ → 枚数は無関係
+' [11] Spa + *three about:blank tabs* (only the count increases. No input field)
+'      If it crashes -> *(c) the number of controllers is the culprit*
+'      If it does not crash -> the count is irrelevant
 Sub CrashTest11()
     Dim i As Long
 
@@ -186,14 +173,14 @@ Sub CrashTest11()
     For i = 1 To 3
         UserForm1.CurrentBrowser.AddTabWithUrl "about:blank"
     Next i
-    Debug.Print "CrashTest11: Spa + about:blank ×3 (入力欄なし)。1 文字打ってみてください"
+    Debug.Print "CrashTest11: Spa + about:blank x3 (no input field). Try typing one character"
 End Sub
 
-' [12] 対照: Full そのまま (★確実に落ちるはず★)
-'      他のテストが「落ちない」ことに意味を持たせるための基準
+' [12] Control: Full as is (*should crash for sure*)
+'      The baseline that gives meaning to the other tests "not crashing"
 Sub CrashTest12()
     Wv2Log.LogStart
     UserForm1.Show vbModeless
     UserForm1.StartWebView2_Full
-    Debug.Print "CrashTest12: Full (対照)。1 文字打ってみてください"
+    Debug.Print "CrashTest12: Full (control). Try typing one character"
 End Sub

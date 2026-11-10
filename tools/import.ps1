@@ -1,42 +1,42 @@
 ﻿<#
-    import.ps1 -- src/ の VBA モジュールをブックへ書き戻す
+    import.ps1 -- writes the VBA modules in src/ back into the workbook
 
-    使い方:
-        powershell -ExecutionPolicy Bypass -File tools\import.ps1                      # 下見 (既定)
-        powershell -ExecutionPolicy Bypass -File tools\import.ps1 -Apply               # 書き戻す
-        powershell -ExecutionPolicy Bypass -File tools\import.ps1 -Apply -AllowNew     # 新規追加も許す
+    Usage:
+        powershell -ExecutionPolicy Bypass -File tools\import.ps1                      # preview (default)
+        powershell -ExecutionPolicy Bypass -File tools\import.ps1 -Apply               # write back
+        powershell -ExecutionPolicy Bypass -File tools\import.ps1 -Apply -AllowNew     # also allow adding new modules
         powershell -ExecutionPolicy Bypass -File tools\import.ps1 -Apply -Modules Wv2Json,Wv2Url
 
-    ★既定は下見 (dry run)★ 何が変わるかを報告するだけでブックには触らない。
-    実際に書き戻すには -Apply を明示すること (設計原則96)。
+    **The default is a preview (dry run)** It only reports what would change and does not touch the workbook.
+    To actually write back, -Apply must be given explicitly (design principle 96).
 
-    設計 (E-1 で合意した 7 点):
-        1. import 前にブックを book\backup\ へタイムスタンプ付きで複製する
-        2. 対象は src\*.bas と src\*.cls のみ。src\document\ と forms\ は対象外
-        3. VBComponents.Remove + Import は使わない。削除が遅延して同名 Import が
-           Wv2Pane1 に化ける罠があるため。CodeModule を全削除して AddFromString で
-           流し込む (コンポーネントを消さないので名前と属性が保たれる)
-        4. 内容が変わったモジュールだけ入れる
-        5. 事前ゲート: check_cp932.py を走らせ、1 件でも出たら中止
-        6. 事後検証: 書き戻したモジュールを読み直して src\ と一致することを確認する
-        7. Excel は不可視で開いて保存する
+    Design (the 7 points agreed in E-1):
+        1. Before the import, copy the workbook to book\backup\ with a timestamp
+        2. Only src\*.bas and src\*.cls are targeted. src\document\ and forms\ are excluded
+        3. VBComponents.Remove + Import is not used. Deletion is deferred, and importing the same name
+           turns it into Wv2Pane1, which is a trap. Delete the whole CodeModule and pour the text in with AddFromString
+           (the component is not deleted, so names and attributes are preserved)
+        4. Only modules whose content changed are put in
+        5. Pre-gate: run check_cp932.py and abort if even one item appears
+        6. Post-verification: re-read the written-back modules and confirm they match src\
+        7. Excel is opened invisibly and saved
 
-    E-3 で追加した「新規モジュールの追加」:
-        - ★既存の差し替えは AddFromString、新規の追加は Import のハイブリッド★
-          Remove しないので 3. の罠は当たらない。Import ならヘッダーの属性
-          (VB_PredeclaredId / VB_Exposed 等) と名前が自動で正しく付く
-        - Import に渡す一時ファイルは ★CP932 で書く★。事前ゲートが表現可能性を
-          保証しているので確実 (仕様事実35 / 36)
-        - 新規追加には -AllowNew が要る。src\ にゴミを置いたとき勝手に増えるのを防ぐ
-        - Attribute VB_Name がファイル名と違ったら中止する。Import は VB_Name で
-          名前が決まるので、ズレると別名のモジュールができる
+    "Adding new modules" added in E-3:
+        - **Replacing existing ones uses AddFromString, adding new ones uses Import (a hybrid)**
+          Since nothing is Removed, the trap of 3. does not apply. With Import, the header attributes
+          (VB_PredeclaredId / VB_Exposed etc.) and the name are set correctly and automatically
+        - The temporary file passed to Import is **written in CP932**. The pre-gate
+          guarantees representability, so this is safe (spec facts 35 / 36)
+        - -AllowNew is required for adding new ones. This prevents modules from increasing on their own when junk is left in src\
+        - Abort if Attribute VB_Name differs from the file name. Import decides the name by VB_Name,
+          so a mismatch creates a module under a different name
 
-    文字コード:
-        AddFromString は BSTR (UTF-16) を渡すので、ファイル側の文字コードは
-        PowerShell が UTF-8 として読んだ時点で解決している。ただし VBA は
-        受け取った文字列をプロジェクトのコードページ (CP932) で保持するため、
-        CP932 に無い文字はここで失われる (仕様事実35)。
-        だから 5. の事前ゲートは必須。
+    Character encoding:
+        AddFromString passes a BSTR (UTF-16), so the file-side encoding is settled
+        at the point PowerShell reads it as UTF-8. However, VBA holds the received string
+        in the project's code page (CP932), so characters not in
+        CP932 are lost here (spec fact 35).
+        That is why the pre-gate of 5. is mandatory.
 #>
 
 [CmdletBinding()]
@@ -58,30 +58,30 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $Book) {
     $cand = @(Get-ChildItem (Join-Path $repoRoot 'book') -Filter '*.xlsm' -ErrorAction SilentlyContinue)
-    if ($cand.Count -eq 0) { throw "book フォルダに .xlsm が見つからない。-Book で指定すること。" }
-    if ($cand.Count -gt 1) { throw ("book フォルダに .xlsm が複数ある: " + ($cand.Name -join ', ')) }
+    if ($cand.Count -eq 0) { throw "No .xlsm was found in the book folder. Specify it with -Book." }
+    if ($cand.Count -gt 1) { throw ("There are multiple .xlsm files in the book folder: " + ($cand.Name -join ', ')) }
     $Book = $cand[0].FullName
 }
 $Book = (Resolve-Path $Book).Path
 if (-not $SrcDir) { $SrcDir = Join-Path $repoRoot 'src' }
 $SrcDir = (Resolve-Path $SrcDir).Path
 
-$modeLabel = '下見のみ (ブックには触らない)'
-if ($Apply) { $modeLabel = '★書き戻す★' }
-if ($Apply -and $AllowNew) { $modeLabel = '★書き戻す + 新規追加を許可★' }
+$modeLabel = 'preview only (the workbook is not touched)'
+if ($Apply) { $modeLabel = '**write back**' }
+if ($Apply -and $AllowNew) { $modeLabel = '**write back + allow adding new**' }
 
-Write-Host ("ブック  : " + $Book)
-Write-Host ("ソース  : " + $SrcDir)
-Write-Host ("モード  : " + $modeLabel)
+Write-Host ("Book    : " + $Book)
+Write-Host ("Source  : " + $SrcDir)
+Write-Host ("Mode    : " + $modeLabel)
 Write-Host ""
 
 $cp932 = [System.Text.Encoding]::GetEncoding(932)
 
 # ---------------------------------------------------------------
-# モジュールファイルをヘッダーと本体に割る
-#   .cls : VERSION 行 / BEGIN..END ブロック / Attribute VB_xxx の連なり
-#   .bas : Attribute VB_Name の 1 行
-# メンバー属性 (Attribute m_browser.VB_VarHelpID) は本体側なので落とさない
+# Split a module file into header and body
+#   .cls : VERSION line / BEGIN..END block / a run of Attribute VB_xxx
+#   .bas : the single Attribute VB_Name line
+# Member attributes (Attribute m_browser.VB_VarHelpID) belong to the body side, so they are not dropped
 # ---------------------------------------------------------------
 function Split-ModuleFile([string]$path) {
     $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
@@ -108,8 +108,8 @@ function Split-ModuleFile([string]$path) {
     if ($i -gt 0) { $header = @($all[0..($i - 1)]) }
     $body = @()
     if ($i -lt $all.Count) { $body = @($all[$i..($all.Count - 1)]) }
-    # 末尾の空行を全部落とす。AddFromString が改行を 1 つ足すので、
-    # 落としておかないと import のたびに空行が 1 行ずつ増え続ける (仕様事実40)
+    # Drop all trailing blank lines. AddFromString adds one newline,
+    # so unless they are dropped, one blank line is added at every import (spec fact 40)
     while ($body.Count -gt 0 -and $body[$body.Count - 1] -eq '') {
         $body = @($body[0..($body.Count - 2)])
     }
@@ -129,21 +129,21 @@ function Split-ModuleFile([string]$path) {
     }
 }
 
-# ★メンバー属性行 (Attribute m_browser.VB_VarHelpID = -1) は書き込みからも落とす★
+# **Member attribute lines (Attribute m_browser.VB_VarHelpID = -1) are also dropped from what is written**
 #
-#   当初は「AddFromString が属性として保存してくれる」と考えて残していたが、
-#   ★それは誤りだった★ AddFromString は属性行を「ただのテキスト」として挿入する。
-#   一方 VBE は WithEvents 変数に対して自分で VB_VarHelpID を生成するので、
-#   結果として ★同じ属性行が 2 本になり、片方がコードとして露出する★。
-#   VBE のコードペインに Attribute 行が現れ、コンパイルエラーになる。
+#   At first they were kept on the assumption that "AddFromString saves them as attributes",
+#   but **that was wrong** AddFromString inserts attribute lines as "plain text".
+#   Meanwhile the VBE generates VB_VarHelpID by itself for WithEvents variables,
+#   so as a result **the same attribute line appears twice and one of them is exposed as code**.
+#   An Attribute line appears in the VBE code pane and causes a compile error.
 #
-#   ★しかも CodeModule.Lines は Attribute 行を一切返さないので、
-#     COM 経由の照合ではこの重複を検出できない★ (K-2 で実際に踏んだ)。
-#     検出には olevba でブック内部の実体を読む必要がある (tools/check_book.py)。
+#   **Moreover CodeModule.Lines never returns Attribute lines,
+#     so a comparison via COM cannot detect this duplication** (actually stepped on in K-2).
+#     To detect it, the real content inside the workbook must be read with olevba (tools/check_book.py).
 #
-#   落として問題ないことの根拠: K-2 で追加した m_syncTimer は src/ に属性行が
-#   無い状態で import したが、VBE が自動で VB_VarHelpID を生成した。
-#   つまり WithEvents の属性は VBE の管轄で、こちらが送る必要がない。
+#   Grounds for saying dropping is harmless: m_syncTimer added in K-2 was imported with no attribute line
+#   in src/, yet the VBE generated VB_VarHelpID automatically.
+#   In other words the WithEvents attribute is under the VBE's jurisdiction and we need not send it.
 function Strip-MemberAttrs([string]$s) {
     $keep = @()
     foreach ($l in ($s -split "`n")) {
@@ -160,32 +160,41 @@ function Normalize([string]$s) {
     return ($s -replace "`n+$", '')
 }
 
-# ---- 5. 事前ゲート -------------------------------------------------------
+# ---- 5. Pre-gate -------------------------------------------------------
 if (-not $SkipGate) {
     $checker = Join-Path $PSScriptRoot 'check_cp932.py'
     if (Test-Path $checker) {
-        Write-Host "事前ゲート: check_cp932.py"
+        Write-Host "Pre-gate: check_cp932.py"
         & python $checker $SrcDir
         if ($LASTEXITCODE -ne 0) {
             Write-Host ""
-            Write-Host "★中止★ CP932 で往復できない文字がある。ブックへ入れると永久に失われる (仕様事実35)。" -ForegroundColor Red
-            Write-Host "上の代替候補に置き換えてから再実行すること。" -ForegroundColor Red
+            Write-Host "**ABORTED** There are characters that cannot round-trip through CP932. Putting them into the workbook loses them permanently (spec fact 35)." -ForegroundColor Red
+            Write-Host "Replace them with the replacement candidates above and re-run." -ForegroundColor Red
             exit 1
         }
         Write-Host ""
     } else {
-        Write-Host "警告: check_cp932.py が見つからないので事前ゲートを飛ばした。" -ForegroundColor Yellow
+        Write-Host "Warning: check_cp932.py was not found, so the pre-gate was skipped." -ForegroundColor Yellow
+    }
+    $asciiChecker = Join-Path $PSScriptRoot 'check_ascii.py'
+    if (Test-Path $asciiChecker) {
+        Write-Host "Pre-gate: check_ascii.py (English fork: source must be ASCII on any code page)"
+        & python $asciiChecker $SrcDir
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "**ABORTED** Non-ASCII characters would be lost on import. Use ChrW() for non-ASCII data." -ForegroundColor Red
+            exit 1
+        }
     }
 }
 
-# ---- 対象ファイルの収集 --------------------------------------------------
+# ---- Collect target files -----------------------------------------------
 $files = @(Get-ChildItem $SrcDir -File | Where-Object { @('.bas', '.cls') -contains $_.Extension } | Sort-Object Name)
 if ($Modules -and $Modules.Count -gt 0) {
     $files = @($files | Where-Object { $Modules -contains $_.BaseName })
-    if ($files.Count -eq 0) { throw ("-Modules に一致するファイルが無い: " + ($Modules -join ', ')) }
+    if ($files.Count -eq 0) { throw ("No file matches -Modules: " + ($Modules -join ', ')) }
 }
 
-# ---- 論点5: VB_Name とファイル名の一致を先に検査 -------------------------
+# ---- Issue 5: first check that VB_Name matches the file name -----------
 $parsed = @{}
 $nameErrors = @()
 foreach ($f in $files) {
@@ -193,36 +202,36 @@ foreach ($f in $files) {
     $parsed[$f.BaseName] = $m
     $vbName = $m.Attrs['VB_Name']
     if ($null -eq $vbName) {
-        $nameErrors += ($f.Name + " : Attribute VB_Name が無い")
+        $nameErrors += ($f.Name + " : there is no Attribute VB_Name")
     } else {
         $vbName = $vbName.Trim('"')
         if ($vbName -ne $f.BaseName) {
-            $nameErrors += ($f.Name + " : Attribute VB_Name = " + $vbName + " がファイル名と違う")
+        $nameErrors += ($f.Name + " : Attribute VB_Name = " + $vbName + " differs from the file name")
         }
     }
 }
 if ($nameErrors.Count -gt 0) {
-    Write-Host "★中止★ Attribute VB_Name とファイル名が食い違っている:" -ForegroundColor Red
+    Write-Host "**ABORTED** Attribute VB_Name and the file name disagree:" -ForegroundColor Red
     foreach ($e in $nameErrors) { Write-Host ("  " + $e) -ForegroundColor Red }
-    Write-Host "Import は VB_Name で名前が決まるので、ズレたまま入れると別名のモジュールができる。" -ForegroundColor Red
+    Write-Host "Import decides the name by VB_Name, so importing with a mismatch creates a module under a different name." -ForegroundColor Red
     exit 1
 }
 
-Write-Host ("対象: " + $files.Count + " ファイル")
+Write-Host ("Targets: " + $files.Count + " file(s)")
 Write-Host ""
 
-# ---- 3. バックアップ (書き戻すときだけ) ----------------------------------
+# ---- 3. Backup (only when writing back) ---------------------------------
 if ($Apply -and (-not $NoBackup)) {
     $backupDir = Join-Path (Split-Path -Parent $Book) 'backup'
     if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $dest = Join-Path $backupDir ([System.IO.Path]::GetFileNameWithoutExtension($Book) + '_' + $stamp + '.xlsm')
     Copy-Item $Book $dest
-    Write-Host ("バックアップ: " + $dest)
+    Write-Host ("Backup: " + $dest)
     Write-Host ""
 }
 
-# ---- Excel 起動 ---------------------------------------------------------
+# ---- Start Excel --------------------------------------------------------
 $excel = $null
 $wb = $null
 $rows = @()
@@ -240,32 +249,32 @@ try {
     $excel.Visible = $false
     $excel.DisplayAlerts = $false
     $excel.EnableEvents = $false
-    $excel.AutomationSecurity = 3   # マクロ強制無効。Workbook_Open を発火させない
+    $excel.AutomationSecurity = 3   # forcibly disable macros. Workbook_Open does not fire
 
     $readOnly = -not $Apply
     for ($i = 1; $i -le 10; $i++) {
         try { $wb = $excel.Workbooks.Open($Book, 0, $readOnly); break }
         catch { Start-Sleep -Milliseconds 800 }
     }
-    if ($null -eq $wb) { throw "Workbooks.Open に 10 回失敗した。Excel を一度終了してから再実行すること。" }
+    if ($null -eq $wb) { throw "Workbooks.Open failed 10 times. Quit Excel once and re-run." }
 
-    # ★書き戻すつもりなのに読み取り専用で開けてしまった場合は中止する★
-    #   ブックが Excel で開かれている / 取り残された ~$ ロックファイルがあると、
-    #   Open は成功するが読み取り専用になる。そのまま進めると差し替えも照合も
-    #   「メモリ上の複製」に対して成功し、★ディスクには何も届かないのに OK と出る★。
-    #   (D-4b の書き戻しで実際に踏んだ)
+    # **If it was opened read-only even though we intend to write back, abort**
+    #   If the workbook is open in Excel / a stray ~$ lock file remains,
+    #   Open succeeds but becomes read-only. Proceeding as is makes both the replacement and the verification
+    #   succeed against an "in-memory copy", and **OK is shown although nothing reached the disk**.
+    #   (actually stepped on in the D-4b write-back)
     if ($Apply -and $wb.ReadOnly) {
         $wb.Close($false)
         $excel.Quit()
-        throw ("ブックが読み取り専用で開かれた。ディスクに書き戻せないので中止する。" +
-               "`n  ・Excel でこのブックを開いていないか確認すること" +
-               "`n  ・Excel を閉じても book\~`$" + [System.IO.Path]::GetFileName($Book) +
-               " が残っていたら、それを削除すること")
+        throw ("The workbook was opened read-only. Aborting because it cannot be written back to disk." +
+               "`n  - Check that this workbook is not open in Excel" +
+               "`n  - If book\~`$" + [System.IO.Path]::GetFileName($Book) +
+               " remains even after closing Excel, delete it")
     }
 
     $vbp = $null
     try { $vbp = $wb.VBProject } catch { }
-    if ($null -eq $vbp) { throw "VBProject にアクセスできない。トラスト センターの設定を確認すること。" }
+    if ($null -eq $vbp) { throw "Cannot access the VBProject. Check the Trust Center settings." }
 
     $byName = @{}
     foreach ($c in $vbp.VBComponents) { $byName[$c.Name] = $c }
@@ -276,29 +285,29 @@ try {
         $body = $m.Body
         $bodyCmp = Normalize (Strip-MemberAttrs $body)
 
-        # ================= 新規追加 (E-3) =================
+        # ================= Adding new (E-3) =================
         if (-not $byName.ContainsKey($name)) {
             if (-not $AllowNew) {
                 $blocked += $name
-                $rows += [pscustomobject]@{ モジュール = $name; 状態 = '★ブックに無い (-AllowNew が要る)★'; 行数 = ($body -split "`n").Count }
+                $rows += [pscustomobject]@{ Module = $name; State = '**not in the workbook (-AllowNew is required)**'; Lines = ($body -split "`n").Count }
                 continue
             }
             if (-not $Apply) {
-                $rows += [pscustomobject]@{ モジュール = $name; 状態 = '新規追加の予定'; 行数 = ($body -split "`n").Count }
+                $rows += [pscustomobject]@{ Module = $name; State = 'scheduled to be added'; Lines = ($body -split "`n").Count }
                 continue
             }
 
-            # 一時ファイルを CP932 + CRLF で書いて Import する
-            # ★CRLF は必須★ LF だけで書くと Import がヘッダーブロック
-            #   (VERSION 1.0 CLASS / BEGIN..END) を認識できず、クラスモジュールが
-            #   標準モジュールとして作られてヘッダーがコードに落ちる (E-3 で踏んだ)
+            # Write the temporary file in CP932 + CRLF and Import it
+            # **CRLF is mandatory** If written with LF only, Import cannot recognize the header block
+            #   (VERSION 1.0 CLASS / BEGIN..END), the class module is created as a
+            #   standard module and the header falls into the code (stepped on in E-3)
             $tmp = Join-Path $tmpDir ($name + $f.Extension)
             $full = $m.Full -replace "`n", "`r`n"
             if (-not $full.EndsWith("`r`n")) { $full = $full + "`r`n" }
             $bytes = $cp932.GetBytes($full)
-            # 往復検証 (事前ゲートを通っていれば必ず通る。二重の保険)
+            # Round-trip verification (always passes if the pre-gate passed. Double insurance)
             if ($cp932.GetString($bytes) -ne $full) {
-                throw ($name + " : CP932 への変換が非可逆。事前ゲートを確認すること。")
+                throw ($name + " : the conversion to CP932 is lossy. Check the pre-gate.")
             }
             [System.IO.File]::WriteAllBytes($tmp, $bytes)
 
@@ -310,30 +319,30 @@ try {
             $wantType = 1
             if ($f.Extension -eq '.cls') { $wantType = 2 }
 
-            $state = '★追加後の名前が違う: ' + $actualName + '★'
+            $state = '**wrong name after adding: ' + $actualName + '**'
             if ($actualName -ne $name) {
-                # そのまま
+                # as is
             } elseif ($actualType -ne $wantType) {
-                $state = '★種別が違う (期待 ' + $wantType + ' / 実際 ' + $actualType + ')★'
+                $state = '**wrong type (expected ' + $wantType + ' / actual ' + $actualType + ')**'
             } else {
                 $cmN = $newComp.CodeModule
                 $backN = ''
                 if ($cmN.CountOfLines -ge 1) { $backN = Normalize $cmN.Lines(1, $cmN.CountOfLines) }
                 if ((Normalize (Strip-MemberAttrs $backN)) -eq $bodyCmp) {
-                    $state = '新規追加した (照合 OK)'
+                    $state = 'added (verified OK)'
                     $addedNames += $name
                 } else {
-                    $state = '★追加したが本体の照合に失敗★'
+                    $state = '**added but body verification failed**'
                 }
             }
-            $rows += [pscustomobject]@{ モジュール = $name; 状態 = $state; 行数 = ('新規 -> ' + $newComp.CodeModule.CountOfLines) }
+            $rows += [pscustomobject]@{ Module = $name; State = $state; Lines = ('new -> ' + $newComp.CodeModule.CountOfLines) }
             continue
         }
 
-        # ================= 既存の差し替え =================
+        # ================= Replacing existing =================
         $comp = $byName[$name]
         if (@(1, 2) -notcontains $comp.Type) {
-            $rows += [pscustomobject]@{ モジュール = $name; 状態 = ('★種別が違うので飛ばした (Type=' + $comp.Type + ')★'); 行数 = '-' }
+            $rows += [pscustomobject]@{ Module = $name; State = ('**skipped because the type is wrong (Type=' + $comp.Type + ')**'); Lines = '-' }
             continue
         }
 
@@ -343,7 +352,7 @@ try {
         $curCmp = Normalize (Strip-MemberAttrs $cur)
 
         if ($curCmp -eq $bodyCmp) {
-            $rows += [pscustomobject]@{ モジュール = $name; 状態 = '変更なし'; 行数 = $cm.CountOfLines }
+            $rows += [pscustomobject]@{ Module = $name; State = 'unchanged'; Lines = $cm.CountOfLines }
             continue
         }
 
@@ -353,21 +362,21 @@ try {
 
         if ($Apply) {
             if ($cm.CountOfLines -ge 1) { $cm.DeleteLines(1, $cm.CountOfLines) }
-            # ★属性行を落として渡す★ 残すと二重になって露出する
+            # **Pass it with the attribute lines dropped** If left, they double up and get exposed
             $cm.AddFromString((Strip-MemberAttrs $body))
             $back = ''
             if ($cm.CountOfLines -ge 1) { $back = Normalize $cm.Lines(1, $cm.CountOfLines) }
-            $state = '★書き戻し後の照合に失敗★'
-            if ((Normalize (Strip-MemberAttrs $back)) -eq $bodyCmp) { $state = '書き戻した (照合 OK)' }
-            $rows += [pscustomobject]@{ モジュール = $name; 状態 = $state; 行数 = ($before.ToString() + ' -> ' + $cm.CountOfLines) }
+            $state = '**verification after write-back failed**'
+            if ((Normalize (Strip-MemberAttrs $back)) -eq $bodyCmp) { $state = 'written back (verified OK)' }
+            $rows += [pscustomobject]@{ Module = $name; State = $state; Lines = ($before.ToString() + ' -> ' + $cm.CountOfLines) }
         } else {
-            $rows += [pscustomobject]@{ モジュール = $name; 状態 = '要更新'; 行数 = ($before.ToString() + ' -> ' + $after) }
+            $rows += [pscustomobject]@{ Module = $name; State = 'needs update'; Lines = ($before.ToString() + ' -> ' + $after) }
         }
     }
 
-    # ---- 論点4: ヘッダー属性の照合 --------------------------------------
-    # VBIDE には VB_PredeclaredId 等を読む API が無いので、Export して読む。
-    # VBIDE から設定する手段も無いので、食い違ったら警告するだけ (手で直す)。
+    # ---- Issue 4: verify the header attributes --------------------------
+    # VBIDE has no API to read VB_PredeclaredId etc., so Export and read.
+    # There is also no way to set them from VBIDE, so on a mismatch we only warn (fix by hand).
     if (-not $SkipHeaderCheck) {
         foreach ($f in $files) {
             $name = $f.BaseName
@@ -387,7 +396,7 @@ try {
                 $want = $parsed[$name].Attrs[$k]
                 $got = $actual[$k]
                 if ($got -ne $want) {
-                    $headerWarn += ($name + " : " + $k + " が src=" + $want + " / ブック=" + $got)
+                    $headerWarn += ($name + " : " + $k + " src=" + $want + " / workbook=" + $got)
                 }
             }
         }
@@ -395,7 +404,7 @@ try {
 
     if ($Apply -and ($changedNames.Count + $addedNames.Count) -gt 0) {
         $wb.Save()
-        Write-Host ("ブックを保存した (差し替え " + $changedNames.Count + " / 新規 " + $addedNames.Count + ")")
+        Write-Host ("Saved the workbook (replaced " + $changedNames.Count + " / new " + $addedNames.Count + ")")
         Write-Host ""
 
     }
@@ -411,18 +420,18 @@ finally {
     if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# ---- 保存後のドリフト検査 (E-3) -----------------------------------------
-# ★VBA は識別子の大小をプロジェクト全体で統一する (仕様事実38)★
-#   新規モジュールが既存と同じ綴りの識別子を別の大小で宣言していると、
-#   コンパイル時に「触っていないモジュール」の中身まで書き換わる。
-#   動作は変わらないが git diff が汚れ、本当の変更を覆い隠すので必ず表に出す。
+# ---- Post-save drift check (E-3) ----------------------------------------
+# **VBA unifies the case of identifiers across the whole project (spec fact 38)**
+#   If a new module declares an identifier with the same spelling as an existing one but in a different case,
+#   at compile time even the contents of "modules that were not touched" get rewritten.
+#   Behavior does not change, but git diff gets dirty and hides the real changes, so it is always surfaced.
 #
-# ★この正規化は、import を行った PowerShell プロセスからは観測できない★
-#   Excel を終了させて新しい COM インスタンスを作っても、正規化前の綴りが返る
-#   (E-3 で実測)。そのため自前で比較すると「ドリフトなし」と嘘をつく。
-#   別プロセスで export.ps1 を呼んでバイト照合する形にしてある。
+# **This normalization cannot be observed from the PowerShell process that did the import**
+#   Even if Excel is quit and a new COM instance is created, the pre-normalization spelling is returned
+#   (measured in E-3). So comparing on our own would lie "no drift".
+#   It is arranged to call export.ps1 in a separate process and compare byte by byte.
 if ($Apply -and ($changedNames.Count + $addedNames.Count) -gt 0 -and (-not $SkipDriftCheck)) {
-    Write-Host "保存後のドリフト検査 (別プロセスで export し直して照合) ..."
+    Write-Host "Post-save drift check (re-export in a separate process and compare) ..."
     $dTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('wv2drift_' + [Guid]::NewGuid().ToString('N'))
     try {
         New-Item -ItemType Directory -Path $dTmp -Force | Out-Null
@@ -431,7 +440,7 @@ if ($Apply -and ($changedNames.Count + $addedNames.Count) -gt 0 -and (-not $Skip
 
         $dSrc = Join-Path $dTmp 'src'
         if (-not (Test-Path $dSrc)) {
-            Write-Host "  ★ドリフト検査ができなかった (export に失敗)★" -ForegroundColor Yellow
+            Write-Host "  **The drift check could not be done (export failed)**" -ForegroundColor Yellow
         } else {
             foreach ($f in $files) {
                 $nm = $f.BaseName
@@ -443,7 +452,7 @@ if ($Apply -and ($changedNames.Count + $addedNames.Count) -gt 0 -and (-not $Skip
                 $h2 = (Get-FileHash $g -Algorithm MD5).Hash
                 if ($h1 -ne $h2) { $drifted += $nm }
             }
-            if ($drifted.Count -eq 0) { Write-Host "  ドリフトなし" }
+            if ($drifted.Count -eq 0) { Write-Host "  No drift" }
         }
     }
     finally {
@@ -454,42 +463,42 @@ if ($Apply -and ($changedNames.Count + $addedNames.Count) -gt 0 -and (-not $Skip
 
 $rows | Format-Table -AutoSize
 
-$failed = @($rows | Where-Object { $_.状態 -like '*失敗*' -or $_.状態 -like '*名前が違う*' })
-Write-Host ("差し替え: " + $changedNames.Count + " / 新規: " + $addedNames.Count + " / 対象: " + $files.Count)
+$failed = @($rows | Where-Object { $_.State -like '*failed*' -or $_.State -like '*wrong name*' })
+Write-Host ("Replaced: " + $changedNames.Count + " / New: " + $addedNames.Count + " / Targets: " + $files.Count)
 
 if ($blocked.Count -gt 0) {
     Write-Host ""
-    Write-Host ("ブックに無いモジュール: " + ($blocked -join ', ')) -ForegroundColor Yellow
-    Write-Host "  追加してよければ -AllowNew を付けて再実行すること。" -ForegroundColor Yellow
+    Write-Host ("Modules not in the workbook: " + ($blocked -join ', ')) -ForegroundColor Yellow
+    Write-Host "  If adding them is fine, re-run with -AllowNew." -ForegroundColor Yellow
 }
 
 if ($drifted.Count -gt 0) {
     Write-Host ""
-    Write-Host "★書き戻していないのに中身が変わったモジュール★" -ForegroundColor Yellow
+    Write-Host "**Modules whose content changed although nothing was written back**" -ForegroundColor Yellow
     Write-Host ("  " + ($drifted -join ', ')) -ForegroundColor Yellow
-    Write-Host "  VBA が識別子の大小をプロジェクト全体で統一したため (仕様事実38)。" -ForegroundColor Yellow
-    Write-Host "  動作は変わらないが、export.ps1 -Force を走らせて src\ に取り込むこと。" -ForegroundColor Yellow
-    Write-Host "  取り込まないと、次回以降ずっと差分として出続ける。" -ForegroundColor Yellow
+    Write-Host "  Because VBA unified the case of identifiers across the whole project (spec fact 38)." -ForegroundColor Yellow
+    Write-Host "  Behavior does not change, but run export.ps1 -Force to bring them into src\." -ForegroundColor Yellow
+    Write-Host "  If you do not, they keep showing up as diffs from now on." -ForegroundColor Yellow
 }
 
 if ($headerWarn.Count -gt 0) {
     Write-Host ""
-    Write-Host "ヘッダー属性が食い違っている:" -ForegroundColor Yellow
+    Write-Host "Header attributes disagree:" -ForegroundColor Yellow
     foreach ($w in $headerWarn) { Write-Host ("  " + $w) -ForegroundColor Yellow }
-    Write-Host "  ★VBIDE からは設定できない属性なので、VBE で手当てすること。★" -ForegroundColor Yellow
+    Write-Host "  **These attributes cannot be set from VBIDE, so handle them in the VBE.**" -ForegroundColor Yellow
 }
 
 if ($failed.Count -gt 0) {
     Write-Host ""
-    Write-Host "★照合に失敗したモジュールがある★" -ForegroundColor Red
-    Write-Host "  book\backup\ の複製から戻すこと。" -ForegroundColor Red
+    Write-Host "**Some modules failed verification**" -ForegroundColor Red
+    Write-Host "  Restore from the copy in book\backup\." -ForegroundColor Red
     exit 1
 }
 
 if (-not $Apply) {
     Write-Host ""
-    Write-Host "※ 下見のみ。ブックには触っていない。書き戻すには -Apply を付けること。"
+    Write-Host "Note: preview only. The workbook was not touched. Add -Apply to write back."
 } else {
     Write-Host ""
-    Write-Host "※ 書き戻し後、tools\export.ps1 -Force を走らせて src\ と一致することを確認するとよい。"
+    Write-Host "Note: after writing back, it is a good idea to run tools\export.ps1 -Force and confirm it matches src\."
 }

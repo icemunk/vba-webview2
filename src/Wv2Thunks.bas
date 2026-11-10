@@ -1,237 +1,237 @@
 Attribute VB_Name = "Wv2Thunks"
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas N-4 段階 (レスポンス本文) ---
+' --- Wv2Thunks.bas Stage N-4 (response body) ---
 '
-'   N-4 の変更点:
-'     - HandlerKind に HK_ResponseGetContent = 13 を追加
-'       ★1 ショット系・同時並行可★ = HK_ExecuteScriptCompleted と同じ扱い
-'       (永続配列には入れない。CallbackId で呼び出しを識別する)
-'     - m_iidTable の配列上限を HK_ResponseGetContent へ拡張
+'   Changes in N-4:
+'     - Added HK_ResponseGetContent = 13 to HandlerKind
+'       **One-shot type, concurrency OK** = treated the same as HK_ExecuteScriptCompleted
+'       (not put into the persistent array. Calls are identified by CallbackId)
+'     - Extended the upper bound of the m_iidTable array to HK_ResponseGetContent
 '     - IID {875738e1-9fa2-40e3-8b74-2e8972dd6fe7}
 '
-'   ★Invoke の形は ExecuteScriptCompleted と同じ★
+'   **The shape of Invoke is the same as ExecuteScriptCompleted**
 '     Invoke(HRESULT errorCode, IStream* result)
-'     → arg1 = errorCode (下位 32bit)、arg2 = IStream* (0 のこともある)
-'     第9.8c で作った CallbackId の仕組みがそのまま使える。
+'     -> arg1 = errorCode (low 32 bits), arg2 = IStream* (may be 0)
+'     The CallbackId mechanism built in stage 9.8c can be used as is.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas N-3 段階 (レスポンスのステータスとヘッダ) ---
+' --- Wv2Thunks.bas Stage N-3 (response status and headers) ---
 '
-'   N-3 の変更点:
-'     - HandlerKind に HK_WebResourceResponseReceived = 12 を追加
-'       ★永続、ICoreWebView2_2 (vtable 61/62)★ = 派生 IF のイベント
-'     - m_iidTable の配列上限を HK_WebResourceRequested ← HK_WebResourceResponseReceived
+'   Changes in N-3:
+'     - Added HK_WebResourceResponseReceived = 12 to HandlerKind
+'       **Persistent, ICoreWebView2_2 (vtable 61/62)** = an event of a derived IF
+'     - Extended the upper bound of the m_iidTable array from HK_WebResourceRequested to HK_WebResourceResponseReceived
 '     - IID {7de9898a-24f5-40c3-a2de-d4f458e69828}
-'       ★出典は SDK ヘッダの MIDL_INTERFACE 行 (設計原則115)★
+'       **The source is the MIDL_INTERFACE line of the SDK header (design principle 115)**
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas N-2 段階 (リクエストのヘッダとボディ) ---
+' --- Wv2Thunks.bas Stage N-2 (request headers and body) ---
 '
-'   N-2 の変更点:
-'     - `MultiByteToWideChar` の宣言を追加 (kernel32)
-'     - `Utf8BytesToString` を追加。★UTF-8 のバイト列を VBA String にする★
+'   Changes in N-2:
+'     - Added the `MultiByteToWideChar` declaration (kernel32)
+'     - Added `Utf8BytesToString`. **Turns a UTF-8 byte sequence into a VBA String**
 '
-'   ★なぜ ADODB.Stream を使わないか★
-'     製品コードは外部 COM ライブラリ不使用が縛り。ADODB は検証コード
-'     (Wv2Tests の WriteUtf8NoBom) でしか使っていない。`MultiByteToWideChar` は
-'     Win32 API なので、既に使っている `lstrlenW` / `RtlMoveMemory` と同じ枠。
+'   **Why ADODB.Stream is not used**
+'     Product code is bound by the rule of using no external COM libraries. ADODB is used only in
+'     verification code (WriteUtf8NoBom in Wv2Tests). `MultiByteToWideChar` is a
+'     Win32 API, so it falls in the same category as the already-used `lstrlenW` / `RtlMoveMemory`.
 '
-'   ★StrConv(b, vbUnicode) では駄目★
-'     あれはプロジェクトのコードページ (日本語環境では CP932) で解釈する。
-'     UTF-8 のバイト列を渡すと化ける。コードページを明示できる API が要る。
+'   **StrConv(b, vbUnicode) will not do**
+'     It interprets using the project's code page (CP932 in a Japanese environment).
+'     Passing a UTF-8 byte sequence garbles it. An API that can specify the code page explicitly is needed.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas N-1 段階 (WebResourceRequested の配線) ---
+' --- Wv2Thunks.bas Stage N-1 (wiring of WebResourceRequested) ---
 '
-'   N-1 の変更点:
-'     - HandlerKind に HK_WebResourceRequested = 11 を追加 (永続、基底 ICoreWebView2)
-'     - m_iidTable の配列上限を HK_DOMContentLoaded ← HK_WebResourceRequested に拡張
-'     - InitIIDTable に ICoreWebView2WebResourceRequestedEventHandler の IID を追加
+'   Changes in N-1:
+'     - Added HK_WebResourceRequested = 11 to HandlerKind (persistent, base ICoreWebView2)
+'     - Extended the upper bound of the m_iidTable array from HK_DOMContentLoaded to HK_WebResourceRequested
+'     - Added the IID of ICoreWebView2WebResourceRequestedEventHandler to InitIIDTable
 '       {ab00b74c-15f1-4646-80e8-e76341d25d71}
-'       ★出典は SDK ヘッダ WebView2.h の MIDL_INTERFACE 行 (設計原則115)★
-'     - 本体ロジック (Handler_QueryInterface / AddRef / Release / dcf) は無変更
-'       (kind は動的アクセスなので新 kind=11 も自動的に通る)
+'       **The source is the MIDL_INTERFACE line of the SDK header WebView2.h (design principle 115)**
+'     - Core logic (Handler_QueryInterface / AddRef / Release / dcf) unchanged
+'       (kind is accessed dynamically, so the new kind=11 also passes automatically)
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas 第9.16段階 (旧称: Module9_9_9.bas) ---
+' --- Wv2Thunks.bas Stage 9.16 (formerly Module9_9_9.bas) ---
 '
-'   第9.16 の変更点 (整理: フィーチャー検証 Sub を Wv2Tests.bas へ移設):
-'     ★このモジュールをサンク基盤に純化した (案1-A)★
-'       Wv2Thunks は本来「機械語サンク・vtable・SAFEARRAY メモリプリミティブ」を
-'       担う心臓部のモジュール。そこに溜まっていたフィーチャー単位の純ロジック検証
-'       (Test_9_14_SearchFallback / Test_9_15_Reorder / Test_9_16_SearchEngine と
-'        ヘルパー Check / CheckOrder) を、新設した Wv2Tests.bas へ移した。
-'       これらは Wv2Browser の Debug_* を叩くだけでサンク層に一切触れないため、
-'       外へ出しても何も壊れない (Wv2Json を切り出したのと同じ「関心事で分ける」原則)。
+'   Changes in 9.16 (cleanup: moved the feature verification Subs to Wv2Tests.bas):
+'     **Purified this module into the thunk foundation (plan 1-A)**
+'       Wv2Thunks is by nature the heart module that carries "machine-code thunks, vtables and SAFEARRAY memory primitives".
+'       The feature-level pure-logic verifications that had piled up there
+'       (Test_9_14_SearchFallback / Test_9_15_Reorder / Test_9_16_SearchEngine and
+'        the helpers Check / CheckOrder) were moved to the newly created Wv2Tests.bas.
+'       They only call Wv2Browser's Debug_* and never touch the thunk layer,
+'       so moving them out breaks nothing (the same "separate by concern" principle as when Wv2Json was split out).
 '
-'     ★サンク基盤自体の検証は残す★
+'     **Verification of the thunk foundation itself stays**
 '       Test_TwoHandlers_Mock / Test_Environment_Real / Test_ResetSurvival_Manual /
-'       Test_VirtualAllocFree_Roundtrip / Test_SentinelStatus は、このモジュール内の
-'       Private 実装 (Thunks_* / Sentinel_* / VirtualAlloc 等) と密結合しているため
-'       ここに残す。外へ出すと検証のために Private を Public 化する必要が生じ、
-'       かえってカプセル化が壊れる (「本番と密結合な検証はそのモジュールに残す」基準)。
+'       Test_VirtualAllocFree_Roundtrip / Test_SentinelStatus are tightly coupled to the
+'       Private implementation inside this module (Thunks_* / Sentinel_* / VirtualAlloc etc.), so
+'       they stay here. Moving them out would require making Private members Public for verification,
+'       which would break encapsulation instead (criterion: "verification tightly coupled to production code stays in that module").
 '
-'     - 本体ロジック (サンク基盤の Public/Private API) は一切無変更。
+'     - Core logic (the Public/Private API of the thunk foundation) is completely unchanged.
 '
-' --- Wv2Thunks.bas 第9.15段階 (旧称: Module9_9_9.bas) ---
+' --- Wv2Thunks.bas Stage 9.15 (formerly Module9_9_9.bas) ---
 '
-'   第9.15 の変更点 (タブ並べ替えのロジック検証 Sub 追加):
-'     - Test_9_15_Reorder を追加。Wv2Browser の検証口 (Debug_SeedDummyTabs /
-'       MoveTab / Debug_TabOrderTitles / Debug_ActiveIndex) を叩き、タブ並べ替えの
-'       順序とアクティブ追従を WebView2 起動なしで一括検証する (純ロジックテスト)。
-'       本番の OnPaneWebMessage(reorder) が呼ぶのと同一の MoveTab を通すので
-'       二重管理にならない (Test_9_14 の Debug_NormalizeUrl と同じ位置づけ)。
-'     - CheckOrder ヘルパーを追加 (順序文字列と activeIndex の期待値照合)。
-'     - 本体ロジック・既存テストは無変更。今回は検証 Sub の追加のみ。
+'   Changes in 9.15 (added a logic verification Sub for tab reordering):
+'     - Added Test_9_15_Reorder. It calls Wv2Browser's verification ports (Debug_SeedDummyTabs /
+'       MoveTab / Debug_TabOrderTitles / Debug_ActiveIndex) and verifies, in one batch without starting WebView2,
+'       the order after tab reordering and the active-tab tracking (a pure logic test).
+'       It goes through the same MoveTab that the production OnPaneWebMessage(reorder) calls, so
+'       there is no double maintenance (same position as Debug_NormalizeUrl in Test_9_14).
+'     - Added the CheckOrder helper (compares an order string and the expected activeIndex).
+'     - Core logic and existing tests unchanged. This time only a verification Sub was added.
 '
-' --- Wv2Thunks.bas 第9.14段階 (旧称: Module9_9_9.bas) ---
+' --- Wv2Thunks.bas Stage 9.14 (formerly Module9_9_9.bas) ---
 '
-'   第9.14 の変更点 (検索語フォールバックのロジック検証 Sub 追加):
-'     - Test_9_14_SearchFallback を追加。Wv2Browser.Debug_NormalizeUrl を叩き、
-'       アドレスバー入力が「URL」と「Google 検索」に正しく振り分けられるかを
-'       WebView2 起動なしで一括検証する (純ロジックテスト)。
-'       検証は Wv2Browser の Debug_NormalizeUrl 経由なので、本番の NavigateActive が
-'       使う NormalizeUrl と同一ロジックを通す (二重管理にならない)。
-'     - 実機検証で判明: "localhost:8080" はコロン前が英字のみ (IsAlphaOnly) のため
-'       スキーム扱いで素通しされ、Edge/WebView2 が http:// を補って接続する
-'       (=ブラウザとして正しい挙動)。検証 Sub の期待値を実挙動に合わせて修正。
-'     - 本体ロジック・既存テストは無変更。今回は検証 Sub の追加のみ。
-'
-''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas 第9.13段階 (旧称: Module9_9_9.bas) ---
-'
-'   第9.13 の変更点 (整理段階・残骸掃除、本セッション):
-'     - UserForm 依存の統合テスト Sub 4 個を撤去した。いずれも第9.13 で
-'       UserForm1 から撤去済みの StartWebView2 (および IsPageLoaded /
-'       GetActivePane / OnExecuteScriptResult) を呼んでおり、放置すると
-'       コンパイルエラーの原因になるため:
-'         * Test_Controller_Real   (第9.3b)  ← StartWebView2 依存
-'         * Test_Navigate_Real     (第9.3c)  ← StartWebView2 依存
-'         * Test_AllEvents_Real    (第9.4b)  ← StartWebView2 依存
-'         * Test_ExecuteScript_Parallel (第9.9c) ← StartWebView2 ほか依存
-'       ExecuteScript の並列実行検証は第9.9c で合格済み。将来 SPA 連携を
-'       本格化する際に StartWebView2_Spa を土台として書き直す方が筋が良い
-'       ため、現時点では撤去する (合意済み)。
-'     - 残す低レベル層の単体テスト 5 個 (サンク・vtable・メモリプリミティブ。
-'       GUI では代替できない生きた資産):
-'         * Test_TwoHandlers_Mock           (vtable/サンクのモック検証)
-'         * Test_Environment_Real           (Environment 生成のみ)
-'         * Test_VirtualAllocFree_Roundtrip (メモリプリミティブ)
-'         * Test_SentinelStatus             (センチネル)
-'         * Test_ResetSurvival_Manual       (VBA Reset 耐性ガイド)
-'     - Test_ResetSurvival_Manual の手順コメントが撤去した Test_Navigate_Real を
-'       参照していたため、UserForm1.StartWebView2_Full を使う手順に書き換えた
-'       (手順ガイドとして自己完結させる)。
-'     - 本体ロジック (Handler_xxx / dcf / Thunks_Init / メモリプリミティブ等) は
-'       完全に無変更。今回は「使い捨てテスト Sub の撤去」のみ。
+'   Changes in 9.14 (added a logic verification Sub for the search-term fallback):
+'     - Added Test_9_14_SearchFallback. It calls Wv2Browser.Debug_NormalizeUrl and verifies, in one batch
+'       without starting WebView2, that address bar input is correctly sorted into
+'       "URL" and "Google search" (a pure logic test).
+'       The verification goes through Wv2Browser's Debug_NormalizeUrl, so it runs the same logic as the NormalizeUrl
+'       used by the production NavigateActive (no double maintenance).
+'     - Found in real-machine testing: "localhost:8080" has only letters before the colon (IsAlphaOnly), so
+'       it is treated as a scheme and passed through, and Edge/WebView2 supplies http:// and connects
+'       (= correct behavior for a browser). Corrected the expected values of the verification Sub to match actual behavior.
+'     - Core logic and existing tests unchanged. This time only a verification Sub was added.
 '
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Thunks.bas 第9.10a段階 (旧称: Module9_9_9.bas) ---
+' --- Wv2Thunks.bas Stage 9.13 (formerly Module9_9_9.bas) ---
 '
-'   第9.10a の変更点 (本セッション、Sentinel MEM_FREE バグ対処 = 仕様事実 10):
-'     - 定数追加: MEM_FREE (&H10000&) / PAGE_READWRITE (&H4&)
-'     - Sentinel_RecoverIfNeeded を「State ガード方式」に書き換え:
-'         VirtualQuery の結果 (State=MEM_COMMIT かつ AllocationBase=prevBase かつ
-'         Protect が読み書き可) で「領域が健在」と確認できた場合に限り、
-'         ReadLongPtr / MemLongPtr / VirtualFree を実行する。
-'         健在でなければ Sentinel_ClearPrevRegion だけ撃って安全に Exit Sub。
-'       → 旧実装は解放済みアドレスへ ReadLongPtr / MemLongPtr を無条件に撃ち、
-'         SAFEARRAY 経由のネイティブ配列アクセスで AV (= SEH 例外) を起こして
-'         いた。この AV は On Error Resume Next では捕捉できず Excel が即落ち
-'         していた (仕様事実 10)。設計原則 55 として明文化。
-'     - 新規 Private Function: IsProtectReadWritable(prot) As Boolean
-'         (PAGE_GUARD ビット検出 + PAGE_READWRITE / PAGE_EXECUTE_READWRITE 判定)
-'     - 本体ロジック (Handler_xxx / dcf / Thunks_Init 等) はその他無変更
+'   Changes in 9.13 (cleanup stage, sweeping up leftovers, this session):
+'     - Removed 4 UserForm-dependent integration test Subs. All of them called StartWebView2 (and IsPageLoaded /
+'       GetActivePane / OnExecuteScriptResult), which was already removed from
+'       UserForm1 in 9.13, and leaving them would cause
+'       compile errors:
+'         * Test_Controller_Real   (9.3b)  <- depends on StartWebView2
+'         * Test_Navigate_Real     (9.3c)  <- depends on StartWebView2
+'         * Test_AllEvents_Real    (9.4b)  <- depends on StartWebView2
+'         * Test_ExecuteScript_Parallel (9.9c) <- depends on StartWebView2 and others
+'       Parallel ExecuteScript verification already passed in 9.9c. When SPA integration is
+'       taken up in earnest in the future, rewriting on top of StartWebView2_Spa makes more sense,
+'       so they are removed for now (agreed).
+'     - The 5 low-level unit tests that remain (thunks, vtables, memory primitives.
+'       Living assets that a GUI cannot replace):
+'         * Test_TwoHandlers_Mock           (mock verification of vtable/thunk)
+'         * Test_Environment_Real           (Environment creation only)
+'         * Test_VirtualAllocFree_Roundtrip (memory primitives)
+'         * Test_SentinelStatus             (sentinel)
+'         * Test_ResetSurvival_Manual       (VBA Reset survival guide)
+'     - The procedure comment of Test_ResetSurvival_Manual referred to the removed Test_Navigate_Real, so
+'       it was rewritten to a procedure using UserForm1.StartWebView2_Full
+'       (made self-contained as a procedure guide).
+'     - Core logic (Handler_xxx / dcf / Thunks_Init / memory primitives etc.) is
+'       completely unchanged. This time only "removal of throwaway test Subs".
 '
-'   第9.9c の変更点 (継続、補完群):
-'     - Test_ExecuteScript_Parallel を新規追加 (項目 D)
-'         5 個の ExecuteScript を連続発行し、callback ID と結果値の対応で
-'         同時並行性 (案 a、9.8c) が正しく機能することを実機検証する。
-'         連番計算 ((1+1), (2+1), ... ) を投げて callback ID と結果の対応を見る。
-'     - 本体ロジック (Handler_xxx / dcf / Thunks_Init 等) は無変更
-'         (9.9c は Wv2Thunks にはテスト関数 1 個追加するだけ)
+''''''''''''''''''''''''''''''''''
+' --- Wv2Thunks.bas Stage 9.10a (formerly Module9_9_9.bas) ---
 '
-'   第9.9b の変更点 (継続、SPA 対応):
-'     - HandlerKind に 2 種類追加 (HK_HistoryChanged=9 / HK_DOMContentLoaded=10)
-'     - m_iidTable の配列上限を HK_DOMContentLoaded に拡張
-'     - InitIIDTable に 2 IID 追加
-'     - GetLongLongProperty を新設 (#If Win64 で囲む = 64bit 専用)
-'     - BuildSpaTestHtml / Test_SpaTest_Real を新設 (SPA テスト用)
-'     - 案 R': BuildSpaTestHtml の doPush/doReplace に try-catch を追加
-'              (about:blank origin の SecurityError を画面に表示)
+'   Changes in 9.10a (this session, handling the Sentinel MEM_FREE bug = spec fact 10):
+'     - Added constants: MEM_FREE (&H10000&) / PAGE_READWRITE (&H4&)
+'     - Rewrote Sentinel_RecoverIfNeeded as a "State guard" approach:
+'         Only when the result of VirtualQuery (State=MEM_COMMIT and AllocationBase=prevBase and
+'         Protect is read/write) confirms that "the region is alive" does it run
+'         ReadLongPtr / MemLongPtr / VirtualFree.
+'         If it is not alive, it fires only Sentinel_ClearPrevRegion and safely does Exit Sub.
+'       -> The old implementation unconditionally fired ReadLongPtr / MemLongPtr at the freed address,
+'         causing an AV (= SEH exception) in native array access through the SAFEARRAY.
+'         This AV could not be caught with On Error Resume Next and Excel
+'         crashed immediately (spec fact 10). Spelled out as design principle 55.
+'     - New Private Function: IsProtectReadWritable(prot) As Boolean
+'         (PAGE_GUARD bit detection + PAGE_READWRITE / PAGE_EXECUTE_READWRITE check)
+'     - Core logic (Handler_xxx / dcf / Thunks_Init etc.) otherwise unchanged
 '
-'   ★ 第9.9 (a + b + c) の 32bit 将来拡張への配慮 (方針 X) ★
-'     全段階 64bit 専用 (#Else #Error 維持) のまま実装したが、
-'     新規コードの LongLong 依存箇所には「32bit 化ポイント」コメントを残す。
-'     サンク機械語の x86 化という大規模課題は別段階 (将来) に切り出す。
-'     EventRegistrationToken は x86 でも 64bit (LongLong) なので両対応で問題なし。
+'   Changes in 9.9c (continued, complementary group):
+'     - Newly added Test_ExecuteScript_Parallel (item D)
+'         Issues 5 ExecuteScript calls in succession and verifies on a real machine that
+'         concurrency (plan a, 9.8c) works correctly, by matching callback IDs to result values.
+'         Throws sequential calculations ((1+1), (2+1), ... ) and looks at the match between callback ID and result.
+'     - Core logic (Handler_xxx / dcf / Thunks_Init etc.) unchanged
+'         (9.9c only adds one test function to Wv2Thunks)
 '
-'   第9.9a の変更点 (継続):
-'     - FillGUID を Private → Public に昇格
-'         (Wv2Pane.EnsureView2 がローカル GUID 構造体を初期化するために必要)
-'     - ICoreWebView2_2 取り出し基盤を Wv2Pane 側に実装 (m_pView2 + EnsureView2)
+'   Changes in 9.9b (continued, SPA support):
+'     - Added 2 kinds to HandlerKind (HK_HistoryChanged=9 / HK_DOMContentLoaded=10)
+'     - Extended the upper bound of the m_iidTable array to HK_DOMContentLoaded
+'     - Added 2 IIDs to InitIIDTable
+'     - Newly created GetLongLongProperty (wrapped in #If Win64 = 64-bit only)
+'     - Newly created BuildSpaTestHtml / Test_SpaTest_Real (for SPA testing)
+'     - Plan R': added try-catch to doPush/doReplace of BuildSpaTestHtml
+'              (show the SecurityError of the about:blank origin on screen)
 '
-'   第9.8c の変更点 (継続):
-'     - HandlerKind に HK_ExecuteScriptCompleted = 8 を追加
-'         (1 ショット系、同時並行可、案 a 採用)
-'     - m_iidTable の配列上限を HK_NewWindowRequested → HK_ExecuteScriptCompleted に拡張
-'     - InitIIDTable に IID_ICoreWebView2ExecuteScriptCompletedHandler を追加
+'   ** Consideration for future 32-bit extension of 9.9 (a + b + c) (policy X) **
+'     All stages were implemented 64-bit only (#Else #Error kept), but
+'     "32-bit conversion point" comments are left at LongLong-dependent places in new code.
+'     The large task of converting the thunk machine code to x86 is carved out as a separate stage (future).
+'     EventRegistrationToken is 64-bit (LongLong) even on x86, so supporting both is no problem.
+'
+'   Changes in 9.9a (continued):
+'     - Promoted FillGUID from Private to Public
+'         (needed so Wv2Pane.EnsureView2 can initialize a local GUID structure)
+'     - Implemented the ICoreWebView2_2 retrieval foundation on the Wv2Pane side (m_pView2 + EnsureView2)
+'
+'   Changes in 9.8c (continued):
+'     - Added HK_ExecuteScriptCompleted = 8 to HandlerKind
+'         (one-shot type, concurrency OK, plan a adopted)
+'     - Extended the upper bound of the m_iidTable array from HK_NewWindowRequested to HK_ExecuteScriptCompleted
+'     - Added IID_ICoreWebView2ExecuteScriptCompletedHandler to InitIIDTable
 '         (49511172-CC67-4BCA-9923-137112F4C4CC)
 '     - Handler_QueryInterface / Handler_AddRef / Handler_Release / Handler_Invoke
-'       本体のロジックは無変更 (kind は動的アクセスなので新 kind=8 も自動的に通る)
+'       The core logic is unchanged (kind is accessed dynamically, so the new kind=8 also passes automatically)
 '
-'   第9.8a/9.8b の変更点 (継続):
-'     - モジュール名 Module9_9_9 → Wv2Thunks に正式固定 (9.8a)
-'     - 配列型 m_handlers() As ComCallbackHandler (9.8a)
-'     - 第9.8b では Wv2Thunks の変更なし (Settings 系は Wv2Pane 内で完結)
+'   Changes in 9.8a/9.8b (continued):
+'     - Module name Module9_9_9 -> Wv2Thunks, now fixed officially (9.8a)
+'     - Array type m_handlers() As ComCallbackHandler (9.8a)
+'     - No change to Wv2Thunks in 9.8b (the Settings family is self-contained within Wv2Pane)
 '
-'   モジュールの役割:
-'     WebView2 ハンドラの実体を支える基盤層。サンク領域の確保 (VirtualAlloc)、
-'     スロット管理 (m_handlers / m_freeSlots)、参照カウント (HandlerAddRefInternal /
-'     HandlerReleaseInternal)、サンクから飛んでくる Handler_QueryInterface /
-'     Handler_AddRef / Handler_Release / Handler_Invoke、IID チェック
-'     (m_iidTable + IsEqualGUIDInPlace、第9.7a)、センチネル機構による
-'     VBA リセット時の領域回収 (第9.5)、Win32 API 宣言の集約 (第9.7b で
-'     マウスリサイズ用 API も追加) を担う。
+'   Role of the module:
+'     The foundation layer that supports the actual WebView2 handlers. It handles thunk region allocation (VirtualAlloc),
+'     slot management (m_handlers / m_freeSlots), reference counting (HandlerAddRefInternal /
+'     HandlerReleaseInternal), Handler_QueryInterface /
+'     Handler_AddRef / Handler_Release / Handler_Invoke arriving from the thunks, the IID check
+'     (m_iidTable + IsEqualGUIDInPlace, 9.7a), region reclamation on VBA reset
+'     via the sentinel mechanism (9.5), and consolidation of Win32 API declarations (the
+'     mouse resize APIs were also added in 9.7b).
 '
-'   過去段階の主要な確立内容 (詳細は開発メモ.md 参照):
-'     第9.2: サンク方式の確立 (DispCallFunc → VBA メソッドへの折り返し)
-'     第9.3: 上位クラス (Wv2Environment / Wv2Pane) の導入、案 D1-α
-'     第9.4: 永続ハンドラ機構 (案 P1)、HandlerKind 連動配列 (案 r)
-'     第9.5: センチネル機構による領域リーク完全解消、&H リテラル罠の発見
-'            (MEM_RELEASE = &H8000& 修正)
-'     第9.6: NewWindowRequested 横展開、出自接頭辞による命名規約 (View_/Ctrl_)
-'     第9.7a: Handler_QueryInterface の真正化 (IID チェック導入)
-'     第9.7b: UserForm マウスリサイズ用 API (GetAncestor / SetWindowLongPtrW /
-'             SetWindowPos) と関連定数 (GA_ROOT / WS_THICKFRAME 等)
+'   Main things established in past stages (see dev-notes-0-index.md for details):
+'     9.2: established the thunk method (DispCallFunc -> turning back to VBA methods)
+'     9.3: introduced the upper classes (Wv2Environment / Wv2Pane), plan D1-alpha
+'     9.4: persistent handler mechanism (plan P1), HandlerKind-linked arrays (plan r)
+'     9.5: complete elimination of region leaks via the sentinel mechanism, discovery of the &H literal trap
+'            (MEM_RELEASE = &H8000& fix)
+'     9.6: rollout of NewWindowRequested, naming convention by origin prefix (View_/Ctrl_)
+'     9.7a: made Handler_QueryInterface genuine (introduced the IID check)
+'     9.7b: APIs for UserForm mouse resizing (GetAncestor / SetWindowLongPtrW /
+'             SetWindowPos) and related constants (GA_ROOT / WS_THICKFRAME etc.)
 '
-'   ★ 第9.7a で確立した重要な事実 ★
-'     Test_AllEvents_Real のログ観察により、以下が判明している:
-'     1. WebView2 ランタイムは登録済みイベントハンドラに対して、
-'        IID_IUnknown と本来の IID 以外を QueryInterface で要求しない
-'     2. WebView2 は「登録時に QI して vtable をキャッシュ、Invoke 時には
-'        QI せず直接 Invoke」というパターンを採用している
-'     3. 9.6b 以前の「全 IID 素通し」実装で実害が出なかった真因は、
-'        WebView2 が QI を最小限しか叩かないため、危険な「嘘の IMarshal
-'        ポインタを返す」場面そのものが発生していなかった
+'   ** Important facts established in 9.7a **
+'     Observing the logs of Test_AllEvents_Real revealed the following:
+'     1. For a registered event handler, the WebView2 runtime does not request
+'        anything other than IID_IUnknown and the proper IID via QueryInterface
+'     2. WebView2 adopts the pattern "QI at registration and cache the vtable; at Invoke time
+'        invoke directly without QI"
+'     3. The true reason the "pass every IID through" implementation up to 9.6b caused no actual harm is that
+'        WebView2 issues only a minimum of QIs, so the dangerous situation of
+'        "returning a false IMarshal pointer" never arose
 '
-'   ★ トラブルシューティング指針 (第9.7a 以降) ★
-'     もし不可解な挙動 (= ハンドラ未登録、Invoke が呼ばれない、
-'     AddRef/Release 不整合、Cleanup 時にハング、等) が出た場合:
-'       (1) Handler_QueryInterface 冒頭で
-'           「ppvObject = this : HandlerAddRefInternal this :
-'            Handler_QueryInterface = S_OK : Exit Function」
-'           を一時的に追加して 9.6b 相当に戻す
-'       (2) この状態で機能が直るなら、IID チェック起因と確定
-'       (3) 直らないなら IID チェックは無関係、別の原因を探す
+'   ** Troubleshooting guideline (from 9.7a onward) **
+'     If puzzling behavior appears (= handler not registered, Invoke not called,
+'     AddRef/Release mismatch, hang at Cleanup, etc.):
+'       (1) Temporarily add at the top of Handler_QueryInterface
+'           "ppvObject = this : HandlerAddRefInternal this :
+'            Handler_QueryInterface = S_OK : Exit Function"
+'           to return to the 9.6b-equivalent behavior
+'       (2) If the function is fixed in this state, the IID check is confirmed as the cause
+'       (3) If not fixed, the IID check is unrelated; look for another cause
 '
-'   将来の課題 (第9.9c 完了 = 第9.9 全完了時点で残るもの):
-'     - TabWebView2 包括クラス (第9.10 で着手予定、最大規模)
-'     - 実 SPA テスト環境 (http(s) origin での pushState/replaceState 本格検証、9.10 以降)
-'     - バージョン拡張 IF (ICoreWebView2_3 以降、必要時に追加)
-'     - 32bit (x86) 対応: サンク機械語の x86 化 + 型抽象化 (将来の別段階)
-'     ※ SPA 対応 (HistoryChanged / DOMContentLoaded / postMessage 規約サンプル) と
-'        ExecuteScript 補完群 (D + E + F + G) は本セッション (第9.9c) までで完了。
+'   Future tasks (what remains at 9.9c completion = all of 9.9 complete):
+'     - TabWebView2 comprehensive class (planned to start in 9.10, the largest)
+'     - A real SPA test environment (full verification of pushState/replaceState on an http(s) origin, 9.10 onward)
+'     - Version-extension IFs (ICoreWebView2_3 and later, to be added when needed)
+'     - 32-bit (x86) support: x86 conversion of the thunk machine code + type abstraction (a separate future stage)
+'     Note: SPA support (HistoryChanged / DOMContentLoaded / postMessage convention sample) and
+'        the ExecuteScript complement group (D + E + F + G) were completed up to this session (9.9c).
 ''''''''''''''''''''''''''''''''''
 
 ''
@@ -247,10 +247,10 @@ Option Explicit
     Private Const NullPtr As LongLong = 0^
     Private Const PtrSize = 8
 #Else
-    #Error "このモジュールは 64 ビット VBA (x64) が必要です"
+    #Error "This module requires 64-bit VBA (x64)"
 #End If
 
-' --- SafeArray / PointerAccessor 用構造体 ---
+' --- Structures for SafeArray / PointerAccessor ---
 Private Enum SAFEARRAY_FEATURES
     FADF_AUTO = &H1
     FADF_FIXEDSIZE = &H10
@@ -276,12 +276,24 @@ Private Type PointerAccessor
 End Type
 
 ' --- WebView2Loader.dll ---
-'   第9.3a 段階で Public Declare に変更 (Wv2Environment.Init から呼ぶため)
+'   Changed to Public Declare in stage 9.3a (to be called from Wv2Environment.Init)
 Public Declare PtrSafe Function CreateCoreWebView2EnvironmentWithOptions Lib "WebView2Loader.dll" ( _
     ByVal browserExecutableFolder As LongPtr, _
     ByVal userDataFolder As LongPtr, _
-    ByVal additionalBrowserArguments As LongPtr, _
+    ByVal environmentOptions As LongPtr, _
     ByVal environmentCreatedHandler As LongPtr) As Long
+
+' --- Locating WebView2Loader.dll (English fork) ---
+'   The Declare above has no path, so Windows only finds the DLL if it is
+'   already loaded in Excel, next to EXCEL.EXE, in System32, in the current
+'   directory or on PATH. The copy Office ships (Power Query's bin folder) is
+'   on none of those, so it used to work only when Power Query had loaded it.
+'   EnsureWebView2Loader loads it by full path first; once a module named
+'   WebView2Loader.dll is loaded, the Declare resolves to it.
+Private Declare PtrSafe Function GetModuleHandleW Lib "kernel32" ( _
+    ByVal lpModuleName As LongPtr) As LongPtr
+Private Declare PtrSafe Function LoadLibraryW Lib "kernel32" ( _
+    ByVal lpLibFileName As LongPtr) As LongPtr
 
 ' --- Win32 API ---
 Private Declare PtrSafe Function VirtualAlloc Lib "kernel32" ( _
@@ -296,12 +308,12 @@ Private Declare PtrSafe Function VirtualFree Lib "kernel32" ( _
     ByVal dwFreeType As Long) As Long
 
 ' --- DispCallFunc (oleaut32) ---
-'   第9.3a 段階で新規追加。
-'   ICoreWebView2Environment::Release などを VBA 側から呼ぶための
-'   最小ヘルパー (ComRelease / ComAddRef) で使用する。
+'   Newly added in stage 9.3a.
+'   Used by the minimal helpers (ComRelease / ComAddRef)
+'   for calling things like ICoreWebView2Environment::Release from the VBA side.
 '
-'   ByRef ... As Any のパラメータには、引数 0 個のメソッドを呼ぶ際に
-'   呼び出し側で「ByVal 0&」と書いて NULL を渡す。
+'   For a ByRef ... As Any parameter, when calling a method with 0 arguments
+'   the caller writes "ByVal 0&" to pass NULL.
 Private Declare PtrSafe Function DispCallFunc Lib "oleaut32" ( _
     ByVal pvInstance As LongPtr, _
     ByVal oVft As LongPtr, _
@@ -312,41 +324,41 @@ Private Declare PtrSafe Function DispCallFunc Lib "oleaut32" ( _
     ByRef prgpvarg As Any, _
     ByRef pvargResult As Any) As Long
 
-' --- user32: GetClientRect (第9.3c 段階で追加) ---
-'   HWND のクライアント領域を取得する。位置は常に (0,0,width,height)。
-'   put_Bounds の引数として直接そのまま使える。
-'   Wv2Pane から呼ばれる前提で Public Declare。
+' --- user32: GetClientRect (added in stage 9.3c) ---
+'   Gets the client area of an HWND. The position is always (0,0,width,height).
+'   Can be used directly as the argument of put_Bounds.
+'   Public Declare on the assumption that it is called from Wv2Pane.
 Public Declare PtrSafe Function GetClientRect Lib "user32" ( _
     ByVal hwnd As LongPtr, _
     ByRef lpRect As RECT) As Long
 
-' --- UserForm マウスリサイズ用 API 群 (第9.7b 段階で追加) ---
-'   UserForm1.frm 側で「Frame1 の HWND → UserForm 自身の HWND」を取得し、
-'   UserForm 自身の HWND に WS_THICKFRAME (= 太枠 = マウスリサイズ可) を
-'   付与するために使う。
+' --- API group for UserForm mouse resizing (added in stage 9.7b) ---
+'   Used on the UserForm1.frm side to obtain "Frame1's HWND -> the UserForm's own HWND" and to give
+'   the UserForm's own HWND WS_THICKFRAME (= thick frame =
+'   mouse-resizable).
 '
-'   Declare は Module9 に集約 (設計原則的に Win32 API は Module9 で一括管理)。
-'   定数も Public Const として Module9 に置く (UserForm1 から参照可能)。
+'   Declarations are consolidated in Module9 (by design principle Win32 APIs are managed together in Module9).
+'   Constants are also placed in Module9 as Public Const (referenceable from UserForm1).
 '
 '   GetAncestor:
-'     指定した HWND の祖先 HWND を取得する。
-'     gaFlags = GA_ROOT (=2) を渡すと、その HWND を含む「ルートウィンドウ」
-'     (= デスクトップから直接見えるトップレベル/ポップアップウィンドウ) が
-'     得られる。Frame1 → UserForm 自身の HWND の取得に使う。
+'     Gets the ancestor HWND of the specified HWND.
+'     Passing gaFlags = GA_ROOT (=2) yields the "root window" that contains that HWND
+'     (= the top-level/popup window directly visible from the desktop).
+'     Used to get Frame1 -> the UserForm's own HWND.
 '
 '   GetWindowLongPtrW / SetWindowLongPtrW:
-'     ウィンドウの拡張情報 (Window Style 等) を取得/設定する。
-'     第二引数 nIndex に GWL_STYLE (=-16) を渡すと、ウィンドウスタイルを
-'     LongPtr で取得/設定できる (x64 では LONG_PTR 幅、x86 では LONG 幅、
-'     PtrSafe + LongPtr で抽象化されている)。
-'     WS_THICKFRAME (=&H40000) を OR で立てると、マウスでリサイズ可能になる。
+'     Gets/sets extended window information (Window Style etc.).
+'     Passing GWL_STYLE (=-16) as the second argument nIndex lets you get/set the window style
+'     as a LongPtr (LONG_PTR width on x64, LONG width on x86,
+'     abstracted by PtrSafe + LongPtr).
+'     Setting WS_THICKFRAME (=&H40000) with OR makes it resizable with the mouse.
 '
 '   SetWindowPos:
-'     ウィンドウの位置/サイズ/Z オーダー/見た目を更新する。
-'     WS_THICKFRAME 付与後、SWP_FRAMECHANGED を渡して呼ぶことで、
-'     非クライアント領域の再描画 (= 太枠の表示反映) をトリガする。
-'     位置/サイズ/Z オーダーは変えたくないので SWP_NOMOVE | SWP_NOSIZE |
-'     SWP_NOZORDER も同時に立てる。
+'     Updates the window's position/size/Z order/appearance.
+'     After giving WS_THICKFRAME, calling with SWP_FRAMECHANGED triggers
+'     redrawing of the non-client area (= reflecting the thick frame display).
+'     We do not want to change position/size/Z order, so SWP_NOMOVE | SWP_NOSIZE |
+'     SWP_NOZORDER are also set at the same time.
 Public Declare PtrSafe Function GetAncestor Lib "user32" ( _
     ByVal hwnd As LongPtr, _
     ByVal gaFlags As Long) As LongPtr
@@ -369,13 +381,13 @@ Public Declare PtrSafe Function SetWindowPos Lib "user32" ( _
     ByVal cy As Long, _
     ByVal uFlags As Long) As Long
 
-' --- UserForm マウスリサイズ関連の定数 (第9.7b 段階で追加) ---
-'   GetAncestor / GetWindowLongPtrW / SetWindowLongPtrW / SetWindowPos で使う
-'   定番の値。Win32 標準のシンボル名と一致させる。
+' --- Constants for UserForm mouse resizing (added in stage 9.7b) ---
+'   Standard values used by GetAncestor / GetWindowLongPtrW / SetWindowLongPtrW / SetWindowPos.
+'   Matched to the standard Win32 symbol names.
 '
-'   いずれも Integer 範囲を超えないが、設計原則 29 の罠に倣って
-'   念のため &H... には & サフィックスを付ける (Integer に解釈される
-'   可能性を排除し、Long 確定として扱う)。
+'   None exceeds the Integer range, but following the trap of design principle 29,
+'   the & suffix is attached to &H... just in case (this rules out the possibility of
+'   being interpreted as Integer, and treats them as definitely Long).
 Public Const GA_ROOT          As Long = 2
 Public Const GWL_STYLE        As Long = -16
 Public Const WS_THICKFRAME    As Long = &H40000
@@ -384,13 +396,13 @@ Public Const SWP_NOMOVE       As Long = &H2&
 Public Const SWP_NOZORDER     As Long = &H4&
 Public Const SWP_FRAMECHANGED As Long = &H20&
 
-' --- 文字列ヘルパー用 API (第9.4a 段階で追加、旧 mWebView2Helper 由来) ---
-'   LPWSTR (UTF-16 ヌル終端文字列) を VBA String に変換するために使用。
-'   各メソッドの用途:
-'     lstrlenW       : LPWSTR の文字数 (NULL 終端を除く) を取得
-'     CoTaskMemFree  : COM の out 引数 LPWSTR* (CoTaskMemAlloc で確保された
-'                      文字列) を解放する。COM 規約上、呼び出し側の責任。
-'     RtlMoveMemory  : メモリ間コピー (旧版踏襲のため使用)
+' --- APIs for string helpers (added in stage 9.4a, derived from the old mWebView2Helper) ---
+'   Used to convert an LPWSTR (UTF-16 null-terminated string) to a VBA String.
+'   Use of each method:
+'     lstrlenW       : gets the character count of an LPWSTR (excluding the NULL terminator)
+'     CoTaskMemFree  : frees a COM out-parameter LPWSTR* (a string allocated with
+'                      CoTaskMemAlloc). By COM convention, the caller's responsibility.
+'     RtlMoveMemory  : memory-to-memory copy (used to follow the old version)
 Public Declare PtrSafe Function lstrlenW Lib "kernel32" ( _
     ByVal lpString As LongPtr) As Long
 
@@ -402,10 +414,10 @@ Public Declare PtrSafe Sub RtlMoveMemory Lib "kernel32" ( _
     ByVal source As LongPtr, _
     ByVal length As LongPtr)
 
-' --- 文字コード変換 (N-2 で追加) ---
-'   UTF-8 のバイト列を UTF-16 (VBA の String) にする。
-'   ★コードページを明示できるのが肝★ StrConv(b, vbUnicode) は
-'   プロジェクトのコードページ (CP932) で解釈するので UTF-8 では化ける。
+' --- Character code conversion (added in N-2) ---
+'   Turns a UTF-8 byte sequence into UTF-16 (a VBA String).
+'   **The key is being able to specify the code page explicitly** StrConv(b, vbUnicode)
+'   interprets using the project's code page (CP932), so UTF-8 gets garbled.
 Public Declare PtrSafe Function MultiByteToWideChar Lib "kernel32" ( _
     ByVal codePage As Long, _
     ByVal dwFlags As Long, _
@@ -416,16 +428,16 @@ Public Declare PtrSafe Function MultiByteToWideChar Lib "kernel32" ( _
 
 Public Const CP_UTF8 As Long = 65001
 
-' --- 環境変数 API (第9.5 段階で追加、センチネル機構用) ---
-'   プロセス環境変数に「最後に Thunks_Init で確保した領域のベースアドレス」を
-'   十進文字列で保存する。MouseScroll.bas (Cristian Buse 流) と同じ流派。
+' --- Environment variable APIs (added in stage 9.5, for the sentinel mechanism) ---
+'   Saves "the base address of the region last allocated in Thunks_Init" in a process environment variable
+'   as a decimal string. The same school as MouseScroll.bas (Cristian Buse style).
 '
-'   W 版 (UTF-16) を採用。StrPtr() で VBA String の内部 UTF-16 バッファを
-'   そのまま渡せるため、A/W 変換が挟まらない。
+'   The W version (UTF-16) is adopted. StrPtr() can pass the VBA String's internal UTF-16 buffer
+'   as is, so no A/W conversion is involved.
 '
-'   SetEnvironmentVariableW(lpName, NULL) は環境変数の削除を意味する。
-'   VBA から NULL ポインタを渡すには第二引数を 0 で呼び出せばよい
-'   (LongPtr の ByVal なので 0 が NULL として扱われる)。
+'   SetEnvironmentVariableW(lpName, NULL) means deleting the environment variable.
+'   To pass a NULL pointer from VBA, just call with 0 for the second argument
+'   (it is a LongPtr ByVal, so 0 is treated as NULL).
 Private Declare PtrSafe Function GetEnvironmentVariableW Lib "kernel32" ( _
     ByVal lpName As LongPtr, _
     ByVal lpBuffer As LongPtr, _
@@ -435,28 +447,28 @@ Private Declare PtrSafe Function SetEnvironmentVariableW Lib "kernel32" ( _
     ByVal lpName As LongPtr, _
     ByVal lpValue As LongPtr) As Long
 
-' --- Win32 エラー取得 (第9.5 段階で追加、診断目的) ---
-'   直前の Win32 API 呼び出しが失敗した際のエラーコードを取得する。
-'   VirtualFree が 0 を返した原因の切り分け (ERROR_BUSY=170 /
-'   ERROR_INVALID_ADDRESS=487 / ERROR_INVALID_PARAMETER=87 など) に使う。
+' --- Getting Win32 errors (added in stage 9.5, for diagnostics) ---
+'   Gets the error code when the previous Win32 API call failed.
+'   Used to isolate the cause of VirtualFree returning 0 (ERROR_BUSY=170 /
+'   ERROR_INVALID_ADDRESS=487 / ERROR_INVALID_PARAMETER=87 etc.).
 '
-'   注意: GetLastError は per-thread の状態を持つ。VBA から Win32 API を
-'         呼ぶたびに更新されるので、観察したい API の直後に取得すること。
+'   Note: GetLastError has per-thread state. It is updated every time a Win32 API is
+'         called from VBA, so get it right after the API you want to observe.
 Private Declare PtrSafe Function GetLastError Lib "kernel32" () As Long
 
-' --- VirtualQuery 用構造体 (第9.5 段階で追加) ---
-'   x64 における MEMORY_BASIC_INFORMATION のレイアウト (合計 48 bytes):
+' --- Structure for VirtualQuery (added in stage 9.5) ---
+'   Layout of MEMORY_BASIC_INFORMATION on x64 (48 bytes in total):
 '     +0  BaseAddress       LongPtr (8)
 '     +8  AllocationBase    LongPtr (8)
 '     +16 AllocationProtect Long    (4)
-'     +20 (pad1)            Long    (4) ← アラインメント用パディング
+'     +20 (pad1)            Long    (4) <- padding for alignment
 '     +24 RegionSize        LongPtr (8)
 '     +32 State             Long    (4)
 '     +36 Protect           Long    (4)
-'     +40 Type              Long    (4)  (VBA 予約語と紛れるので Type_ と命名)
-'     +44 (pad2)            Long    (4) ← 末尾アラインメント
-'   VBA Type は宣言順 + 自動アラインメントで配置されるので、明示的に
-'   pad1/pad2 を挟むことでドキュメント上の正確性も確保する。
+'     +40 Type              Long    (4)  (named Type_ because it would clash with the VBA reserved word)
+'     +44 (pad2)            Long    (4) <- trailing alignment
+'   A VBA Type is laid out in declaration order + automatic alignment, so inserting
+'   pad1/pad2 explicitly also secures accuracy as documentation.
 Private Type MEMORY_BASIC_INFORMATION
     BaseAddress       As LongPtr
     AllocationBase    As LongPtr
@@ -469,28 +481,28 @@ Private Type MEMORY_BASIC_INFORMATION
     pad2              As Long
 End Type
 
-' --- VirtualQuery (第9.5 段階で追加、診断目的) ---
-'   指定アドレスを含むメモリページの状態を取得する。
-'   戻り値はコピーされた MEMORY_BASIC_INFORMATION のバイト数 (失敗時 0)。
-'   Type 定義を先に置く必要があるため、Declare はこの直後に書く。
+' --- VirtualQuery (added in stage 9.5, for diagnostics) ---
+'   Gets the state of the memory page containing the specified address.
+'   The return value is the number of bytes of the copied MEMORY_BASIC_INFORMATION (0 on failure).
+'   The Type definition must come first, so the Declare is written right after this.
 Private Declare PtrSafe Function VirtualQuery Lib "kernel32" ( _
     ByVal lpAddress As LongPtr, _
     ByRef lpBuffer As MEMORY_BASIC_INFORMATION, _
     ByVal dwLength As LongPtr) As LongPtr
 
-' MEMORY_BASIC_INFORMATION.State の値:
-'   MEM_COMMIT  = &H1000  (4096)   ← 既存の MEM_COMMIT と同じ値
-'   MEM_RESERVE = &H2000  (8192)   ← 既存の MEM_RESERVE と同じ値
+' Values of MEMORY_BASIC_INFORMATION.State:
+'   MEM_COMMIT  = &H1000  (4096)   <- same value as the existing MEM_COMMIT
+'   MEM_RESERVE = &H2000  (8192)   <- same value as the existing MEM_RESERVE
 '   MEM_FREE    = &H10000 (65536)
-' MEMORY_BASIC_INFORMATION.Protect の値は FormatMemProtect 内で個別判定するため
-' 個別の定数定義は省略。
+' The values of MEMORY_BASIC_INFORMATION.Protect are judged individually inside FormatMemProtect, so
+' individual constant definitions are omitted.
 
-' --- RECT 構造体 (第9.3c 段階で追加) ---
-'   ICoreWebView2Controller::put_Bounds に渡される 16 bytes 構造体。
-'   x64 ABI 的には「16 bytes 以下の構造体は値渡し」だが、実機検証では
-'   旧版が VarPtr(rect) でポインタ渡しして動作していたため、本実装も
-'   同じ方式 (= ポインタ渡しを dcf の LongPtr 引数として渡す) を踏襲。
-'   Wv2Pane から参照されるので Public Type。
+' --- RECT structure (added in stage 9.3c) ---
+'   A 16-byte structure passed to ICoreWebView2Controller::put_Bounds.
+'   By the x64 ABI, "structures of 16 bytes or less are passed by value", but in real-machine testing
+'   the old version worked by passing a pointer with VarPtr(rect), so this implementation
+'   follows the same method (= passes the pointer as the LongPtr argument of dcf).
+'   Referenced from Wv2Pane, so it is a Public Type.
 Public Type RECT
     Left   As Long
     Top    As Long
@@ -500,108 +512,108 @@ End Type
 
 Private Const MEM_COMMIT             As Long = &H1000&
 Private Const MEM_RESERVE            As Long = &H2000&
-' ↓ 9.5g 段階で「&H8000」→「&H8000&」に修正。サフィックスなしだと
-'   Integer の &H8000 (= -32768) として評価された後 Long に拡張されるため、
-'   VirtualFree に -32768 を渡してしまい ERROR_INVALID_PARAMETER で失敗していた。
-'   この罠は VBA 7 + x64 環境で長年踏まれ続けている古典的バグ。
+' ^ In stage 9.5g changed "&H8000" to "&H8000&". Without the suffix it
+'   was evaluated as the Integer &H8000 (= -32768) and then widened to Long, so
+'   -32768 was passed to VirtualFree and it failed with ERROR_INVALID_PARAMETER.
+'   This trap is a classic bug that has been stepped on for years in VBA 7 + x64 environments.
 Private Const MEM_RELEASE            As Long = &H8000&
-' MEM_FREE (第9.10a 追加): VirtualQuery の State 判定用。解放済み領域を表す。
-'   &H10000 = 65536。サフィックス & を必ず付ける (MEM_RELEASE の罠と同種の予防)。
+' MEM_FREE (added in 9.10a): for the State check of VirtualQuery. Represents a freed region.
+'   &H10000 = 65536. Always attach the & suffix (the same kind of prevention as the MEM_RELEASE trap).
 Private Const MEM_FREE               As Long = &H10000
 Private Const PAGE_EXECUTE_READWRITE As Long = &H40&
-' PAGE_READWRITE (第9.10a 追加): Sentinel ガードで「読み書き可能か」を判定する用。
-'   サンク領域は PAGE_EXECUTE_READWRITE (&H40) で確保されるが、健在判定では
-'   念のため PAGE_READWRITE (&H4) も読み書き可として許容する。
+' PAGE_READWRITE (added in 9.10a): used by the Sentinel guard to judge "whether it is readable/writable".
+'   The thunk region is allocated with PAGE_EXECUTE_READWRITE (&H40), but the aliveness check
+'   also accepts PAGE_READWRITE (&H4) as readable/writable, just in case.
 Private Const PAGE_READWRITE         As Long = &H4&
 Private Const S_OK                   As Long = 0
 Private Const E_NOINTERFACE          As Long = &H80004002
 Private Const CC_STDCALL             As Long = 4
 
-' --- センチネル機構用定数 (第9.5 段階で追加) ---
+' --- Constants for the sentinel mechanism (added in stage 9.5) ---
 '
 '   SENTINEL_ENV_NAME:
-'     プロセス環境変数の名前。1 マシン上の複数 Excel ワークブック間で
-'     同じ名前を使うと衝突するが、その場合「片方の領域が回収できない」
-'     だけでクラッシュはしない (= リーク許容に戻るだけ)。
+'     The name of the process environment variable. Using the same name across
+'     multiple Excel workbooks on one machine causes a collision, but in that case it is only that
+'     "one side's region cannot be reclaimed", not a crash (= it just falls back to tolerating the leak).
 '
 '   SENTINEL_BUFFER_SIZE:
-'     GetEnvironmentVariableW で受け取るバッファの文字数 (WCHAR 単位)。
-'     x64 のアドレスを CStr で十進文字列化すると最大 19 桁
-'     (2^63 - 1 = 9223372036854775807)、ヌル終端を含めても 20 文字あれば
-'     足りるが、安全マージンを取って 32。
-Private Const SENTINEL_ENV_NAME    As String = "WV2_VBA_LastRegion"
+'     The number of characters (in WCHAR units) of the buffer received by GetEnvironmentVariableW.
+'     An x64 address turned into a decimal string with CStr is at most 19 digits
+'     (2^63 - 1 = 9223372036854775807), and 20 characters including the null terminator
+'     would suffice, but 32 is taken as a safety margin.
+Private Const SENTINEL_ENV_BASE    As String = "WV2_VBA_LastRegion"
 Private Const SENTINEL_BUFFER_SIZE As Long = 32
 
-' --- スロット / 領域レイアウト定数 ---
+' --- Slot / region layout constants ---
 
-' EntryPoint スタブ内で「次に呼ぶ先のアドレス」が即値として埋め込まれる位置
+' Position within the EntryPoint stub where the "address to call next" is embedded as an immediate
 Private Const LATE_BIND_OFFSET As Long = 55
 
-' スタブの実体長 (第8.5段階で確認、+88 の C2 00 00 まで含めて 91 bytes)
+' Actual length of the stub (confirmed in stage 8.5, 91 bytes including up to C2 00 00 at +88)
 Private Const STUB_LEN As Long = 91
 
-' サンクの長さ (フラグチェック 18 + 既存 56 = 74 bytes)
+' Length of the thunk (flag check 18 + existing 56 = 74 bytes)
 Private Const THUNK_LEN As Long = 74
 
-' サンク領域のオフセット (スタブ 91 + パディング 5 = 96)
+' Offset of the thunk region (stub 91 + padding 5 = 96)
 Private Const THUNK_OFFSET   As Long = 96
 
-' vtableObj 領域のオフセット (= 旧 SLOT_SIZE と同じ値で覚えやすい)
-'   この位置から WebView2VTable 構造体 (40 bytes) を配置:
-'     +0..+7   : pVTable (= 自身の +8 を指す)
+' Offset of the vtableObj region (= the same value as the old SLOT_SIZE, easy to remember)
+'   From this position the WebView2VTable structure (40 bytes) is placed:
+'     +0..+7   : pVTable (= points to its own +8)
 '     +8..+15  : Functions(0) = Handler_QueryInterface
 '     +16..+23 : Functions(1) = Handler_AddRef
 '     +24..+31 : Functions(2) = Handler_Release
-'     +32..+39 : Functions(3) = pSlot (スタブクローン先頭)
+'     +32..+39 : Functions(3) = pSlot (start of the stub clone)
 '
-'   第9.3a 段階で Public Const に変更 (Wv2Environment.Init から参照)
+'   Changed to Public Const in stage 9.3a (referenced from Wv2Environment.Init)
 Public Const VTABLE_OBJ_OFFSET As Long = 176
 
-' 1 スロットあたりの確保サイズ (8 の倍数に揃えて 224 bytes)
-'   +0..+90      スタブクローン (91 bytes)
-'   +91..+95     パディング
-'   +96..+169    サンク (74 bytes)
-'   +170..+175   パディング (8 byte アラインメント)
+' Allocation size per slot (aligned to a multiple of 8, 224 bytes)
+'   +0..+90      stub clone (91 bytes)
+'   +91..+95     padding
+'   +96..+169    thunk (74 bytes)
+'   +170..+175   padding (8-byte alignment)
 '   +176..+183   vtableObj.pVTable
 '   +184..+215   vtableObj.Functions(0..3)
-'   +216..+223   予備パディング (8 byte アラインメント)
+'   +216..+223   spare padding (8-byte alignment)
 Private Const SLOT_SIZE      As Long = 224
 
-' スロット数 (固定)
+' Number of slots (fixed)
 Private Const SLOT_COUNT     As Long = 512
 
-' 領域先頭のヘッダサイズ (生存フラグ + 将来予約)
-'   +0          : 生存フラグ (1 byte、ただし 8 byte 単位で扱う)
-'   +1..+63     : 予約 (将来のセンチネル用フラグクリアサンクなど)
+' Header size at the start of the region (alive flag + future reserve)
+'   +0          : alive flag (1 byte, but handled in 8-byte units)
+'   +1..+63     : reserved (for future sentinel flag-clearing thunks etc.)
 Private Const HEADER_SIZE    As Long = 64
 
-' 領域全体のサイズ (= 64 + 224×512 = 114,752 bytes ≒ 112 KB)
+' Size of the whole region (= 64 + 224x512 = 114,752 bytes, about 112 KB)
 Private Const REGION_SIZE    As Long = HEADER_SIZE + SLOT_SIZE * SLOT_COUNT
 
 
 ' ============================================================
-' GUID 構造体 (Win32 標準、第9.7a で新規追加)
+' GUID structure (Win32 standard, newly added in 9.7a)
 '
-'   COM の REFIID として渡される 16 byte の構造体。
-'   QueryInterface の riid 引数はこの構造体へのポインタ。
+'   A 16-byte structure passed as a COM REFIID.
+'   The riid argument of QueryInterface is a pointer to this structure.
 '
-'   メモリ上の x64 レイアウト (16 bytes、Win32 標準):
-'     +0..+3   : Data1     (Long、little-endian)
-'     +4..+5   : Data2     (Integer、little-endian)
-'     +6..+7   : Data3     (Integer、little-endian)
-'     +8..+15  : Data4(0..7) (各 Byte をそのまま、big-endian 風)
+'   x64 layout in memory (16 bytes, Win32 standard):
+'     +0..+3   : Data1     (Long, little-endian)
+'     +4..+5   : Data2     (Integer, little-endian)
+'     +6..+7   : Data3     (Integer, little-endian)
+'     +8..+15  : Data4(0..7) (each Byte as is, big-endian style)
 '
-'   例: IID {4e8a3389-c9d8-4bd2-b6b5-124fee6cc14d} は
+'   Example: the IID {4e8a3389-c9d8-4bd2-b6b5-124fee6cc14d} is
 '     Data1 = &H4E8A3389
-'     Data2 = &HC9D8 (Integer なので符号付き表現で書く際は &HC9D8 のまま)
+'     Data2 = &HC9D8 (it is an Integer, so when written in signed form it stays &HC9D8)
 '     Data3 = &H4BD2
 '     Data4 = (&HB6, &HB5, &H12, &H4F, &HEE, &H6C, &HC1, &H4D)
 '
-'   GUID 比較は memcmp 相当 (16 byte 全体の二進一致) で行う。本モジュールでは
-'   LongLong を 2 個読んで比較する高速版を IsEqualGUIDInPlace で実装。
+'   GUID comparison is done memcmp-style (binary match of all 16 bytes). In this module a
+'   fast version that reads two LongLongs and compares them is implemented in IsEqualGUIDInPlace.
 '
-'   Public にしているのは、上位クラスで派生 IF QueryInterface を発行する
-'   将来 (第9.8 以降のバージョン拡張 IF 等) で使うかも知れないため。
+'   It is Public because it may be used in the future (version-extension IFs from 9.8 onward etc.)
+'   when upper classes issue QueryInterface for a derived IF.
 ' ============================================================
 Public Type GUID
     data1 As Long
@@ -612,9 +624,9 @@ End Type
 
 
 ' ============================================================
-' HandlerKind 列挙型 (上位モジュールから参照可能)
-'   WebView2 のコールバック種別を識別する。ComCallbackHandler.cls の
-'   m_kind に格納され、Handler_Invoke 内で分岐に使われる。
+' HandlerKind enumeration (referenceable from upper modules)
+'   Identifies the kind of WebView2 callback. Stored in m_kind of ComCallbackHandler.cls
+'   and used for branching inside Handler_Invoke.
 ' ============================================================
 Public Enum HandlerKind
     HK_None = 0
@@ -625,122 +637,122 @@ Public Enum HandlerKind
     HK_WebMessageReceived = 5
     HK_DocumentTitleChanged = 6
     HK_NewWindowRequested = 7
-    HK_ExecuteScriptCompleted = 8   ' 第9.8c で追加、1 ショット系、同時並行可
-    HK_HistoryChanged = 9           ' 第9.9b で追加、永続、基底 ICoreWebView2 (vtable 13/14)
-    HK_DOMContentLoaded = 10        ' 第9.9b で追加、永続、ICoreWebView2_2 (vtable 64/65)
-    HK_WebResourceRequested = 11    ' N-1 で追加、永続、基底 ICoreWebView2 (vtable 55/56)
-    HK_WebResourceResponseReceived = 12  ' N-3 で追加、永続、ICoreWebView2_2 (vtable 61/62)
-    HK_ResponseGetContent = 13      ' N-4 で追加、★1 ショット系・同時並行可★
+    HK_ExecuteScriptCompleted = 8   ' added in 9.8c, one-shot type, concurrency OK
+    HK_HistoryChanged = 9           ' added in 9.9b, persistent, base ICoreWebView2 (vtable 13/14)
+    HK_DOMContentLoaded = 10        ' added in 9.9b, persistent, ICoreWebView2_2 (vtable 64/65)
+    HK_WebResourceRequested = 11    ' added in N-1, persistent, base ICoreWebView2 (vtable 55/56)
+    HK_WebResourceResponseReceived = 12  ' added in N-3, persistent, ICoreWebView2_2 (vtable 61/62)
+    HK_ResponseGetContent = 13      ' added in N-4, **one-shot type, concurrency OK**
 End Enum
 
 
-' --- 起動時に 1 回取得して保持する関数アドレス ---
-'   各スロットの vtableObj.Functions(0..2) に書き込む値。
-'   AddressOf 演算子は実引数位置でしか書けないため、GetAddr 経由で取得する。
-'   Thunks_Init で 1 度だけ取得し、Acquire 時にはこれを使い回す。
+' --- Function addresses obtained once at startup and kept ---
+'   Values written to Functions(0..2) of each slot's vtableObj.
+'   The AddressOf operator can be written only at an actual-argument position, so it is obtained via GetAddr.
+'   Obtained only once in Thunks_Init and reused at Acquire time.
 Private m_pHandler_QI       As LongPtr
 Private m_pHandler_AddRef   As LongPtr
 Private m_pHandler_Release  As LongPtr
 
-' --- スロットプール状態 ---
-Private m_pRegionBase As LongPtr        ' VirtualAlloc で確保した領域の先頭
-Private m_freeHead    As Long           ' フリーリストの先頭インデックス (-1 で空)
-Private m_freeNext()  As Long           ' freeNext(i) = i 番スロットの次の空きスロット
-Private m_inUse       As Long           ' 現在使用中のスロット数 (デバッグ用)
+' --- Slot pool state ---
+Private m_pRegionBase As LongPtr        ' start of the region allocated with VirtualAlloc
+Private m_freeHead    As Long           ' head index of the free list (-1 means empty)
+Private m_freeNext()  As Long           ' freeNext(i) = the next free slot after slot i
+Private m_inUse       As Long           ' number of slots currently in use (for debugging)
 
-' --- スロット index → Handler オブジェクトの対応表 ---
-'   Handler_AddRef / Release / QueryInterface から
-'   「this (= pSlot + VTABLE_OBJ_OFFSET) → idx (SlotIndexFromVTableObjAddr)
-'    → m_handlers(idx)」の経路で対応する ComCallbackHandler インスタンスに到達する。
-'   refcount = 0 の自動解放経路でもこの配列をクリアする。
+' --- Correspondence table: slot index -> Handler object ---
+'   From Handler_AddRef / Release / QueryInterface, the path
+'   "this (= pSlot + VTABLE_OBJ_OFFSET) -> idx (SlotIndexFromVTableObjAddr)
+'    -> m_handlers(idx)" reaches the corresponding ComCallbackHandler instance.
+'   This array is also cleared in the automatic release path at refcount = 0.
 Private m_handlers(0 To SLOT_COUNT - 1) As ComCallbackHandler
 
-' --- IID テーブル (第9.7a 段階で新規追加) ---
-'   HandlerKind ごとの「自分の本来の IID」を保持する。
-'   Handler_QueryInterface が riid をこれと比較して、一致すれば
-'   S_OK + 自身、不一致なら ppvObject = 0 + E_NOINTERFACE を返す。
+' --- IID table (newly added in stage 9.7a) ---
+'   Holds "its own proper IID" for each HandlerKind.
+'   Handler_QueryInterface compares riid with it, and returns
+'   S_OK + itself if they match, or ppvObject = 0 + E_NOINTERFACE if not.
 '
-'   Thunks_Init の末尾で InitIIDTable によって初期化される。
-'   宣言のレンジは HandlerKind の全範囲 (HK_None = 0 ? HK_ResponseGetContent = 13)。
-'   HK_None のエントリは未使用 (ハンドラとして使われない、初期値 0 のまま)。
+'   Initialized by InitIIDTable at the end of Thunks_Init.
+'   The declared range is the full range of HandlerKind (HK_None = 0 to HK_ResponseGetContent = 13).
+'   The HK_None entry is unused (not used as a handler, stays at the initial value 0).
 Private m_iidTable(HK_None To HK_ResponseGetContent) As GUID
 
-' --- IID_IUnknown (Win32 標準、Thunks_Init で初期化) ---
-'   {00000000-0000-0000-C000-000000000046}。Handler_QueryInterface での
-'   比較に使う。値はハードコードされた COM 標準値。
+' --- IID_IUnknown (Win32 standard, initialized in Thunks_Init) ---
+'   {00000000-0000-0000-C000-000000000046}. Used for the comparison in
+'   Handler_QueryInterface. The value is the hard-coded COM standard value.
 Private m_iidIUnknown As GUID
 
-Private Const THUNK_BUF_SIZE As Long = 80     ' 74 を 8 の倍数に切り上げ
+Private Const THUNK_BUF_SIZE As Long = 80     ' 74 rounded up to a multiple of 8
 
 
 ' ============================================================
-' EntryPoint スタブのソース
-'   このスタブのバイト列を VirtualAlloc 領域へコピーする。
-'   Force-Compile のため起動時に 1 回呼び出しておく必要がある。
+' Source of the EntryPoint stub
+'   Copies this stub's byte sequence into the VirtualAlloc region.
+'   Must be called once at startup for Force-Compile.
 ' ============================================================
 Private Sub EntryPoint(): End Sub
 ' ============================================================
-' AcquireHandlerFor (第9.3a 段階で新規)
+' AcquireHandlerFor (newly added in stage 9.3a)
 '
-'   上位クラス (Wv2Environment など) が「自分専用のハンドラを 1 個欲しい」
-'   ときに呼ぶ統合エントリ。以下を一括で実行する:
-'     1. Thunks_Init() を呼ぶ (まだなら)
-'     2. ComCallbackHandler を New
-'     3. ComCallbackHandler.Handler_Invoke のアドレスを vTable から取得
-'     4. Thunks_AcquireSlot を呼んでスロット確保 + サンク書き込み + m_handlers 登録
-'     5. ComCallbackHandler.Init(kind, owner, pSlot) を呼ぶ
-'     6. 初期化済みの ComCallbackHandler を返す
+'   The integrated entry point that an upper class (Wv2Environment etc.) calls when it wants
+'   "one handler of its own". It performs the following in one go:
+'     1. Call Thunks_Init() (if not yet done)
+'     2. New ComCallbackHandler
+'     3. Get the address of ComCallbackHandler.Handler_Invoke from the vTable
+'     4. Call Thunks_AcquireSlot to secure a slot + write the thunk + register in m_handlers
+'     5. Call ComCallbackHandler.Init(kind, owner, pSlot)
+'     6. Return the initialized ComCallbackHandler
 '
-'   呼び出し側は戻り値を強参照で受け取り、自分のフィールドに格納する。
-'   その後、上位クラスは ComCallbackHandler.Slot + VTABLE_OBJ_OFFSET を WebView2 に
-'   渡す形でコールバック登録を行う。
+'   The caller receives the return value as a strong reference and stores it in its own field.
+'   After that, the upper class registers the callback by passing ComCallbackHandler.Slot + VTABLE_OBJ_OFFSET to
+'   WebView2.
 '
-'   失敗時 (プール枯渇等) は Nothing を返す。呼び出し側は Nothing チェック必須。
+'   On failure (pool exhausted etc.) it returns Nothing. The caller must check for Nothing.
 ' ============================================================
 Public Function AcquireHandlerFor( _
     ByVal kind As HandlerKind, _
     ByVal owner As Object) As ComCallbackHandler
 
-    ' --- 1. プール初期化 ---
+    ' --- 1. Pool initialization ---
     If m_pRegionBase = 0 Then
         If Not Thunks_Init() Then Exit Function
     End If
 
-    ' --- 2. ComCallbackHandler を New ---
+    ' --- 2. New ComCallbackHandler ---
     Dim h As ComCallbackHandler
     Set h = New ComCallbackHandler
 
-    ' --- 3. ComCallbackHandler.Handler_Invoke のアドレスを取得 ---
+    ' --- 3. Get the address of ComCallbackHandler.Handler_Invoke ---
     Dim pHandlerInvoke As LongPtr
     pHandlerInvoke = GetClassMethodAddrAtFixedSlot(h, 7)
     If pHandlerInvoke = 0 Then Exit Function
 
-    ' --- 4. スロット確保 + サンク書き込み + m_handlers 登録 ---
+    ' --- 4. Secure a slot + write the thunk + register in m_handlers ---
     Dim pSlot As LongPtr
     pSlot = Thunks_AcquireSlot(h, ObjPtr(h), pHandlerInvoke)
     If pSlot = 0 Then Exit Function
 
-    ' --- 5. ComCallbackHandler 自身を初期化 ---
+    ' --- 5. Initialize the ComCallbackHandler itself ---
     h.Init kind, owner, pSlot
 
-    ' --- 6. 初期化済み ComCallbackHandler を返す ---
+    ' --- 6. Return the initialized ComCallbackHandler ---
     Set AcquireHandlerFor = h
 End Function
 
 
 ' ============================================================
-' EnsureFolder (第9.3a 段階で新規)
+' EnsureFolder (newly added in stage 9.3a)
 '
-'   ユーザデータフォルダなどの存在確認 + 自動作成。
-'   Wv2Environment.Init から呼ばれる。
+'   Checks for the existence of a folder such as the user data folder + creates it automatically.
+'   Called from Wv2Environment.Init.
 '
-'   "C:\Temp\VBA_WebView2" のように複数階層の場合でも 1 階層だけ親を作る。
-'   より深い階層が必要なら呼び出し側で工夫する (現状は 1 階層で足りる前提)。
+'   Even for multi-level paths such as "C:\Temp\VBA_WebView2", it creates only one level of parent.
+'   If deeper levels are needed, the caller must handle it (currently one level is assumed to suffice).
 ' ============================================================
 Public Sub EnsureFolder(ByVal path As String)
     If LenB(path) = 0 Then Exit Sub
 
-    ' 親ディレクトリ
+    ' Parent directory
     Dim parentDir As String
     Dim slashPos As Long
     slashPos = InStrRev(path, "\")
@@ -751,20 +763,20 @@ Public Sub EnsureFolder(ByVal path As String)
         End If
     End If
 
-    ' 自身
+    ' Itself
     If Dir(path, vbDirectory) = "" Then MkDir path
 End Sub
 
 
 ' ============================================================
-' FinalizeWebView2Environment (第9.3a 段階で簡素化)
+' FinalizeWebView2Environment (simplified in stage 9.3a)
 '
-'   旧版で gHandler を Nothing にする処理が含まれていたが、
-'   gHandler が撤廃されたため、Thunks_Shutdown を呼ぶだけになった。
+'   The old version included processing to set gHandler to Nothing,
+'   but gHandler was abolished, so it now only calls Thunks_Shutdown.
 '
-'   呼び出すのは「全てのハンドラ・上位クラスを片付けた後の最終クリーンアップ」
-'   としてのみ。通常のテストフローでは Test 内で個別に Thunks_Shutdown を
-'   呼ぶ方針 (Test_TwoHandlers_Mock がそうしている)。
+'   It is to be called only as the "final cleanup after all handlers and upper classes
+'   have been cleaned up". In normal test flows the policy is to call Thunks_Shutdown
+'   individually inside each Test (as Test_TwoHandlers_Mock does).
 ' ============================================================
 Public Sub FinalizeWebView2Environment()
     Thunks_Shutdown
@@ -772,46 +784,46 @@ End Sub
 
 
 ' ============================================================
-' dcf (第9.3b 段階で新規)
+' dcf (newly added in stage 9.3b)
 '
-'   汎用 DispCallFunc ラッパー。可変長引数 (ParamArray) で
-'   引数 0?N 個の COM メソッドを叩ける。
+'   A general-purpose DispCallFunc wrapper. With variable-length arguments (ParamArray) it can
+'   call COM methods with 0 to N arguments.
 '
-'   旧版の dcf からの整理点:
-'     - 「CopyMemory による pVTable / pMethod の二重取得」を削除。
-'       これは取得した値が一切使われないデッドコードだった (DispCallFunc
-'       が内部で同じことをやってくれる)。
-'     - 「Case Else 内の CLngPtr(CLng(...))」を削除。直前の
-'       Case vbLong: 分岐で既に処理済みのため到達不能だった。
+'   Points tidied up from the old version of dcf:
+'     - Removed the "double acquisition of pVTable / pMethod via CopyMemory".
+'       It was dead code whose acquired values were never used (DispCallFunc
+'       does the same thing internally).
+'     - Removed the "CLngPtr(CLng(...)) inside Case Else". It was unreachable because the
+'       preceding Case vbLong: branch had already handled it.
 '
-'   引数:
-'     pInterface : COM インターフェースポインタ (this)
-'     vtblIndex  : vtable のスロット番号 (IUnknown は 0=QI, 1=AddRef, 2=Release、
-'                  以降のメソッドは派生インターフェースの宣言順に 3 から並ぶ)
-'     funcName   : デバッグ用 (空文字なら出力しない)
-'     args       : メソッドに渡す可変長引数 (LongPtr/Long/Double/その他)
+'   Arguments:
+'     pInterface : COM interface pointer (this)
+'     vtblIndex  : vtable slot number (for IUnknown 0=QI, 1=AddRef, 2=Release,
+'                  subsequent methods are numbered from 3 in the declaration order of the derived interface)
+'     funcName   : for debugging (nothing is printed if empty)
+'     args       : variable-length arguments passed to the method (LongPtr/Long/Double/other)
 '
-'   引数の型推論ルール (VarType ベース):
-'     vbLong       → 4 bytes 整数として渡す
-'     vbLongLong   → 8 bytes ポインタ/整数として渡す (Win64 LongPtr 互換)
-'     vbDouble     → 8 bytes 倍精度浮動小数として渡す
-'     その他全部   → vbLongLong 扱い (LongPtr フォールバック)
+'   Argument type inference rules (based on VarType):
+'     vbLong       -> passed as a 4-byte integer
+'     vbLongLong   -> passed as an 8-byte pointer/integer (Win64 LongPtr compatible)
+'     vbDouble     -> passed as an 8-byte double-precision float
+'     everything else -> treated as vbLongLong (LongPtr fallback)
 '
-'   戻り値: 呼び出した COM メソッドの戻り値 (Long にキャスト)
-'           ・DispCallFunc 自体が失敗したらその hr を返し、Debug.Print する
-'           ・成功時は COM メソッドの戻り値をそのまま返す
-'             (HRESULT のときも、AddRef/Release のような ULONG 戻り値の
-'              ときも、呼び出し側がそのまま受け取る)
-'           ・「戻り値 = HRESULT」を仮定した自動エラー判定はしない:
-'             AddRef/Release は新しい参照カウントを返すため、
-'             値 ≠ 0 を一律でエラー扱いにすると誤検知が出る (実機で確認済み)。
-'             失敗判定は呼び出し側で「これは HRESULT を返すメソッドだ」と
-'             分かっている場合に行う。
+'   Return value: the return value of the called COM method (cast to Long)
+'           - If DispCallFunc itself fails, its hr is returned and Debug.Print is done
+'           - On success the COM method's return value is returned as is
+'             (both for an HRESULT and for a ULONG return value like AddRef/Release,
+'              the caller receives it as is)
+'           - No automatic error check assuming "return value = HRESULT" is done:
+'             AddRef/Release return the new reference count, so
+'             treating value != 0 uniformly as an error causes false detections (confirmed on a real machine).
+'             The failure check is done on the caller side when it
+'             knows "this is a method that returns an HRESULT".
 '
-'   注意: out 引数 (例: pp* 系の二重ポインタ) を含むメソッドを呼ぶ場合は、
-'         呼び出し側で Variant に格納した LongPtr 変数の VarPtr を渡す前提。
-'         Variant に格納した値が変更されて返るので、呼び出し後に CLngPtr 等で
-'         取り出す。第9.3c 以降の Controller::get_CoreWebView2 などで使う。
+'   Note: when calling a method that has an out argument (e.g. a pp* double pointer), the premise is that
+'         the caller passes the VarPtr of a LongPtr variable stored in a Variant.
+'         The value stored in the Variant is returned modified, so after the call
+'         take it out with CLngPtr etc. Used by Controller::get_CoreWebView2 etc. from 9.3c onward.
 ' ============================================================
 Public Function dcf( _
     ByVal pInterface As LongPtr, _
@@ -833,12 +845,12 @@ Public Function dcf( _
     Dim hr As Long
 
     If argc = 0 Then
-        ' 引数なし: vt/vp に NULL を渡す
+        ' No arguments: pass NULL to vt/vp
         hr = DispCallFunc(pInterface, vtblIndex * PtrSize, _
                           CC_STDCALL, vbLong, _
                           0, ByVal 0&, ByVal 0&, res)
     Else
-        ' 引数あり: vt / vp 配列を構築
+        ' With arguments: build the vt / vp arrays
         Dim vt() As Integer
         Dim vp() As LongPtr
         Dim vals() As Variant
@@ -853,7 +865,7 @@ Public Function dcf( _
                 Case vbLong:     vt(i) = vbLong
                 Case vbLongLong: vt(i) = vbLongLong   ' = vbLongPtr on Win64
                 Case vbDouble:   vt(i) = vbDouble
-                Case Else:       vt(i) = vbLongLong   ' フォールバック (LongPtr 扱い)
+                Case Else:       vt(i) = vbLongLong   ' fallback (treated as LongPtr)
             End Select
             vp(i) = VarPtr(vals(i))
         Next i
@@ -868,10 +880,10 @@ Public Function dcf( _
             Debug.Print "dcf CALL failed: " & funcName & " hr=&H" & Hex(hr)
         dcf = hr
     Else
-        ' 成功時は COM メソッドの戻り値をそのまま返す。
-        ' HRESULT を返すメソッドの場合、呼び出し側が <> 0 をチェックしてエラー処理する。
-        ' AddRef/Release のような ULONG 戻り値の場合、新しい参照カウントが返る
-        ' (ここで一律に「<> 0 ならエラー」とは判定しない)。
+        ' On success the COM method's return value is returned as is.
+        ' For a method that returns an HRESULT, the caller checks <> 0 and handles the error.
+        ' For a ULONG return value like AddRef/Release, the new reference count is returned
+        ' (it is not uniformly judged here as "error if <> 0").
         dcf = CLng(res)
     End If
 End Function
@@ -880,10 +892,10 @@ End Function
 ' ============================================================
 ' ComRelease / ComAddRef
 '
-'   IUnknown::Release / AddRef を呼ぶ薄いラッパ。
-'   第9.3b で dcf に統一されたが、可読性のため Public Function は残す
-'   (Wv2Environment.Class_Terminate などからの呼び出しで「Release を撃っている」
-'   という意図を明示できるため)。
+'   A thin wrapper that calls IUnknown::Release / AddRef.
+'   It was unified into dcf in 9.3b, but the Public Function is kept for readability
+'   (so that calls from Wv2Environment.Class_Terminate etc. can make clear the intent
+'   that "Release is being fired").
 ' ============================================================
 Public Function ComRelease(ByVal pInterface As LongPtr) As Long
     If pInterface <> 0 Then ComRelease = dcf(pInterface, 2, "Release")
@@ -895,22 +907,22 @@ End Function
 
 
 ' ============================================================
-' PtrToString (第9.4a 段階で追加、旧 mWebView2Helper 由来)
+' PtrToString (added in stage 9.4a, derived from the old mWebView2Helper)
 '
-'   LPWSTR (UTF-16 ヌル終端文字列のポインタ) を VBA の String に変換する。
-'   COM の out 引数で受け取った LPWSTR を扱うために使う。
+'   Converts an LPWSTR (pointer to a UTF-16 null-terminated string) to a VBA String.
+'   Used to handle an LPWSTR received as a COM out argument.
 '
-'   実装メモ:
-'     RtlMoveMemory を使った旧版実装をそのまま流用 (案 β)。
-'     文字列変換だけは我々の「CopyMemory 不使用」方針から外れるが、
-'     PointerAccessor で 1 文字ずつ ChrW で組み立てる方式より高速で、
-'     URL 程度の長さでも十分早い。第9.4a 段階での妥協点。
+'   Implementation notes:
+'     The old version's implementation using RtlMoveMemory is reused as is (plan beta).
+'     String conversion alone departs from our "no CopyMemory" policy, but
+'     it is faster than building one character at a time with ChrW via PointerAccessor, and
+'     fast enough even for URL-sized strings. A compromise point in stage 9.4a.
 '
-'   注意:
-'     入力ポインタ p は CoTaskMemAlloc で確保されている前提。
-'     呼び出し側は PtrToString で String を取得した後、必ず
-'     CoTaskMemFree(p) で解放する責任を持つ。
-'     GetStringProperty を使えば取得 → 変換 → 解放まで一括で行える。
+'   Note:
+'     The premise is that the input pointer p was allocated with CoTaskMemAlloc.
+'     After obtaining the String with PtrToString, the caller is always
+'     responsible for freeing it with CoTaskMemFree(p).
+'     GetStringProperty does get -> convert -> free all at once.
 ' ============================================================
 Public Function PtrToString(ByVal p As LongPtr) As String
     If p = 0 Then Exit Function
@@ -923,24 +935,24 @@ End Function
 
 
 ' ============================================================
-' Utf8BytesToString (N-2 段階で追加)
+' Utf8BytesToString (added in stage N-2)
 '
-'   UTF-8 のバイト列を VBA の String に変換する。
-'   リクエストボディ (IStream から読んだ生バイト) を読める形にするために使う。
+'   Converts a UTF-8 byte sequence into a VBA String.
+'   Used to make the request body (raw bytes read from an IStream) readable.
 '
-'   引数:
-'     b  : バイト配列 (0 起点)
-'     cb : 変換するバイト数 (配列の実長より短くてよい = 上限で切った分だけ渡せる)
+'   Arguments:
+'     b  : byte array (0-based)
+'     cb : number of bytes to convert (may be shorter than the array's real length = pass only the part cut at the limit)
 '
-'   戻り値: 変換した文字列。cb <= 0 なら空文字。
+'   Return value: the converted string. Empty string if cb <= 0.
 '
-'   ★不正なバイト列でも落とさない★
-'     MB_ERR_INVALID_CHARS は付けない (dwFlags = 0)。上限で切ったせいで
-'     ★マルチバイト文字の途中で切れている★ことは普通に起きるので、
-'     そこで失敗させると「切れた本文が丸ごと読めない」になる。
-'     不正な並びは U+FFFD に置き換わって残りは読める。
+'   **Does not fall over on invalid byte sequences**
+'     MB_ERR_INVALID_CHARS is not set (dwFlags = 0). Because of cutting at the limit,
+'     **being cut in the middle of a multibyte character** happens routinely, and
+'     failing there would make "the whole truncated body unreadable".
+'     An invalid sequence is replaced with U+FFFD and the rest remains readable.
 '
-'   ★32bit 化ポイント★ 特になし (LongPtr のみ)。
+'   **32-bit conversion point** None in particular (LongPtr only).
 ' ============================================================
 Public Function Utf8BytesToString(ByRef b() As Byte, ByVal cb As Long) As String
     If cb <= 0 Then Exit Function
@@ -959,25 +971,25 @@ End Function
 
 
 ' ============================================================
-' GetStringProperty (第9.4a 段階で追加、旧 mWebView2Helper 由来)
+' GetStringProperty (added in stage 9.4a, derived from the old mWebView2Helper)
 '
-'   COM インターフェースの get_*String 系プロパティを呼び出して String を返す。
-'   汎用ヘルパー: vtable レイアウトが HRESULT get_Xxx([out, retval] LPWSTR *value)
-'   であるすべてのメソッドで使える。
+'   Calls a get_*String-type property of a COM interface and returns a String.
+'   General-purpose helper: the vtable layout is HRESULT get_Xxx([out, retval] LPWSTR *value)
+'   Usable for every method that has it.
 '
-'   流れ:
-'     1. dcf で out 引数 LPWSTR* を取得 (pStr に値が書かれる)
-'     2. PtrToString で VBA String に変換
-'     3. CoTaskMemFree で LPWSTR を解放 (COM 規約上、呼び出し側の責任)
+'   Flow:
+'     1. Get the out argument LPWSTR* with dcf (the value is written to pStr)
+'     2. Convert to a VBA String with PtrToString
+'     3. Free the LPWSTR with CoTaskMemFree (by COM convention, the caller's responsibility)
 '
-'   引数:
-'     pInterface : COM ポインタ (例: ICoreWebView2NavigationStartingEventArgs*)
-'     vtblIndex  : 取得対象メソッドの vtable index (例: get_Uri は 3)
-'     funcName   : デバッグ用 (空文字なら出力しない、HRESULT 失敗時のみ意味あり)
+'   Arguments:
+'     pInterface : COM pointer (e.g. ICoreWebView2NavigationStartingEventArgs*)
+'     vtblIndex  : vtable index of the target method (e.g. get_Uri is 3)
+'     funcName   : for debugging (nothing is printed if empty; meaningful only on HRESULT failure)
 '
-'   戻り値: 取得した文字列 (空文字なら取得失敗 or 空文字列)
+'   Return value: the obtained string (empty string means acquisition failed or an empty string)
 '
-'   第9.4a での使用例:
+'   Usage example in 9.4a:
 '     Dim url As String
 '     url = GetStringProperty(pArgs, 3, "NavStartingArgs.get_Uri")
 ' ============================================================
@@ -999,15 +1011,15 @@ End Function
 
 
 ' ============================================================
-' GetBoolProperty (第9.4b 段階で追加、旧 mWebView2Helper 由来)
+' GetBoolProperty (added in stage 9.4b, derived from the old mWebView2Helper)
 '
-'   COM インターフェースの get_*Bool 系プロパティを呼び出して Boolean を返す。
-'   vtable レイアウト: HRESULT get_Xxx([out, retval] BOOL *value)
+'   Calls a get_*Bool-type property of a COM interface and returns a Boolean.
+'   vtable layout: HRESULT get_Xxx([out, retval] BOOL *value)
 '
-'   BOOL は Win32 の型で 4 bytes 整数 (0 = FALSE、それ以外 = TRUE)。
-'   VBA の Boolean に変換するには 0 比較が必要。
+'   BOOL is a Win32 type, a 4-byte integer (0 = FALSE, anything else = TRUE).
+'   To convert to a VBA Boolean a comparison with 0 is needed.
 '
-'   第9.4b での使用例:
+'   Usage example in 9.4b:
 '     Dim isOk As Boolean
 '     isOk = GetBoolProperty(pArgs, 3, "NavCompletedArgs.get_IsSuccess")
 ' ============================================================
@@ -1026,12 +1038,12 @@ End Function
 
 
 ' ============================================================
-' GetLongProperty (第9.4b 段階で追加、旧 mWebView2Helper 由来)
+' GetLongProperty (added in stage 9.4b, derived from the old mWebView2Helper)
 '
-'   COM インターフェースの get_*Long 系プロパティを呼び出して Long を返す。
-'   vtable レイアウト: HRESULT get_Xxx([out, retval] long *value)
+'   Calls a get_*Long-type property of a COM interface and returns a Long.
+'   vtable layout: HRESULT get_Xxx([out, retval] long *value)
 '
-'   列挙型 (例: COREWEBVIEW2_WEB_ERROR_STATUS) を取得するときにも使える。
+'   Can also be used to obtain an enumeration (e.g. COREWEBVIEW2_WEB_ERROR_STATUS).
 ' ============================================================
 Public Function GetLongProperty( _
     ByVal pInterface As LongPtr, _
@@ -1048,24 +1060,24 @@ End Function
 
 
 ' ============================================================
-' GetLongLongProperty (第9.9b 段階で追加)
+' GetLongLongProperty (added in stage 9.9b)
 '
-'   COM インターフェースの get_*UINT64 / get_*INT64 系プロパティを呼び出して
-'   LongLong (符号付き 64 bit) を返す。
-'   vtable レイアウト: HRESULT get_Xxx([out, retval] UINT64 *value)
+'   Calls a get_*UINT64 / get_*INT64-type property of a COM interface and
+'   returns a LongLong (signed 64-bit).
+'   vtable layout: HRESULT get_Xxx([out, retval] UINT64 *value)
 '
-'   用途:
-'     ICoreWebView2DOMContentLoadedEventArgs.get_NavigationId (UINT64) の取得。
-'     NavigationId は単調増加する識別子で、実用上 LongLong の正の範囲に収まる。
+'   Purpose:
+'     Obtaining ICoreWebView2DOMContentLoadedEventArgs.get_NavigationId (UINT64).
+'     NavigationId is a monotonically increasing identifier and in practice fits in the positive range of LongLong.
 '
-'   ★ 32bit 化ポイント (方針 X、案 a) ★
-'     32bit VBA には LongLong 型が存在しないため、本関数は #If Win64 で
-'     囲んで 64bit 専用としている。32bit 対応段階では、UINT64 を受ける
-'     別実装が必要になる。定石は以下のいずれか:
-'       (a) Currency 型 (8 byte 固定小数) で受けて 10000 倍を補正
-'       (b) Long 2 個 (lo/hi) で受けて手動合成
-'       (c) NavigationId は識別用途なので下位 32bit だけ Long で受けて妥協
-'     どれを採るかは 32bit 対応段階でまとめて設計する (今は先回りしない)。
+'   ** 32-bit conversion point (policy X, plan a) **
+'     32-bit VBA has no LongLong type, so this function is wrapped in #If Win64 and
+'     is 64-bit only. In the 32-bit support stage, a separate implementation that receives
+'     the UINT64 will be needed. The standard approaches are one of the following:
+'       (a) receive it as Currency (8-byte fixed point) and correct by a factor of 10000
+'       (b) receive it as 2 Longs (lo/hi) and compose manually
+'       (c) NavigationId is for identification only, so compromise by receiving just the low 32 bits as a Long
+'     Which to adopt will be designed together in the 32-bit support stage (no getting ahead now).
 ' ============================================================
 #If Win64 Then
 Public Function GetLongLongProperty( _
@@ -1084,38 +1096,38 @@ End Function
 
 
 ' ============================================================
-' Test_TwoHandlers_Mock (第9.2段階のものをそのまま据え置き)
+' Test_TwoHandlers_Mock (the one from stage 9.2, kept as is)
 '
-'   第9.2段階の中核機能テスト: 2 個のハンドラを Acquire し、
-'   それぞれの vtableObj アドレスから別々に AddRef/Release を撃って、
-'   idx の逆引きが正しく動くことを確認する。WebView2 は呼ばない
-'   (純粋に逆引きロジックの単体試験)。
+'   Core function test of stage 9.2: Acquire 2 handlers,
+'   fire AddRef/Release separately from each vtableObj address, and confirm that
+'   the reverse lookup of idx works correctly. WebView2 is not called
+'   (a pure unit test of the reverse lookup logic).
 '
-'   第9.3a 段階での確認ポイント:
-'     - gHandler 撤廃後も従来通り pass すること (リグレッション)
-'     - owner = Nothing で ComCallbackHandler を Acquire してもエラー無く動くこと
-'     - HandlerReleaseInternal の自動解放経路で「gHandler Is h」分岐を
-'       削除した影響が無いこと
+'   Points to confirm in stage 9.3a:
+'     - It still passes as before after gHandler was abolished (regression)
+'     - It works without error even when ComCallbackHandler is Acquired with owner = Nothing
+'     - The removal of the "gHandler Is h" branch in the automatic release path of
+'       HandlerReleaseInternal has no effect
 '
-'   このテストは Wv2Environment を一切使わない。AcquireHandlerFor も使わず、
-'   従来通り Thunks_AcquireSlot を直接叩く方式を維持する
-'   (基盤の単体試験としての性質を保つため)。
+'   This test does not use Wv2Environment at all. It also does not use AcquireHandlerFor, and
+'   keeps the method of calling Thunks_AcquireSlot directly as before
+'   (to preserve its nature as a unit test of the foundation).
 ' ============================================================
 Public Sub Test_TwoHandlers_Mock()
 
     Debug.Print String(60, "=")
-    Debug.Print "Test_TwoHandlers_Mock 開始"
+    Debug.Print "Test_TwoHandlers_Mock start"
     Debug.Print String(60, "=")
 
-    ' --- 1. プール初期化 ---
+    ' --- 1. Pool initialization ---
     If Not Thunks_Init() Then
-        Debug.Print "Thunks_Init 失敗"
+        Debug.Print "Thunks_Init failed"
         Exit Sub
     End If
 
-    Debug.Print "Thunks_Init OK、m_inUse = " & m_inUse
+    Debug.Print "Thunks_Init OK, m_inUse = " & m_inUse
 
-    ' --- 2. 2 個のハンドラを作成 + Acquire ---
+    ' --- 2. Create 2 handlers + Acquire ---
     Dim h1 As ComCallbackHandler, h2 As ComCallbackHandler
     Set h1 = New ComCallbackHandler
     Set h2 = New ComCallbackHandler
@@ -1129,7 +1141,7 @@ Public Sub Test_TwoHandlers_Mock()
     pSlot2 = Thunks_AcquireSlot(h2, ObjPtr(h2), pInvoke2)
 
     If pSlot1 = 0 Or pSlot2 = 0 Then
-        Debug.Print "Acquire 失敗"
+        Debug.Print "Acquire failed"
         Exit Sub
     End If
 
@@ -1141,19 +1153,19 @@ Public Sub Test_TwoHandlers_Mock()
     idx2 = SlotIndexFromAddr(pSlot2)
     Debug.Print "h1 -> idx " & idx1 & ", pSlot " & pSlot1
     Debug.Print "h2 -> idx " & idx2 & ", pSlot " & pSlot2
-    Debug.Print "m_inUse = " & m_inUse & " (期待値 2)"
+    Debug.Print "m_inUse = " & m_inUse & " (expected 2)"
 
     If idx1 = idx2 Then
-        Debug.Print "[NG] 異なるハンドラが同じ idx を取得した"
+        Debug.Print "[NG] different handlers obtained the same idx"
         Exit Sub
     End If
 
-    ' --- 3. 各ハンドラの vtableObj アドレスを直接計算 ---
+    ' --- 3. Directly compute the vtableObj address of each handler ---
     Dim pObj1 As LongPtr, pObj2 As LongPtr
     pObj1 = pSlot1 + VTABLE_OBJ_OFFSET
     pObj2 = pSlot2 + VTABLE_OBJ_OFFSET
 
-    ' --- 4. 各々に AddRef を撃って、独立にカウントが上がることを確認 ---
+    ' --- 4. Fire AddRef on each and confirm the counts rise independently ---
     Debug.Print "--- AddRef sequence ---"
     Dim r As Long
     r = Handler_AddRef(pObj1)
@@ -1162,205 +1174,229 @@ Public Sub Test_TwoHandlers_Mock()
     Debug.Print "  Handler_AddRef(pObj1) -> " & r
     r = Handler_AddRef(pObj2)
     Debug.Print "  Handler_AddRef(pObj2) -> " & r
-    Debug.Print "h1.RefCount = " & h1.RefCount & " (期待値 2)"
-    Debug.Print "h2.RefCount = " & h2.RefCount & " (期待値 1)"
+    Debug.Print "h1.RefCount = " & h1.RefCount & " (expected 2)"
+    Debug.Print "h2.RefCount = " & h2.RefCount & " (expected 1)"
 
     If h1.RefCount <> 2 Or h2.RefCount <> 1 Then
-        Debug.Print "[NG] AddRef の振り分けが期待値と異なる"
+        Debug.Print "[NG] AddRef was dispatched differently from expected"
     Else
-        Debug.Print "[OK] AddRef の振り分けが期待通り"
+        Debug.Print "[OK] AddRef was dispatched as expected"
     End If
 
-    ' --- 5. Release を撃って、各々独立に refcount=0 へ到達するか確認 ---
+    ' --- 5. Fire Release and confirm each independently reaches refcount=0 ---
     Debug.Print "--- Release sequence ---"
     r = Handler_Release(pObj1)
     Debug.Print "  Handler_Release(pObj1) -> " & r
-    Debug.Print "h1.RefCount = " & h1.RefCount & " (期待値 1)"
-    Debug.Print "m_inUse = " & m_inUse & " (期待値 2、まだ両方使用中)"
+    Debug.Print "h1.RefCount = " & h1.RefCount & " (expected 1)"
+    Debug.Print "m_inUse = " & m_inUse & " (expected 2, both still in use)"
 
     r = Handler_Release(pObj1)
     Debug.Print "  Handler_Release(pObj1) -> " & r
-    Debug.Print "(h1 解放後) m_inUse = " & m_inUse & " (期待値 1)"
+    Debug.Print "(after h1 release) m_inUse = " & m_inUse & " (expected 1)"
 
-    Debug.Print "h1.RefCount (解放後) = " & h1.RefCount & " (期待値 0)"
-    Debug.Print "h2.RefCount (h1解放と独立) = " & h2.RefCount & " (期待値 1)"
+    Debug.Print "h1.RefCount (after release) = " & h1.RefCount & " (expected 0)"
+    Debug.Print "h2.RefCount (independent of h1 release) = " & h2.RefCount & " (expected 1)"
 
     r = Handler_Release(pObj2)
     Debug.Print "  Handler_Release(pObj2) -> " & r
-    Debug.Print "(h2 解放後) m_inUse = " & m_inUse & " (期待値 0)"
-    Debug.Print "h2.RefCount (解放後) = " & h2.RefCount & " (期待値 0)"
+    Debug.Print "(after h2 release) m_inUse = " & m_inUse & " (expected 0)"
+    Debug.Print "h2.RefCount (after release) = " & h2.RefCount & " (expected 0)"
 
-    ' --- 6. 解放済みスロットへの操作が安全に no-op で通ることを確認 ---
+    ' --- 6. Confirm that operations on released slots pass safely as no-ops ---
     Debug.Print "--- Post-release safety check ---"
     r = HandlerAddRefInternal(pObj1)
-    Debug.Print "解放済み pObj1 への AddRef 戻り値 = " & r & " (期待値 0)"
+    Debug.Print "Return value of AddRef on released pObj1 = " & r & " (expected 0)"
     r = HandlerReleaseInternal(pObj2)
-    Debug.Print "解放済み pObj2 への Release 戻り値 = " & r & " (期待値 0)"
+    Debug.Print "Return value of Release on released pObj2 = " & r & " (expected 0)"
 
-    ' --- 7. 後片付け ---
+    ' --- 7. Cleanup ---
     Set h1 = Nothing
     Set h2 = Nothing
 
-    Debug.Print "--- 最終状態 ---"
-    Debug.Print "m_inUse = " & m_inUse & " (期待値 0)"
+    Debug.Print "--- Final state ---"
+    Debug.Print "m_inUse = " & m_inUse & " (expected 0)"
     Debug.Print "m_freeHead = " & m_freeHead
 
     Thunks_Shutdown
 
-    Debug.Print "Test_TwoHandlers_Mock 完了"
+    Debug.Print "Test_TwoHandlers_Mock done"
     Debug.Print String(60, "=")
 End Sub
 
 
 ' ============================================================
-' Test_Environment_Real (第9.3a 段階で新規)
+' Test_Environment_Real (newly added in stage 9.3a)
 '
-'   Wv2Environment クラス を使った統合テスト。
-'   実 WebView2Loader.dll を経由して Environment 作成 → 完了通知受信 →
-'   AddRef → Class_Terminate での Release までの一連の流れを検証する。
+'   Integration test using the Wv2Environment class.
+'   Verifies the whole flow through the real WebView2Loader.dll: Environment creation -> receiving the completion notification ->
+'   AddRef -> Release in Class_Terminate.
 '
-'   検証項目:
-'     1. Wv2Environment.Init で ComCallbackHandler が 1 個 Acquire され、API が呼ばれること
-'     2. WebView2 から Invoke が来て ComCallbackHandler.Handler_Invoke 経由で
-'        Wv2Environment.OnEnvironmentCompleted が呼ばれること (動的バインディング)
-'     3. errorCode = 0、pEnvironment != 0 を受け取り IsReady になること
-'     4. m_handler が Nothing に切られること (基盤の自動解放経路が走る)
-'     5. m_pEnvironment への AddRef が成功すること (= 1 を返す等の妥当性)
-'     6. End Sub で Class_Terminate が走り、ComRelease で参照解放されること
+'   Verification items:
+'     1. ComCallbackHandler is Acquired once in Wv2Environment.Init and the API is called
+'     2. Invoke arrives from WebView2 and Wv2Environment.OnEnvironmentCompleted is called
+'        via ComCallbackHandler.Handler_Invoke (dynamic binding)
+'     3. errorCode = 0 and pEnvironment != 0 are received and it becomes IsReady
+'     4. m_handler is cut to Nothing (the foundation's automatic release path runs)
+'     5. AddRef on m_pEnvironment succeeds (= validity such as returning 1)
+'     6. Class_Terminate runs at End Sub and the reference is released by ComRelease
 '
-'   タイムアウトは 5 秒。WebView2 起動に時間がかかる場合 (初回起動など)
-'   は伸ばす必要があるかも。
+'   The timeout is 5 seconds. If WebView2 startup takes time (first launch etc.)
+'   it may need to be extended.
 ' ============================================================
 Public Sub Test_Environment_Real()
 
     Debug.Print String(60, "=")
-    Debug.Print "Test_Environment_Real 開始"
+    Debug.Print "Test_Environment_Real start"
     Debug.Print String(60, "=")
 
     Dim env As Wv2Environment
     Set env = New Wv2Environment
 
-    Debug.Print "env.Init を呼びます ..."
-    env.Init "C:\Temp\VBA_WebView2"
+    Debug.Print "Calling env.Init ..."
+    env.Init Wv2Log.AppFolder("Profile")
 
     If env.IsFailed Then
-        Debug.Print "[NG] env.Init が即座に失敗 (LastError = &H" & Hex(env.LastError) & ")"
+        Debug.Print "[NG] env.Init failed immediately (LastError = &H" & Hex(env.LastError) & ")"
         GoTo Cleanup
     End If
 
-    Debug.Print "Init 直後の State = " & env.state & _
-                " (1=Es_Waiting / 2=Es_Ready 同期コールバック / 3=Es_Failed)"
-    Debug.Print "完了通知を待ちます (上限 5 秒、同期コールバック済みなら即抜け) ..."
+    Debug.Print "State right after Init = " & env.state & _
+                " (1=Es_Waiting / 2=Es_Ready synchronous callback / 3=Es_Failed)"
+    Debug.Print "Waiting for the completion notification (up to 5 s, exits immediately if the synchronous callback has already happened) ..."
 
-    ' 待機ループは IsReady / IsFailed のみで判定する。
-    ' (Wv2Environment の Public Enum を標準モジュール側から参照することは
-    '  処理系依存なので、Bool プロパティ経由の方が安全)
+    ' The wait loop judges only by IsReady / IsFailed.
+    ' (Referencing Wv2Environment's Public Enum from a standard module is
+    '  implementation-dependent, so going through Boolean properties is safer)
     Dim t As Single: t = Timer
-    Do While (Not env.IsReady) And (Not env.IsFailed) And ((Timer - t) < 5#)
+    Do While (Not env.IsReady) And (Not env.IsFailed) And (Wv2Log.SecondsSince(t) < 5#)
         DoEvents
     Loop
 
     If env.IsReady Then
         Debug.Print "[OK] env.IsReady = True"
         Debug.Print "  m_pEnvironment   = " & env.EnvironmentPtr
-        Debug.Print "  経過時間          = " & Format$(Timer - t, "0.000") & " 秒"
+        Debug.Print "  elapsed time      = " & Format$(Timer - t, "0.000") & " s"
     ElseIf env.IsFailed Then
         Debug.Print "[NG] env.IsFailed = True (LastError = &H" & Hex(env.LastError) & ")"
     Else
-        Debug.Print "[NG] タイムアウト (state = " & env.state & ")"
+        Debug.Print "[NG] timeout (state = " & env.state & ")"
     End If
 
 Cleanup:
-    Debug.Print "--- env を解放 (Class_Terminate で ComRelease が走る予定) ---"
+    Debug.Print "--- Releasing env (ComRelease is expected to run in Class_Terminate) ---"
     Set env = Nothing
-    Debug.Print "Set env = Nothing 完了"
+    Debug.Print "Set env = Nothing done"
 
-    ' 最終的に Thunks_Shutdown でプール領域も解放
-    Debug.Print "Thunks_Shutdown 実行"
+    ' Finally release the pool region too with Thunks_Shutdown
+    Debug.Print "Running Thunks_Shutdown"
     Thunks_Shutdown
 
-    Debug.Print "Test_Environment_Real 完了"
+    Debug.Print "Test_Environment_Real done"
     Debug.Print String(60, "=")
 End Sub
 
 
 ' ============================================================
-' Test_ResetSurvival_Manual (第9.4a 段階で新規)
+' Test_ResetSurvival_Manual (newly added in stage 9.4a)
 '
-'   リセットボタン耐性 (案 R4) の実機検証ガイド。
-'   このプロシージャ自体は手順をログ出力するだけで、実際の検証は
-'   ユーザが VBE で手作業で行う。
+'   A real-machine verification guide for reset button resistance (plan R4).
+'   This procedure itself only logs the steps; the actual verification is
+'   done by hand by the user in the VBE.
 '
-'   検証手順 (ユーザが実機で行う):
-'     1. このプロシージャ Test_ResetSurvival_Manual を実行 (案内表示)
-'     2. UserForm1.Show vbModeless → UserForm1.StartWebView2_Full を実行して
-'        Bing 表示 + 標準ハンドラ登録 (NavigationStarting 含む) を起動
-'     3. Bing が表示されたら、ページ内のリンクを 1?2 回クリックして
-'        NavigationStarting イベントが正しく発火することを Debug.Print で確認
-'     4. **その状態で VBE の停止ボタン (リセット) を押す**
-'        → m_pRegionBase などのモジュール変数が初期値 0 にリセットされる
-'        → ただし VirtualAlloc 領域は OS が回収しないので残る
-'        → 生存フラグも残ったまま (Thunks_Shutdown が呼ばれていない)
-'     5. Excel が落ちないことを確認
-'     6. しばらく待って (もしくは別のリンクをクリックしようとして) 、
-'        WebView2 が ComCallbackHandler サンクを叩いても Excel がクラッシュしないことを確認
-'        (※生存フラグの仕組みでは、リセット後でも領域は残っているので
-'         サンクは即 return せず本来の処理を試みる可能性あり。これが
-'         クラッシュにつながるかどうかが本検証の目的)
-'     7. 同じセッションで Test_Navigate_Real を再実行できることを確認
-'        (Thunks_Init が「m_pRegionBase = 0 なら新規確保」なので、
-'         過去のリーク領域とは別に新規確保される)
+'   Verification procedure (done by the user on a real machine):
+'     1. Run this procedure Test_ResetSurvival_Manual (shows the guidance)
+'     2. Run UserForm1.Show vbModeless -> UserForm1.StartWebView2_Full to start
+'        showing Bing + registering the standard handlers (including NavigationStarting)
+'     3. Once Bing is shown, click a link in the page once or twice and confirm with Debug.Print
+'        that the NavigationStarting event fires correctly
+'     4. **In that state press the VBE stop button (reset)**
+'        -> module variables such as m_pRegionBase are reset to the initial value 0
+'        -> however the VirtualAlloc region is not reclaimed by the OS, so it remains
+'        -> the alive flag also remains (Thunks_Shutdown was not called)
+'     5. Confirm that Excel does not go down
+'     6. Wait a while (or try clicking another link) and
+'        confirm Excel does not crash even when WebView2 hits the ComCallbackHandler thunk
+'        (Note: with the alive flag mechanism the region remains even after reset, so
+'         the thunk may try the real processing instead of returning immediately. Whether this
+'         leads to a crash is the purpose of this verification)
+'     7. Confirm that Test_Navigate_Real can be re-run in the same session
+'        (Thunks_Init does "allocate new if m_pRegionBase = 0", so
+'         a new region is allocated separately from the past leaked region)
 '
-'   期待される結果:
-'     ? リセット後も Excel がクラッシュしない
-'     ? 同セッション内で再実行が可能
-'     ? 第9.5 段階以降は、再実行時にセンチネル機構が旧領域を
-'       自動的に VirtualFree する (リーク完全解消)
+'   Expected results:
+'     - Excel does not crash after reset
+'     - Re-running within the same session is possible
+'     - From stage 9.5 onward, the sentinel mechanism automatically
+'       VirtualFrees the old region on re-run (leak completely eliminated)
 '
-'   センチネル機構の動作観察には Test_SentinelStatus を併用すること。
+'   Use Test_SentinelStatus together to observe the sentinel mechanism's behavior.
 ' ============================================================
 Public Sub Test_ResetSurvival_Manual()
     Debug.Print String(60, "=")
-    Debug.Print "Test_ResetSurvival_Manual (リセット試験ガイド)"
+    Debug.Print "Test_ResetSurvival_Manual (reset test guide)"
     Debug.Print String(60, "=")
-    Debug.Print "リセットボタン耐性の検証手順:"
+    Debug.Print "Verification procedure for reset button resistance:"
     Debug.Print ""
-    Debug.Print "1. 別途 Test_Navigate_Real を実行して Bing を表示"
-    Debug.Print "2. Bing のリンクを 1?2 回クリックして NavigationStarting イベントが"
-    Debug.Print "   Debug.Print されることを確認"
-    Debug.Print "3. その状態で VBE の停止ボタン (リセット) を押す"
-    Debug.Print "4. Excel が落ちないことを確認"
-    Debug.Print "5. しばらく待って、リンクをクリックしようとしても"
-    Debug.Print "   Excel がクラッシュしないことを確認"
-    Debug.Print "6. 同セッションで Test_Navigate_Real を再実行できることを確認"
+    Debug.Print "1. Separately run Test_Navigate_Real to show Bing"
+    Debug.Print "2. Click a Bing link once or twice and confirm that the NavigationStarting event is"
+    Debug.Print "   Debug.Printed"
+    Debug.Print "3. In that state press the VBE stop button (reset)"
+    Debug.Print "4. Confirm that Excel does not go down"
+    Debug.Print "5. Wait a while and confirm that even trying to click a link"
+    Debug.Print "   does not crash Excel"
+    Debug.Print "6. Confirm that Test_Navigate_Real can be re-run in the same session"
     Debug.Print ""
-    Debug.Print "期待結果:"
-    Debug.Print "  ? リセット後も Excel がクラッシュしない (生存フラグの効果)"
-    Debug.Print "  ? 同セッション内で再実行が可能"
-    Debug.Print "  ? 第9.5 段階以降は、再実行時にセンチネル機構が"
-    Debug.Print "    旧領域を自動的に VirtualFree する (リーク完全解消)"
+    Debug.Print "Expected results:"
+    Debug.Print "  - Excel does not crash after reset (effect of the alive flag)"
+    Debug.Print "  - Re-running within the same session is possible"
+    Debug.Print "  - From stage 9.5 onward, the sentinel mechanism"
+    Debug.Print "    automatically VirtualFrees the old region on re-run (leak completely eliminated)"
     Debug.Print ""
-    Debug.Print "センチネル機構の動作確認には Test_SentinelStatus を併用:"
-    Debug.Print "  - リセット直後に呼ぶと環境変数に旧領域アドレスが残っているはず"
-    Debug.Print "  - 再 Init 後に呼ぶと新領域アドレスに置き換わっているはず"
+    Debug.Print "To check the sentinel mechanism's behavior, also use Test_SentinelStatus:"
+    Debug.Print "  - Called right after a reset, the old region address should remain in the environment variable"
+    Debug.Print "  - Called after re-Init, it should have been replaced by the new region address"
     Debug.Print String(60, "=")
 End Sub
 
 
 ' ============================================================
-' Sentinel_LoadPrevRegion (第9.5 段階で追加)
+' Sentinel_LoadPrevRegion (added in stage 9.5)
 '
-'   環境変数 SENTINEL_ENV_NAME から「前回 Thunks_Init で確保した領域の
-'   ベースアドレス」を読み出す。痕跡が無い (= 通常終了済み、または
-'   初回起動) 場合は 0 を返す。
+'   Reads "the base address of the region allocated by the previous Thunks_Init" from
+'   the environment variable SENTINEL_ENV_NAME. If there is no trace (= it ended normally, or
+'   this is the first launch) it returns 0.
 '
-'   ※ プロセス起動直後にこの環境変数が存在することは通常無い。
-'      存在するのは「直前にリセットで Shutdown が走らなかった」場合のみ。
-'      (環境変数はプロセス固有なので、別 Excel プロセスの値が混入する
-'       ことは無い)
+'   Note: this environment variable normally does not exist right after process startup.
+'      It exists only when "Shutdown did not run because of a reset just before".
+'      (Environment variables are per process, so a value from another Excel process
+'       cannot get mixed in)
 '
-'   戻り値: 前回領域のベースアドレス (なければ 0)
+'   Return value: base address of the previous region (0 if none)
 ' ============================================================
+' ============================================================
+' SentinelEnvName (English fork - fixes a cross-workbook crash)
+'   The sentinel variable used to be the fixed name WV2_VBA_LastRegion. The
+'   environment block is shared by every VBA project in the Excel process, so
+'   a second workbook containing this module read the FIRST workbook's live
+'   region address, found it alive, zeroed its alive flag and VirtualFree'd
+'   it -> the next WebView2 callback into the first workbook crashed Excel.
+'   The name is now suffixed with a hash of this workbook's full path, so
+'   each project only ever recovers its own region (a reset keeps the path,
+'   so recovery after a reset still works).
+' ============================================================
+Private Function SentinelEnvName() As String
+    Dim s As String, h As Double, i As Long
+    On Error Resume Next
+    s = LCase$(ThisWorkbook.FullName)
+    On Error GoTo 0
+    For i = 1 To Len(s)
+        h = h * 31# + (AscW(Mid$(s, i, 1)) And &HFFFF&)
+        h = h - Int(h / 2147483629#) * 2147483629#
+    Next i
+    SentinelEnvName = SENTINEL_ENV_BASE & "_" & Hex$(CLng(h))
+End Function
+
+
 Private Function Sentinel_LoadPrevRegion() As LongPtr
     Sentinel_LoadPrevRegion = 0^
 
@@ -1368,21 +1404,21 @@ Private Function Sentinel_LoadPrevRegion() As LongPtr
     buff = String$(SENTINEL_BUFFER_SIZE, vbNullChar)
 
     Dim n As Long
-    n = GetEnvironmentVariableW(StrPtr(SENTINEL_ENV_NAME), StrPtr(buff), SENTINEL_BUFFER_SIZE)
+    n = GetEnvironmentVariableW(StrPtr(SentinelEnvName()), StrPtr(buff), SENTINEL_BUFFER_SIZE)
 
-    ' n = 0 : 変数が存在しない or 取得失敗
+    ' n = 0 : the variable does not exist or acquisition failed
     If n = 0 Then Exit Function
 
-    ' n >= SENTINEL_BUFFER_SIZE : バッファ不足 (= 異常値、無視)
-    '   GetEnvironmentVariableW は成功時 nSize 未満の値、不足時は必要な
-    '   バッファサイズを返す。アドレス文字列が 19 桁を超えることは無いので
-    '   この経路に来た場合は環境変数が破損していると判断。
+    ' n >= SENTINEL_BUFFER_SIZE : buffer too small (= abnormal value, ignored)
+    '   On success GetEnvironmentVariableW returns a value less than nSize; when the buffer is insufficient it returns the required
+    '   buffer size. An address string never exceeds 19 digits, so
+    '   if we come to this path the environment variable is judged to be corrupted.
     If n >= SENTINEL_BUFFER_SIZE Then Exit Function
 
     Dim s As String
     s = Left$(buff, n)
 
-    ' 数値変換に失敗 (空文字、数値以外の混入など) した場合は 0 を返す
+    ' If numeric conversion fails (empty string, non-numeric contamination, etc.) return 0
     On Error Resume Next
     Sentinel_LoadPrevRegion = CLngLng(s)
     On Error GoTo 0
@@ -1390,77 +1426,77 @@ End Function
 
 
 ' ============================================================
-' Sentinel_StorePrevRegion (第9.5 段階で追加)
+' Sentinel_StorePrevRegion (added in stage 9.5)
 '
-'   現在の領域ベースアドレスを環境変数に書き込む。
-'   形式は十進文字列 (MouseScroll.bas 踏襲)。
+'   Writes the current region base address into the environment variable.
+'   The format is a decimal string (follows MouseScroll.bas).
 '
-'   呼び出しタイミング:
-'     Thunks_Init の VirtualAlloc 成功直後。これにより、Init の途中で
-'     リセットされても次回 Init で確実に領域が回収される。
+'   Call timing:
+'     Right after VirtualAlloc succeeds in Thunks_Init. This way, even if a reset
+'     occurs midway through Init, the region is reliably reclaimed at the next Init.
 ' ============================================================
 Private Sub Sentinel_StorePrevRegion(ByVal addr As LongPtr)
     Dim s As String
     s = CStr(addr)
-    SetEnvironmentVariableW StrPtr(SENTINEL_ENV_NAME), StrPtr(s)
+    SetEnvironmentVariableW StrPtr(SentinelEnvName()), StrPtr(s)
 End Sub
 
 
 ' ============================================================
-' Sentinel_ClearPrevRegion (第9.5 段階で追加)
+' Sentinel_ClearPrevRegion (added in stage 9.5)
 '
-'   環境変数をクリアする。
-'   Win32 仕様: SetEnvironmentVariableW(lpName, NULL) は変数を削除する。
-'   VBA からは第二引数を ByVal 0 で呼べばよい (LongPtr の ByVal で 0 を
-'   渡せばそのまま NULL ポインタとして扱われる)。
+'   Clears the environment variable.
+'   Win32 spec: SetEnvironmentVariableW(lpName, NULL) deletes the variable.
+'   From VBA, call it with ByVal 0 for the second argument (passing 0 with a LongPtr ByVal
+'   is treated as a NULL pointer as is).
 '
-'   呼び出しタイミング:
-'     1. Thunks_Shutdown の末尾 (通常終了パス)
-'     2. Sentinel_RecoverIfNeeded の末尾 (リセット復帰後の新 Init 開始前)
+'   Call timing:
+'     1. At the end of Thunks_Shutdown (normal termination path)
+'     2. At the end of Sentinel_RecoverIfNeeded (after recovering from a reset, before the new Init begins)
 ' ============================================================
 Private Sub Sentinel_ClearPrevRegion()
-    SetEnvironmentVariableW StrPtr(SENTINEL_ENV_NAME), 0
+    SetEnvironmentVariableW StrPtr(SentinelEnvName()), 0
 End Sub
 
 
 ' ============================================================
-' Sentinel_RecoverIfNeeded (第9.5 段階で追加)
+' Sentinel_RecoverIfNeeded (added in stage 9.5)
 '
-'   Thunks_Init の冒頭で呼ばれる。前回の痕跡があれば旧領域を回収する。
+'   Called at the start of Thunks_Init. If there is a trace of the previous run, the old region is reclaimed.
 '
-'   回収手順 (案 β、生存フラグ + VirtualFree の二重防御):
-'     1. 旧領域の生存フラグを 0 に倒す
-'        - 万一 WebView2 がまだスタブを叩いてもサンク先頭で S_OK 帰投
-'        - VirtualFree が完了するまでの一瞬の安全弁
-'        - 領域が既に解放/再マップされている場合はアクセス違反の可能性が
-'          あるため On Error で防御
-'     2. VirtualFree で旧領域を解放
-'        - 失敗時は GetLastError で原因切り分け
-'     3. 環境変数をクリア
-'        - この直後に Thunks_Init が新領域アドレスで上書きするが、万一
-'          VirtualAlloc が失敗した場合に古い値が残らないよう先にクリア
+'   Reclamation procedure (plan beta, double defense of alive flag + VirtualFree):
+'     1. Set the old region's alive flag to 0
+'        - Even if WebView2 hits the stub meanwhile, it returns S_OK at the start of the thunk
+'        - A momentary safety valve until VirtualFree completes
+'        - If the region has already been freed/remapped, an access violation is possible,
+'          so defend with On Error
+'     2. Free the old region with VirtualFree
+'        - On failure, isolate the cause with GetLastError
+'     3. Clear the environment variable
+'        - Thunks_Init overwrites it with the new region address right after, but clear it first so
+'          that no old value remains if VirtualAlloc should fail
 '
-'   回収対象が「同一プロセス内で放置された領域のみ」であることの保証:
-'     - 環境変数はプロセス固有 (親→子へのコピーはあるが他プロセスから
-'       読まれることはない)
-'     - Excel が VBA リセットで再起動するわけではない (同一プロセス継続)
-'     - したがって痕跡がある = 同一プロセス内の放置確定
+'   Guarantee that the reclamation target is "only regions abandoned within the same process":
+'     - Environment variables are per process (they are copied parent -> child, but are never
+'       read from other processes)
+'     - Excel is not restarted by a VBA reset (the same process continues)
+'     - Therefore a trace present = abandonment within the same process is certain
 '
-'   診断ログ (将来の事故時の切り分けに役立つので残す):
-'     - "VirtualQuery result ...": OS から見た領域状態
-'         State = MEM_COMMIT (4096)  → 領域は健在 (正常)
-'         State = MEM_FREE   (65536) → 既に解放済み
-'         State = MEM_RESERVE(8192)  → 中間状態
-'     - "header LongPtr before clear: X" : 旧領域先頭の生存フラグ
-'         X = 1   → 領域は健在、フラグも立ったまま (正常)
-'         X = 0   → 既に誰かがフラグを倒した
-'         アクセス違反 → 領域は既に解放/再マップされている
-'     - "VirtualFree ... LastError: Y" : VirtualFree の結果
-'         Y = 0   → 通常はここに来る (succeeded)
-'         Y = 87  → ERROR_INVALID_PARAMETER (第9.5 段階で真因解消済み、
-'                  もし再発したら定数の & サフィックス忘れを疑え)
-'         Y = 170 → ERROR_BUSY (他スレッドが領域内コードを実行中)
-'         Y = 487 → ERROR_INVALID_ADDRESS (アドレス不正、既に解放済み等)
+'   Diagnostic log (kept because it helps isolate future incidents):
+'     - "VirtualQuery result ...": the region state as seen from the OS
+'         State = MEM_COMMIT (4096)  -> region alive (normal)
+'         State = MEM_FREE   (65536) -> already freed
+'         State = MEM_RESERVE(8192)  -> intermediate state
+'     - "header LongPtr before clear: X" : the alive flag at the start of the old region
+'         X = 1   -> region alive, flag still set (normal)
+'         X = 0   -> someone already cleared the flag
+'         access violation -> the region has already been freed/remapped
+'     - "VirtualFree ... LastError: Y" : the result of VirtualFree
+'         Y = 0   -> normally we come here (succeeded)
+'         Y = 87  -> ERROR_INVALID_PARAMETER (root cause resolved in stage 9.5,
+'                  if it recurs suspect a forgotten & suffix on a constant)
+'         Y = 170 -> ERROR_BUSY (another thread is running code in the region)
+'         Y = 487 -> ERROR_INVALID_ADDRESS (invalid address, already freed, etc.)
 ' ============================================================
 Private Sub Sentinel_RecoverIfNeeded()
     Dim prevBase As LongPtr
@@ -1470,23 +1506,23 @@ Private Sub Sentinel_RecoverIfNeeded()
     Debug.Print "Sentinel: detected previous region = " & prevBase & _
                 " (decimal), recovering ..."
 
-    ' --- 診断0 + 健在判定 (第9.5 段階追加 / 第9.10a で健在判定に格上げ) ---
-    '   VirtualQuery で OS から見た領域状態を観察し、その結果で「領域が健在か」を
-    '   判定する。これにより以下が切り分けられる:
-    '     State = MEM_COMMIT (4096)  → 領域は健在 (VirtualFree の引数を疑え)
-    '     State = MEM_FREE   (65536) → 既に解放済み (誰かが先に Free した)
-    '     State = MEM_RESERVE(8192)  → Reserve のみ残存 (中間状態)
-    '   AllocationBase が prevBase と一致するかも見る (= 領域の真の先頭か)。
+    ' --- Diagnostic 0 + aliveness check (added in stage 9.5 / promoted to an aliveness check in 9.10a) ---
+    '   Observe the region state as seen from the OS with VirtualQuery, and use the result to judge "whether the region is alive".
+    '   This isolates the following:
+    '     State = MEM_COMMIT (4096)  -> region alive (suspect VirtualFree's arguments)
+    '     State = MEM_FREE   (65536) -> already freed (someone Freed it first)
+    '     State = MEM_RESERVE(8192)  -> only Reserve remains (intermediate state)
+    '   Also check whether AllocationBase matches prevBase (= the true start of the region).
     '
-    '   ★ 第9.10a の最重要修正 (仕様事実 10 の対処) ★
-    '     旧実装は「VirtualQuery で State を観察」しておきながら、その結果を
-    '     分岐に使わず ReadLongPtr / MemLongPtr / VirtualFree を無条件に実行して
-    '     いた。State=MEM_FREE の解放済みアドレスに ReadLongPtr / MemLongPtr を
-    '     撃つと SAFEARRAY 経由のネイティブ配列アクセスで AV (アクセス違反) が
-    '     発生する。この AV は CPU の SEH 例外であり VBA の On Error Resume Next
-    '     では捕捉できない (= Excel プロセス即落ち、仕様事実 10)。
-    '     よって VirtualQuery の結果で「健在」と確認できた場合に限り、
-    '     ReadLongPtr / MemLongPtr / VirtualFree を実行する (設計原則 55)。
+    '   ** The most important fix of 9.10a (handling spec fact 10) **
+    '     The old implementation "observed State with VirtualQuery" yet did not use the result
+    '     for branching and unconditionally ran ReadLongPtr / MemLongPtr / VirtualFree.
+    '     Firing ReadLongPtr / MemLongPtr at a freed address with State=MEM_FREE causes an
+    '     AV (access violation) in native array access through the SAFEARRAY.
+    '     This AV is a CPU SEH exception and cannot be caught by VBA's On Error Resume Next
+    '     (= the Excel process dies immediately, spec fact 10).
+    '     Therefore only when VirtualQuery confirms "alive" do we run
+    '     ReadLongPtr / MemLongPtr / VirtualFree (design principle 55).
     Dim mbi As MEMORY_BASIC_INFORMATION
     Dim qSize As LongPtr
     Dim regionAlive As Boolean
@@ -1499,7 +1535,7 @@ Private Sub Sentinel_RecoverIfNeeded()
         Debug.Print "Sentinel: VirtualQuery result (" & qSize & " bytes copied):"
         Debug.Print "  BaseAddress       = " & mbi.BaseAddress
         Debug.Print "  AllocationBase    = " & mbi.AllocationBase & _
-                    IIf(mbi.AllocationBase = prevBase, " (= prevBase, OK)", " (≠ prevBase, ズレあり)")
+                    IIf(mbi.AllocationBase = prevBase, " (= prevBase, OK)", " (<> prevBase, mismatch)")
         Debug.Print "  AllocationProtect = &H" & Hex$(mbi.AllocationProtect) & _
                     " (" & FormatMemProtect(mbi.AllocationProtect) & ")"
         Debug.Print "  RegionSize        = " & mbi.RegionSize
@@ -1508,45 +1544,45 @@ Private Sub Sentinel_RecoverIfNeeded()
                     " (" & FormatMemProtect(mbi.Protect) & ")"
         Debug.Print "  Type              = &H" & Hex$(mbi.Type_)
 
-        ' 健在判定 (堅め): 3 条件を全て満たすときのみ「健在」とみなす。
-        '   (1) State = MEM_COMMIT       : ページが commit 済み (解放/予約のみでない)
-        '   (2) AllocationBase = prevBase : 領域の真の先頭であり別領域に再マップ
-        '                                   されていない
-        '   (3) Protect が読み書き可能    : PAGE_GUARD / PAGE_NOACCESS でない。
-        '       サンク領域は PAGE_EXECUTE_READWRITE で確保されるが、念のため
-        '       PAGE_READWRITE も許容する。PAGE_GUARD ビットが立っていると初回
-        '       アクセスで STATUS_GUARD_PAGE_VIOLATION になるため除外する。
+        ' Aliveness check (conservative): regarded as "alive" only when all 3 conditions are met.
+        '   (1) State = MEM_COMMIT       : the page is committed (not merely freed/reserved)
+        '   (2) AllocationBase = prevBase : the true start of the region and not remapped
+        '                                   to another region
+        '   (3) Protect is readable/writable : not PAGE_GUARD / PAGE_NOACCESS.
+        '       The thunk region is allocated with PAGE_EXECUTE_READWRITE, but just in case
+        '       PAGE_READWRITE is also allowed. If the PAGE_GUARD bit is set, the first
+        '       access gives STATUS_GUARD_PAGE_VIOLATION, so it is excluded.
         regionAlive = (mbi.state = MEM_COMMIT) _
                       And (mbi.AllocationBase = prevBase) _
                       And IsProtectReadWritable(mbi.Protect)
     End If
 
     If Not regionAlive Then
-        ' 領域は健在でない (= 既に解放済み / 再マップ / 予約のみ / 保護不可)。
-        ' ReadLongPtr / MemLongPtr / VirtualFree は一切撃たず、環境変数クリアのみ
-        ' 行って安全に抜ける。VirtualFree も撃たない理由: 解放済み領域への
-        ' MEM_RELEASE は ERROR_INVALID_PARAMETER になるだけで実害はないが、
-        ' 「健在でないなら触らない」を徹底することでパスを単純化する。
-        Debug.Print "Sentinel: 旧領域は健在でないと判定 → 触れずにスキップ (仕様事実 10 対処)"
+        ' The region is not alive (= already freed / remapped / reserved only / not accessible).
+        ' Never fire ReadLongPtr / MemLongPtr / VirtualFree; only clear the environment variable
+        ' and exit safely. Why VirtualFree is not fired either: MEM_RELEASE on a freed region
+        ' only gives ERROR_INVALID_PARAMETER and does no real harm, but
+        ' simplifying the path by sticking to "do not touch it if it is not alive".
+        Debug.Print "Sentinel: old region judged not alive -> skipped without touching (handling spec fact 10)"
         Sentinel_ClearPrevRegion
         Exit Sub
     End If
 
-    ' --- ここから先は領域が健在であることが VirtualQuery で確認済み ---
+    ' --- From here on, VirtualQuery has confirmed that the region is alive ---
 
-    ' 診断1: 領域先頭の生存フラグを読む (健在確認済みなので AV は起きない)
-    '   注: MemLongPtr は Property Let のみ (書き込み専用)。読み出しには
-    '       ReadLongPtr 関数を使う。
+    ' Diagnostic 1: read the alive flag at the start of the region (alive is confirmed, so no AV occurs)
+    '   Note: MemLongPtr is Property Let only (write-only). For reading,
+    '       use the ReadLongPtr function.
     Dim headerByte As LongPtr
     headerByte = ReadLongPtr(prevBase)
     Debug.Print "Sentinel: header LongPtr before clear = " & headerByte & _
-                " (生存フラグ = " & (headerByte And &HFF&) & ")"
+                " (alive flag = " & (headerByte And &HFF&) & ")"
 
-    ' 1. 生存フラグを 0 に倒す (二重防御)
+    ' 1. Set the alive flag to 0 (double defense)
     MemLongPtr(prevBase) = 0^
 
-    ' 2. VirtualFree で旧領域を解放 (GetLastError でエラーコードも取得)
-    '    Win32 仕様: VirtualFree は失敗時 0 を返し、原因は GetLastError で取得する。
+    ' 2. Free the old region with VirtualFree (also get the error code with GetLastError)
+    '    Win32 spec: VirtualFree returns 0 on failure, and the cause is obtained with GetLastError.
     Dim freeResult As Long
     Dim lastErr As Long
     freeResult = VirtualFree(prevBase, 0, MEM_RELEASE)
@@ -1558,26 +1594,26 @@ Private Sub Sentinel_RecoverIfNeeded()
                     " (" & VirtualFreeErrorName(lastErr) & ")"
     End If
 
-    ' 3. 環境変数を先にクリア (新領域アドレス書き込みの前)
+    ' 3. Clear the environment variable first (before writing the new region address)
     Sentinel_ClearPrevRegion
 End Sub
 
 ' ============================================================
-' IsProtectReadWritable (第9.10a 追加)
+' IsProtectReadWritable (added in 9.10a)
 ' ============================================================
-'   MEMORY_BASIC_INFORMATION.Protect が「VBA から読み書きしても安全な保護属性か」
-'   を判定する。Sentinel_RecoverIfNeeded の健在判定の一部 (設計原則 55)。
+'   Judges whether MEMORY_BASIC_INFORMATION.Protect is "a protection attribute safe to read/write from VBA".
+'   Part of the aliveness check in Sentinel_RecoverIfNeeded (design principle 55).
 '
-'   読み書き可能とみなす: PAGE_READWRITE (&H4) / PAGE_EXECUTE_READWRITE (&H40)。
-'   ただし PAGE_GUARD (&H100) ビットが立っているとガードページ例外が起きるので、
-'   そのときは読み書き不可とする。
+'   Regarded as readable/writable: PAGE_READWRITE (&H4) / PAGE_EXECUTE_READWRITE (&H40).
+'   However, if the PAGE_GUARD (&H100) bit is set, a guard page exception occurs,
+'   so in that case it is treated as not readable/writable.
 Private Function IsProtectReadWritable(ByVal prot As Long) As Boolean
-    ' PAGE_GUARD ビットが立っていたら不可
+    ' Not allowed if the PAGE_GUARD bit is set
     If (prot And &H100&) <> 0 Then
         IsProtectReadWritable = False
         Exit Function
     End If
-    ' ガードビットを除いた基本保護属性で判定
+    ' Judge by the basic protection attribute with the guard bit removed
     Dim base As Long
     base = prot And Not &H100& And Not &H200& And Not &H400&
     Select Case base
@@ -1590,19 +1626,19 @@ End Function
 
 
 ' ============================================================
-' VirtualFreeErrorName (第9.5 段階で追加、診断用)
+' VirtualFreeErrorName (added in stage 9.5, for diagnostics)
 '
-'   GetLastError の値を Win32 エラー名に変換する。代表的なものだけ
-'   個別判定し、未知の値は "UNKNOWN" を返す。
+'   Converts a GetLastError value into a Win32 error name. Only the representative ones
+'   are judged individually; unknown values return "UNKNOWN".
 ' ============================================================
 Private Function VirtualFreeErrorName(ByVal errCode As Long) As String
     Select Case errCode
-        Case 0: VirtualFreeErrorName = "ERROR_SUCCESS (= 実は成功してる?)"
+        Case 0: VirtualFreeErrorName = "ERROR_SUCCESS (= actually succeeded?)"
         Case 5: VirtualFreeErrorName = "ERROR_ACCESS_DENIED"
         Case 6: VirtualFreeErrorName = "ERROR_INVALID_HANDLE"
         Case 8: VirtualFreeErrorName = "ERROR_NOT_ENOUGH_MEMORY"
         Case 87: VirtualFreeErrorName = "ERROR_INVALID_PARAMETER"
-        Case 170: VirtualFreeErrorName = "ERROR_BUSY (他スレッド使用中)"
+        Case 170: VirtualFreeErrorName = "ERROR_BUSY (in use by another thread)"
         Case 487: VirtualFreeErrorName = "ERROR_INVALID_ADDRESS"
         Case Else: VirtualFreeErrorName = "UNKNOWN"
     End Select
@@ -1610,29 +1646,29 @@ End Function
 
 
 ' ============================================================
-' FormatMemState (第9.5 段階で追加、診断用)
+' FormatMemState (added in stage 9.5, for diagnostics)
 '
-'   MEMORY_BASIC_INFORMATION.State の値を文字列化する。
+'   Turns the MEMORY_BASIC_INFORMATION.State value into a string.
 ' ============================================================
 Private Function FormatMemState(ByVal state As Long) As String
     Select Case state
-        Case &H1000: FormatMemState = "MEM_COMMIT (領域は健在)"
-        Case &H2000: FormatMemState = "MEM_RESERVE (Reserve のみ、Commit 未)"
-        Case &H10000: FormatMemState = "MEM_FREE (既に解放済み)"
+        Case &H1000: FormatMemState = "MEM_COMMIT (region alive)"
+        Case &H2000: FormatMemState = "MEM_RESERVE (Reserve only, not Committed)"
+        Case &H10000: FormatMemState = "MEM_FREE (already freed)"
         Case Else: FormatMemState = "UNKNOWN(&H" & Hex$(state) & ")"
     End Select
 End Function
 
 
 ' ============================================================
-' FormatMemProtect (第9.5 段階で追加、診断用)
+' FormatMemProtect (added in stage 9.5, for diagnostics)
 '
-'   MEMORY_BASIC_INFORMATION.Protect / AllocationProtect の値を文字列化する。
-'   PAGE_GUARD 等のフラグはビット OR されることがあるので個別に検出する。
+'   Turns the MEMORY_BASIC_INFORMATION.Protect / AllocationProtect value into a string.
+'   Flags such as PAGE_GUARD may be bit-ORed, so they are detected individually.
 ' ============================================================
 Private Function FormatMemProtect(ByVal prot As Long) As String
     If prot = 0 Then
-        FormatMemProtect = "NONE (= 解放済み領域では Protect=0)"
+        FormatMemProtect = "NONE (= Protect=0 for a freed region)"
         Exit Function
     End If
 
@@ -1659,40 +1695,40 @@ End Function
 
 
 ' ============================================================
-' Test_VirtualAllocFree_Roundtrip (第9.5 段階で追加)
+' Test_VirtualAllocFree_Roundtrip (added in stage 9.5)
 '
-'   VBA リセットを経由しない通常フローで VirtualAlloc → VirtualFree が
-'   成功するかを 5 種類のシナリオで観察する。
-'   9.5c で判明した「リセット経由領域だけ ERROR_INVALID_PARAMETER で
-'   失敗する」現象の真因を切り分けるのが目的。
+'   Observes, in 5 kinds of scenarios, whether VirtualAlloc -> VirtualFree succeeds
+'   in the normal flow that does not go through a VBA reset.
+'   The purpose is to isolate the root cause of the phenomenon found in 9.5c, that "only a region that went
+'   through a reset fails with ERROR_INVALID_PARAMETER".
 '
-'   使い方:
-'     1. Excel + VBE を再起動して綺麗な状態にする (任意)
-'     2. イミディエイトで Test_VirtualAllocFree_Roundtrip を実行
-'     3. α?δ の結果を観察
-'     4. (オプション) その後 Test_AllEvents_Real などで Thunks_Init を走らせ、
-'        m_pRegionBase が確保された状態で Test_VirtualAllocFree_Eps を実行する
-'        ことでシナリオ ε も観察できる
+'   How to use:
+'     1. Restart Excel + VBE to get a clean state (optional)
+'     2. Run Test_VirtualAllocFree_Roundtrip in the Immediate window
+'     3. Observe the results of alpha to delta
+'     4. (Optional) After that, run Thunks_Init with Test_AllEvents_Real etc. and
+'        run Test_VirtualAllocFree_Eps with m_pRegionBase allocated,
+'        which lets you observe scenario epsilon as well
 '
-'   各シナリオが全成功 → リセット経由領域だけが特異的に失敗する
-'                       (VBA ランタイムが何らかのマークを付けている説が有力)
-'   どれかが失敗   → そのシナリオに含まれる要素が真因
+'   If every scenario succeeds -> only the region that went through a reset fails specifically
+'                       (the theory that the VBA runtime puts some mark on it is the leading one)
+'   If any fails   -> the element included in that scenario is the root cause
 ' ============================================================
 Public Sub Test_VirtualAllocFree_Roundtrip()
     Debug.Print String(60, "=")
-    Debug.Print "Test_VirtualAllocFree_Roundtrip (リセット非経由での確認)"
+    Debug.Print "Test_VirtualAllocFree_Roundtrip (check without going through a reset)"
     Debug.Print String(60, "=")
 
     Dim p As LongPtr, p2 As LongPtr
     Dim r As Long
     Dim errCode As Long
 
-    ' --- シナリオ α: alloc → 即 free ---
-    Debug.Print "--- シナリオ α: alloc → 即 free ---"
+    ' --- Scenario alpha: alloc -> free immediately ---
+    Debug.Print "--- Scenario alpha: alloc -> free immediately ---"
     p = VirtualAlloc(0, REGION_SIZE, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
     Debug.Print "  VirtualAlloc -> " & p
     If p = 0 Then
-        Debug.Print "  [SKIP] alloc が失敗、以降のシナリオもスキップ"
+        Debug.Print "  [SKIP] alloc failed, skipping the following scenarios too"
         Exit Sub
     End If
     r = VirtualFree(p, 0, MEM_RELEASE)
@@ -1700,22 +1736,22 @@ Public Sub Test_VirtualAllocFree_Roundtrip()
     Debug.Print "  VirtualFree returned " & r & ", LastError = " & errCode & _
                 IIf(r <> 0, " [OK]", " [NG] (" & VirtualFreeErrorName(errCode) & ")")
 
-    ' --- シナリオ β: alloc → 中身書き込み → free ---
-    Debug.Print "--- シナリオ β: alloc → 中身書き込み → free ---"
+    ' --- Scenario beta: alloc -> write contents -> free ---
+    Debug.Print "--- Scenario beta: alloc -> write contents -> free ---"
     p = VirtualAlloc(0, REGION_SIZE, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
     Debug.Print "  VirtualAlloc -> " & p
     If p <> 0 Then
-        MemLongPtr(p) = 1^                       ' 生存フラグ風の書き込み
-        MemLongPtr(p + 8) = &H42^                ' 適当な値 (Long 範囲内で安全)
-        Debug.Print "  生存フラグ書き込み済み (header LongPtr = " & ReadLongPtr(p) & ")"
+        MemLongPtr(p) = 1^                       ' alive-flag-like write
+        MemLongPtr(p + 8) = &H42^                ' an arbitrary value (safe within the Long range)
+        Debug.Print "  alive flag written (header LongPtr = " & ReadLongPtr(p) & ")"
         r = VirtualFree(p, 0, MEM_RELEASE)
         errCode = GetLastError()
         Debug.Print "  VirtualFree returned " & r & ", LastError = " & errCode & _
                     IIf(r <> 0, " [OK]", " [NG] (" & VirtualFreeErrorName(errCode) & ")")
     End If
 
-    ' --- シナリオ γ: alloc → 十進文字列で往復変換 → free ---
-    Debug.Print "--- シナリオ γ: alloc → アドレス十進往復変換 → free ---"
+    ' --- Scenario gamma: alloc -> round-trip conversion via decimal string -> free ---
+    Debug.Print "--- Scenario gamma: alloc -> address decimal round-trip conversion -> free ---"
     p = VirtualAlloc(0, REGION_SIZE, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
     Debug.Print "  VirtualAlloc -> " & p
     If p <> 0 Then
@@ -1724,23 +1760,23 @@ Public Sub Test_VirtualAllocFree_Roundtrip()
         Dim pRestored As LongPtr
         pRestored = CLngLng(s)
         Debug.Print "  CStr/CLngLng round-trip: " & p & " -> '" & s & "' -> " & pRestored & _
-                    IIf(p = pRestored, " [一致]", " [不一致!]")
+                    IIf(p = pRestored, " [match]", " [MISMATCH!]")
         r = VirtualFree(pRestored, 0, MEM_RELEASE)
         errCode = GetLastError()
         Debug.Print "  VirtualFree(pRestored) returned " & r & ", LastError = " & errCode & _
                     IIf(r <> 0, " [OK]", " [NG] (" & VirtualFreeErrorName(errCode) & ")")
     End If
 
-    ' --- シナリオ δ: alloc(A) → alloc(B) → free(A) → free(B) ---
-    '   現在の Sentinel_RecoverIfNeeded と最も近い状況。ただしリセットは
-    '   挟まない。
-    Debug.Print "--- シナリオ δ: 2 領域確保 → 古い方を先に free → 新しい方を free ---"
+    ' --- Scenario delta: alloc(A) -> alloc(B) -> free(A) -> free(B) ---
+    '   The situation closest to the current Sentinel_RecoverIfNeeded. However, no reset
+    '   is involved.
+    Debug.Print "--- Scenario delta: allocate 2 regions -> free the older first -> free the newer ---"
     p = VirtualAlloc(0, REGION_SIZE, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
-    Debug.Print "  領域 A alloc -> " & p
+    Debug.Print "  region A alloc -> " & p
     p2 = VirtualAlloc(0, REGION_SIZE, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
-    Debug.Print "  領域 B alloc -> " & p2
+    Debug.Print "  region B alloc -> " & p2
     If p <> 0 And p2 <> 0 Then
-        MemLongPtr(p) = 1^                     ' 領域 A に生存フラグ風書き込み
+        MemLongPtr(p) = 1^                     ' alive-flag-like write to region A
         r = VirtualFree(p, 0, MEM_RELEASE)
         errCode = GetLastError()
         Debug.Print "  VirtualFree(A) returned " & r & ", LastError = " & errCode & _
@@ -1751,62 +1787,62 @@ Public Sub Test_VirtualAllocFree_Roundtrip()
                     IIf(r <> 0, " [OK]", " [NG] (" & VirtualFreeErrorName(errCode) & ")")
     End If
 
-    ' --- シナリオ ε: 本物の Thunks_Init 領域に対する VirtualFree ---
-    '   既に m_pRegionBase が確保されている (= Thunks_Init 済み) なら、
-    '   そのアドレスに対して VirtualQuery → VirtualFree を試みる。
-    '   注意: これを実行すると Thunks_Shutdown を経由しないので
-    '         m_pRegionBase は 0 にならない (= 二重解放の危険)。
-    '         本シナリオは Thunks_Shutdown 後の状態でのみ意味があるので、
-    '         m_pRegionBase = 0 のときだけ実行する。
-    Debug.Print "--- シナリオ ε: 本物の Thunks_Init を経た領域 ---"
+    ' --- Scenario epsilon: VirtualFree on the real Thunks_Init region ---
+    '   If m_pRegionBase is already allocated (= Thunks_Init done),
+    '   try VirtualQuery -> VirtualFree on that address.
+    '   Note: running this does not go through Thunks_Shutdown, so
+    '         m_pRegionBase does not become 0 (= risk of double free).
+    '         This scenario is meaningful only in the state after Thunks_Shutdown,
+    '         so run it only when m_pRegionBase = 0.
+    Debug.Print "--- Scenario epsilon: a region that went through the real Thunks_Init ---"
     If m_pRegionBase <> 0 Then
-        Debug.Print "  [SKIP] m_pRegionBase = " & m_pRegionBase & " (= 既に Init 済み)"
-        Debug.Print "         このシナリオは Shutdown 後 (= m_pRegionBase = 0) で再実行してください"
+        Debug.Print "  [SKIP] m_pRegionBase = " & m_pRegionBase & " (= already Init-ed)"
+        Debug.Print "         Please re-run this scenario after Shutdown (= m_pRegionBase = 0)"
     Else
-        Debug.Print "  Thunks_Init を実行 ..."
+        Debug.Print "  Running Thunks_Init ..."
         If Not Thunks_Init() Then
-            Debug.Print "  [SKIP] Thunks_Init 失敗"
+            Debug.Print "  [SKIP] Thunks_Init failed"
         Else
             Dim baseBak As LongPtr
             baseBak = m_pRegionBase
             Debug.Print "  m_pRegionBase = " & baseBak
-            ' Thunks_Shutdown を呼ばずに直接 VirtualFree を試みる。
-            ' その後の状態整合のため、m_pRegionBase などのモジュール変数は手動で
-            ' クリアして Sentinel_ClearPrevRegion も呼ぶ。
+            ' Try VirtualFree directly without calling Thunks_Shutdown.
+            ' To keep the state consistent afterwards, clear module variables such as m_pRegionBase
+            ' manually and also call Sentinel_ClearPrevRegion.
             r = VirtualFree(baseBak, 0, MEM_RELEASE)
             errCode = GetLastError()
-            Debug.Print "  VirtualFree(本物) returned " & r & ", LastError = " & errCode & _
+            Debug.Print "  VirtualFree(real) returned " & r & ", LastError = " & errCode & _
                         IIf(r <> 0, " [OK]", " [NG] (" & VirtualFreeErrorName(errCode) & ")")
-            ' 後始末
+            ' Cleanup
             m_pRegionBase = 0
             m_freeHead = -1
             m_inUse = 0
             Erase m_freeNext
             Sentinel_ClearPrevRegion
-            Debug.Print "  後始末完了 (m_pRegionBase = 0、環境変数クリア済み)"
+            Debug.Print "  cleanup done (m_pRegionBase = 0, environment variable cleared)"
         End If
     End If
 
     Debug.Print String(60, "=")
-    Debug.Print "Test_VirtualAllocFree_Roundtrip 完了"
+    Debug.Print "Test_VirtualAllocFree_Roundtrip done"
     Debug.Print String(60, "=")
 End Sub
 
 
 ' ============================================================
-' Test_SentinelStatus (第9.5 段階で追加、デバッグ用)
+' Test_SentinelStatus (added in stage 9.5, for debugging)
 '
-'   現在の環境変数の中身と m_pRegionBase を Debug.Print するだけのテスト関数。
-'   イミディエイトウィンドウから「Test_SentinelStatus」で実行できる。
+'   A test function that merely Debug.Prints the current environment variable contents and m_pRegionBase.
+'   Can be run as "Test_SentinelStatus" from the Immediate window.
 '
-'   観察ポイント:
-'     - 初回起動直後: 環境変数なし、m_pRegionBase = 0
-'     - StartWebView2 後: 環境変数 = m_pRegionBase = 新領域アドレス
-'     - 通常終了後: 環境変数なし、m_pRegionBase = 0
-'     - リセット直後: 環境変数 = 旧領域アドレス、m_pRegionBase = 0
-'         (VBA 変数はリセットで消えるが環境変数はプロセス内で生存)
-'     - リセット後の再 Init 後: 環境変数 = m_pRegionBase = 新領域アドレス
-'         (旧領域は既に VirtualFree 済み)
+'   Points to observe:
+'     - Right after first launch: no environment variable, m_pRegionBase = 0
+'     - After StartWebView2: environment variable = m_pRegionBase = new region address
+'     - After normal termination: no environment variable, m_pRegionBase = 0
+'     - Right after a reset: environment variable = old region address, m_pRegionBase = 0
+'         (VBA variables vanish on reset but environment variables survive within the process)
+'     - After re-Init following a reset: environment variable = m_pRegionBase = new region address
+'         (the old region has already been VirtualFreed)
 ' ============================================================
 Public Sub Test_SentinelStatus()
     Dim prev As LongPtr
@@ -1814,17 +1850,17 @@ Public Sub Test_SentinelStatus()
 
     Debug.Print String(60, "=")
     Debug.Print "Test_SentinelStatus"
-    Debug.Print "  Env var name : " & SENTINEL_ENV_NAME
+    Debug.Print "  Env var name : " & SentinelEnvName()
     If prev = 0 Then
-        Debug.Print "  Env var value: (empty or unset) → no leftover region"
+        Debug.Print "  Env var value: (empty or unset) -> no leftover region"
     Else
         Debug.Print "  Env var value: " & prev & " (decimal pointer)"
         If prev = m_pRegionBase Then
-            Debug.Print "  → 現在使用中の領域と一致 (正常状態)"
+            Debug.Print "  -> matches the region currently in use (normal state)"
         ElseIf m_pRegionBase = 0 Then
-            Debug.Print "  → 次回 Thunks_Init で回収される予定 (リセット後)"
+            Debug.Print "  -> scheduled to be reclaimed at the next Thunks_Init (after a reset)"
         Else
-            Debug.Print "  → 環境変数と m_pRegionBase が食い違っている (異常)"
+            Debug.Print "  -> the environment variable and m_pRegionBase disagree (abnormal)"
         End If
     End If
     Debug.Print "  m_pRegionBase: " & m_pRegionBase
@@ -1834,26 +1870,26 @@ End Sub
 
 ' ============================================================
 ' Thunks_Init
-'   領域を VirtualAlloc で確保し、ヘッダの生存フラグを立て、
-'   全スロットにスタブをコピーし、vtableObj を初期化し、
-'   フリーリストを初期化する。
+'   Allocates the region with VirtualAlloc, sets the header's alive flag,
+'   copies the stub into all slots, initializes vtableObj,
+'   and initializes the free list.
 '
-'   第9.2段階での処理 (第9.3a でも変更なし):
-'     - Handler_QI / AddRef / Release のアドレスを 1 回だけ取得
-'     - 全 512 スロットの vtableObj を一括初期化
+'   Processing in stage 9.2 (unchanged in 9.3a):
+'     - Get the addresses of Handler_QI / AddRef / Release only once
+'     - Initialize the vtableObj of all 512 slots in one go
 '         pVTable      = pFunctions
 '         Functions(0) = m_pHandler_QI
 '         Functions(1) = m_pHandler_AddRef
 '         Functions(2) = m_pHandler_Release
-'         Functions(3) = pSlot (= スタブクローン先頭)
+'         Functions(3) = pSlot (= start of the stub clone)
 '
-'   第9.5 段階での追加処理:
-'     - 冒頭で Sentinel_RecoverIfNeeded を呼ぶ
-'         (前回リセット時に放置された領域があれば VirtualFree して回収)
-'     - VirtualAlloc 成功直後に Sentinel_StorePrevRegion を呼ぶ
-'         (新領域アドレスを環境変数に記録、次回リセット復帰時に使う)
+'   Processing added in stage 9.5:
+'     - Call Sentinel_RecoverIfNeeded at the start
+'         (if a region was abandoned at the previous reset, VirtualFree it and reclaim)
+'     - Call Sentinel_StorePrevRegion right after VirtualAlloc succeeds
+'         (records the new region address in the environment variable, used at the next reset recovery)
 '
-'   戻り値: 成功 = True、失敗 = False
+'   Return value: success = True, failure = False
 ' ============================================================
 Public Function Thunks_Init() As Boolean
 
@@ -1862,21 +1898,21 @@ Public Function Thunks_Init() As Boolean
         Exit Function
     End If
 
-    ' --- センチネル機構 (第9.5 段階追加) ---
-    '   前回プロセス内でリセットが押されて Shutdown が走らなかった場合、
-    '   環境変数に旧領域アドレスが残っている。これを回収してから
-    '   新領域確保に進む。
+    ' --- Sentinel mechanism (added in stage 9.5) ---
+    '   If reset was pressed in the previous run within the process and Shutdown did not run,
+    '   the old region address remains in the environment variable. Reclaim it
+    '   before proceeding to allocate the new region.
     Sentinel_RecoverIfNeeded
 
-    ' Force-Compile EntryPoint (スタブのソースを実体化)
+    ' Force-Compile EntryPoint (materialize the stub source)
     EntryPoint
 
-    ' EntryPoint スタブのソースアドレス
+    ' Source address of the EntryPoint stub
     Dim pStubSrc As LongPtr
     pStubSrc = VBA.Int(AddressOf EntryPoint)
     If pStubSrc = 0 Then Exit Function
 
-    ' Handler_QI / AddRef / Release のアドレスを起動時に 1 回だけ取得して保存
+    ' Get the addresses of Handler_QI / AddRef / Release only once at startup and save them
     m_pHandler_QI = GetAddr(AddressOf Handler_QueryInterface)
     m_pHandler_AddRef = GetAddr(AddressOf Handler_AddRef)
     m_pHandler_Release = GetAddr(AddressOf Handler_Release)
@@ -1884,38 +1920,38 @@ Public Function Thunks_Init() As Boolean
         Exit Function
     End If
 
-    ' 領域を一括確保
+    ' Allocate the region in one go
     m_pRegionBase = VirtualAlloc(0, REGION_SIZE, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
     If m_pRegionBase = 0 Then Exit Function
 
-    ' --- センチネル機構 (第9.5 段階追加) ---
-    '   今確保したアドレスを環境変数に記録。
-    '   これにより、この後 Init が完了する前にリセットが押されても
-    '   次回 Init で確実に回収できる。
+    ' --- Sentinel mechanism (added in stage 9.5) ---
+    '   Record the address just allocated in the environment variable.
+    '   This way, even if reset is pressed before Init completes after this,
+    '   it can be reliably reclaimed at the next Init.
     Sentinel_StorePrevRegion m_pRegionBase
 
-    ' ヘッダのゼロ初期化 (VirtualAlloc は本来ゼロクリア済みだが念のため)
+    ' Zero-initialize the header (VirtualAlloc is already zero-cleared by nature, but just in case)
     Dim k As Long
     For k = 0 To HEADER_SIZE - 1 Step 8
         MemLongPtr(m_pRegionBase + k) = 0^
     Next k
 
-    ' 生存フラグを立てる (領域先頭の 1 byte = 1)
+    ' Set the alive flag (1 byte at the start of the region = 1)
     MemLongPtr(m_pRegionBase) = 1^
 
-    ' 全スロット初期化 (スタブコピー + vtableObj 初期化)
+    ' Initialize all slots (stub copy + vtableObj initialization)
     Dim i As Long, pSlot As LongPtr, pVTableObj As LongPtr, pFunctions As LongPtr
     For i = 0 To SLOT_COUNT - 1
         pSlot = SlotAddrAt(i)
 
-        ' --- スタブコピー (各 96 bytes、+91..+95 のパディングは無害) ---
+        ' --- Stub copy (96 bytes each; the padding at +91..+95 is harmless) ---
         For k = 0 To 95 Step 8
             MemLongPtr(pSlot + k) = ReadLongPtr(pStubSrc + k)
         Next k
 
-        ' --- vtableObj 初期化 (40 bytes、各 8 byte 単位で書き込み) ---
+        ' --- vtableObj initialization (40 bytes, written in 8-byte units) ---
         pVTableObj = pSlot + VTABLE_OBJ_OFFSET
-        pFunctions = pVTableObj + PtrSize        ' +8、pVTable の直後
+        pFunctions = pVTableObj + PtrSize        ' +8, right after pVTable
 
         MemLongPtr(pVTableObj) = pFunctions
         MemLongPtr(pFunctions + 0 * PtrSize) = m_pHandler_QI
@@ -1924,7 +1960,7 @@ Public Function Thunks_Init() As Boolean
         MemLongPtr(pFunctions + 3 * PtrSize) = pSlot
     Next i
 
-    ' フリーリスト初期化
+    ' Initialize the free list
     ReDim m_freeNext(0 To SLOT_COUNT - 1)
     For i = 0 To SLOT_COUNT - 2
         m_freeNext(i) = i + 1
@@ -1933,13 +1969,13 @@ Public Function Thunks_Init() As Boolean
     m_freeHead = 0
     m_inUse = 0
 
-    ' Handler 対応表を全クリア
+    ' Clear the whole Handler correspondence table
     For i = 0 To SLOT_COUNT - 1
         Set m_handlers(i) = Nothing
     Next i
 
-    ' --- IID テーブル初期化 (第9.7a 段階で追加) ---
-    '   IID_IUnknown と HandlerKind ごとの IID をテーブルに埋め込む。
+    ' --- IID table initialization (added in stage 9.7a) ---
+    '   Embeds IID_IUnknown and the IID of each HandlerKind into the table.
     InitIIDTable
 
     Thunks_Init = True
@@ -1948,14 +1984,14 @@ End Function
 
 ' ============================================================
 ' Thunks_AcquireSlot
-'   フリーリストから空きスロットを 1 個取得し、そのスロットの
-'   サンク領域に「pSelfObj を Me に注入して pTargetFunc を呼ぶ」
-'   マシンコードを書き込み、+55 にサンクのアドレスを書き込む。
+'   Takes one free slot from the free list and writes into that slot's
+'   thunk region the machine code that "injects pSelfObj into Me and calls pTargetFunc",
+'   and writes the thunk's address at +55.
 '
-'   第9.3a 段階では AcquireHandlerFor から呼ばれることが基本だが、
-'   Test_TwoHandlers_Mock のように直接叩くケースも引き続き有効。
+'   In stage 9.3a it is basically called from AcquireHandlerFor, but
+'   the case of calling it directly like Test_TwoHandlers_Mock remains valid.
 '
-'   戻り値: スロット先頭アドレス、失敗時 0
+'   Return value: slot start address, 0 on failure
 ' ============================================================
 Public Function Thunks_AcquireSlot( _
     ByVal handler As ComCallbackHandler, _
@@ -1963,25 +1999,25 @@ Public Function Thunks_AcquireSlot( _
     ByVal pTargetFunc As LongPtr) As LongPtr
 
     If m_pRegionBase = 0 Then Exit Function
-    If m_freeHead < 0 Then Exit Function     ' プール枯渇
+    If m_freeHead < 0 Then Exit Function     ' pool exhausted
     If handler Is Nothing Then Exit Function
 
-    ' フリーリストから 1 個取り出す
+    ' Take one from the free list
     Dim idx As Long
     idx = m_freeHead
     m_freeHead = m_freeNext(idx)
-    m_freeNext(idx) = -1                      ' -1 = 使用中
+    m_freeNext(idx) = -1                      ' -1 = in use
 
     Dim pSlot As LongPtr
     pSlot = SlotAddrAt(idx)
 
-    ' サンクを書き込む (offset +96 から 74 bytes)
+    ' Write the thunk (74 bytes from offset +96)
     WriteThunkMachineCode pSlot + THUNK_OFFSET, pSelfObj, pTargetFunc, m_pRegionBase
 
-    ' スタブクローンの +55 にサンクのアドレスを書き込む
+    ' Write the thunk's address at +55 of the stub clone
     MemLongPtr(pSlot + LATE_BIND_OFFSET) = pSlot + THUNK_OFFSET
 
-    ' Handler オブジェクトを idx で対応付け
+    ' Associate the Handler object by idx
     Set m_handlers(idx) = handler
 
     m_inUse = m_inUse + 1
@@ -1990,9 +2026,31 @@ End Function
 
 
 ' ============================================================
+' Thunks_DiscardHandler (English fork)
+'   Gives back a handler whose COM registration failed synchronously
+'   (add_*, ExecuteScript, CreateController, GetContent ... returned an error).
+'   Before this, callers only did Set h = Nothing, but m_handlers(idx) still
+'   held the handler and its owner (Pane/Environment), refCount stayed 0 so
+'   Release never came: the slot was lost from the pool for good and the
+'   owner could never terminate. Only acts when WebView2 holds no reference
+'   (RefCount = 0); otherwise the normal Release path frees it later.
+' ============================================================
+Public Sub Thunks_DiscardHandler(ByVal h As ComCallbackHandler)
+    If h Is Nothing Then Exit Sub
+    If m_pRegionBase = 0 Then Exit Sub
+    If h.RefCount <> 0 Then Exit Sub
+    Dim idx As Long
+    idx = SlotIndexFromAddr(h.Slot)
+    If idx < 0 Then Exit Sub
+    If Not (m_handlers(idx) Is h) Then Exit Sub
+    h.ClearOwner
+    Thunks_ReleaseSlot h.Slot
+End Sub
+
+' ============================================================
 ' Thunks_ReleaseSlot
-'   指定されたスロットをフリーリストに返却する。
-'   m_handlers(idx) もクリアする。
+'   Returns the specified slot to the free list.
+'   Also clears m_handlers(idx).
 ' ============================================================
 Public Sub Thunks_ReleaseSlot(ByVal pSlot As LongPtr)
     If m_pRegionBase = 0 Then Exit Sub
@@ -2001,12 +2059,12 @@ Public Sub Thunks_ReleaseSlot(ByVal pSlot As LongPtr)
     Dim idx As Long
     idx = SlotIndexFromAddr(pSlot)
     If idx < 0 Then Exit Sub
-    If m_freeNext(idx) <> -1 Then Exit Sub           ' 既に空き = 二重解放
+    If m_freeNext(idx) <> -1 Then Exit Sub           ' already free = double release
 
-    ' Handler 対応表もクリア
+    ' Also clear the Handler correspondence table
     Set m_handlers(idx) = Nothing
 
-    ' フリーリスト先頭に戻す
+    ' Return to the head of the free list
     m_freeNext(idx) = m_freeHead
     m_freeHead = idx
 
@@ -2015,9 +2073,9 @@ End Sub
 
 
 ' ============================================================
-' SlotIndexFromAddr (内部ヘルパ)
-'   サンクのアドレス (= スロット先頭アドレス) から
-'   スロット index を逆算する。
+' SlotIndexFromAddr (internal helper)
+'   Works backward from the thunk's address (= slot start address) to
+'   the slot index.
 ' ============================================================
 Private Function SlotIndexFromAddr(ByVal pSlot As LongPtr) As Long
     SlotIndexFromAddr = -1
@@ -2037,9 +2095,9 @@ End Function
 
 
 ' ============================================================
-' SlotIndexFromVTableObjAddr (内部ヘルパ)
-'   vtableObj のアドレス (= WebView2 が AddRef/Release で this として渡してくる値、
-'                     = pSlot + VTABLE_OBJ_OFFSET) から、スロット index を逆算する。
+' SlotIndexFromVTableObjAddr (internal helper)
+'   The address of vtableObj (= the value WebView2 passes as this in AddRef/Release,
+'                     = pSlot + VTABLE_OBJ_OFFSET) is worked backward to the slot index.
 ' ============================================================
 Private Function SlotIndexFromVTableObjAddr(ByVal pVTableObj As LongPtr) As Long
     SlotIndexFromVTableObjAddr = -1
@@ -2060,21 +2118,21 @@ End Function
 
 ' ============================================================
 ' Thunks_Shutdown
-'   生存フラグを 0 に倒してから VirtualFree で領域を解放する。
+'   Sets the alive flag to 0 and then frees the region with VirtualFree.
 '
-'   第9.5 段階での追加処理:
-'     - 末尾で Sentinel_ClearPrevRegion を呼んで環境変数の痕跡を消す。
-'       消し忘れると次回 Init で「既に解放済みのアドレス」を再度
-'       VirtualFree しようとして二重解放になる。VirtualFree は害なく
-'       0 を返すだけだが、痕跡を残さないのが正解。
+'   Processing added in stage 9.5:
+'     - At the end call Sentinel_ClearPrevRegion to erase the trace in the environment variable.
+'       If forgotten, the next Init would try to VirtualFree the
+'       "already freed address" again, causing a double free. VirtualFree just returns
+'       0 harmlessly, but leaving no trace is the right thing.
 ' ============================================================
 Public Sub Thunks_Shutdown()
     If m_pRegionBase = 0 Then Exit Sub
 
-    ' まず生存フラグを倒す
+    ' First clear the alive flag
     MemLongPtr(m_pRegionBase) = 0^
 
-    ' 全 Handler の owner を切って参照を解放 (循環参照防止)
+    ' Cut the owner of every Handler and release the references (prevents circular references)
     Dim i As Long
     For i = 0 To SLOT_COUNT - 1
         If Not (m_handlers(i) Is Nothing) Then
@@ -2083,7 +2141,7 @@ Public Sub Thunks_Shutdown()
         End If
     Next i
 
-    ' 領域を解放 (第9.5 段階で診断ログ追加: 戻り値と LastError を観察)
+    ' Free the region (diagnostic log added in stage 9.5: observe the return value and LastError)
     Dim shutFreeResult As Long
     Dim shutFreeErr As Long
     shutFreeResult = VirtualFree(m_pRegionBase, 0, MEM_RELEASE)
@@ -2097,17 +2155,17 @@ Public Sub Thunks_Shutdown()
     m_inUse = 0
     Erase m_freeNext
 
-    ' --- センチネル機構 (第9.5 段階追加) ---
-    '   通常終了パスでは痕跡を残さない。これを忘れると次回 Init で
-    '   既に解放済みのアドレスを VirtualFree しようとして無駄な処理
-    '   (実害は無いが Debug.Print 上の "VirtualFree returned 0" が
-    '    紛らわしくなる) が発生する。
+    ' --- Sentinel mechanism (added in stage 9.5) ---
+'   Leaves no trace on the normal termination path. If this is forgotten, the next Init
+'   tries to VirtualFree an already freed address, causing useless processing
+'   (harmless, but the "VirtualFree returned 0" on Debug.Print
+'    becomes confusing).
     Sentinel_ClearPrevRegion
 End Sub
 
 
 ' ============================================================
-' スロットインデックス → スロット先頭アドレス
+' Slot index -> slot start address
 ' ============================================================
 Private Function SlotAddrAt(ByVal idx As Long) As LongPtr
     SlotAddrAt = m_pRegionBase + HEADER_SIZE + CLngLng(idx) * SLOT_SIZE
@@ -2115,16 +2173,16 @@ End Function
 
 
 ' ============================================================
-' サンクのマシンコードを指定アドレスに書き込む (有効長 74 bytes)
+' Writes the thunk machine code to the specified address (effective length 74 bytes)
 '
-'   レイアウト:
-'     +0..+17  : 生存フラグチェック (18 bytes)
-'     +18..+73 : 既存サンク本体 (56 bytes、第六?八段階と同一)
+'   Layout:
+'     +0..+17  : alive flag check (18 bytes)
+'     +18..+73 : existing thunk body (56 bytes, same as stages 6-8)
 '
-'   実装上の注意:
-'     バイト配列 b は 80 bytes (= 8 の倍数) で宣言し、末尾 6 bytes は
-'     ゼロパディング扱い。書き込み先のスロット +96..+175 (= 80 bytes ぶん)
-'     はもともとパディング/未使用領域なので、80 bytes 書き込んでも無害。
+'   Implementation notes:
+'     The byte array b is declared as 80 bytes (= a multiple of 8), and the last 6 bytes are
+'     treated as zero padding. The destination slot's +96..+175 (= 80 bytes' worth)
+'     is originally a padding/unused area, so writing 80 bytes is harmless.
 ' ============================================================
 Private Sub WriteThunkMachineCode( _
     ByVal addr As LongPtr, _
@@ -2135,20 +2193,20 @@ Private Sub WriteThunkMachineCode( _
     Dim b(0 To THUNK_BUF_SIZE - 1) As Byte, i As Long
     i = 0
 
-    ' --- 生存フラグチェック (18 bytes) ---
+    ' --- Alive flag check (18 bytes) ---
     ' mov rax, imm64   (= pAliveFlag = pRegionBase + 0)
     b(i) = &H48: b(i + 1) = &HB8: i = i + 2
     MemLongPtr(VarPtr(b(i))) = pRegionBase: i = i + 8
     ' cmp byte ptr [rax], 1
     b(i) = &H80: b(i + 1) = &H38: b(i + 2) = &H1: i = i + 3
-    ' je +3 (= alive ラベル、xor + ret の 3 bytes をスキップ)
+    ' je +3 (= alive label, skips the 3 bytes of xor + ret)
     b(i) = &H74: b(i + 1) = &H3: i = i + 2
     ' xor eax, eax
     b(i) = &H33: b(i + 1) = &HC0: i = i + 2
     ' ret
     b(i) = &HC3: i = i + 1
 
-    ' --- 以降、第六?八段階と同一の 56 bytes サンク本体 ---
+    ' --- From here on, the same 56-byte thunk body as stages 6-8 ---
 
     ' sub rsp, 0x38
     b(i) = &H48: b(i + 1) = &H83: b(i + 2) = &HEC: b(i + 3) = &H38: i = i + 4
@@ -2176,11 +2234,11 @@ Private Sub WriteThunkMachineCode( _
     b(i) = &H48: b(i + 1) = &H83: b(i + 2) = &HC4: b(i + 3) = &H38: i = i + 4
     ' ret
     b(i) = &HC3: i = i + 1
-    ' int3 / int3 (パディング)
+    ' int3 / int3 (padding)
     b(i) = &HCC: i = i + 1
     b(i) = &HCC: i = i + 1
 
-    ' --- 80 bytes を 8 byte 単位で書き込む (末尾 6 bytes は 0 パディング、無害) ---
+    ' --- Write 80 bytes in 8-byte units (the last 6 bytes are 0 padding, harmless) ---
     Dim k As Long
     For k = 0 To THUNK_BUF_SIZE - 1 Step 8
         MemLongPtr(addr + k) = ReadLongPtrFromBytes(b, k)
@@ -2189,7 +2247,7 @@ End Sub
 
 
 ' ============================================================
-' バイト配列の指定オフセットから 8 bytes (LongPtr) を取り出す
+' Extracts 8 bytes (LongPtr) from the specified offset of a byte array
 ' ============================================================
 Private Function ReadLongPtrFromBytes(ByRef b() As Byte, ByVal offset As Long) As LongPtr
     ReadLongPtrFromBytes = ReadLongPtr(VarPtr(b(offset)))
@@ -2197,7 +2255,7 @@ End Function
 
 
 ' ============================================================
-' クラスのvTableから固定スロットの関数アドレスを取得
+' Gets the function address of a fixed slot from the class's vTable
 ' ============================================================
 Private Function GetClassMethodAddrAtFixedSlot( _
     ByVal cls As Object, ByVal slotIndex As Long) As LongPtr
@@ -2215,24 +2273,24 @@ End Function
 
 
 ' ============================================================
-' IUnknown スタブ群（標準モジュール）
+' IUnknown stub group (standard module)
 '
-'   第9.2段階での仕様:
-'     - this から SlotIndexFromVTableObjAddr で idx を逆引き
-'     - m_handlers(idx) を直接操作
-'     - これにより複数ハンドラを並行管理できる
+'   Specification in stage 9.2:
+'     - Work backward from this to idx with SlotIndexFromVTableObjAddr
+'     - Operate m_handlers(idx) directly
+'     - This allows multiple handlers to be managed in parallel
 '
-'   第9.7a 段階で導入された IID チェック:
-'     - Handler_QueryInterface が riid を本物の IID と比較する
-'     - IID_IUnknown または「自分の HandlerKind に対応する本来の IID」のみ S_OK
-'     - それ以外は ppvObject = 0 + E_NOINTERFACE
-'     - 失敗時は riid.Data1 を Hex でログ出力 (成功時はノイズ削減のためログなし)
+'   IID check introduced in stage 9.7a:
+'     - Handler_QueryInterface compares riid with the genuine IID
+'     - Only IID_IUnknown or "the proper IID corresponding to its own HandlerKind" gives S_OK
+'     - Anything else gives ppvObject = 0 + E_NOINTERFACE
+'     - On failure riid.Data1 is logged in Hex (no log on success, to reduce noise)
 '
-'   COM 規約遵守ポイント:
-'     - 成功時 (S_OK 返却時) は AddRef する
-'     - 失敗時 (E_NOINTERFACE 返却時) は AddRef しない、ppvObject に NULL を書く
+'   Points for obeying the COM convention:
+'     - On success (when S_OK is returned) do AddRef
+'     - On failure (when E_NOINTERFACE is returned) do not AddRef, and write NULL to ppvObject
 '
-'   トラブル時の切り戻し手順はモジュール冒頭コメントを参照。
+'   For the rollback procedure in case of trouble, see the comment at the top of the module.
 ' ============================================================
 Private Function GetAddr(ByVal addr As LongPtr) As LongPtr
     GetAddr = addr
@@ -2243,14 +2301,14 @@ Private Function Handler_QueryInterface( _
     ByVal riid As LongPtr, _
     ByRef ppvObject As LongPtr) As Long
 
-    ' --- 防御: riid が NULL なら E_POINTER ---
+    ' --- Defense: if riid is NULL, E_POINTER ---
     If riid = 0 Then
         ppvObject = 0
         Handler_QueryInterface = &H80004003   ' E_POINTER
         Exit Function
     End If
 
-    ' --- 防御: this が無効なら E_NOINTERFACE ---
+    ' --- Defense: if this is invalid, E_NOINTERFACE ---
     Dim idx As Long
     idx = SlotIndexFromVTableObjAddr(this)
     If idx < 0 Then
@@ -2264,7 +2322,7 @@ Private Function Handler_QueryInterface( _
         Exit Function
     End If
 
-    ' --- riid と IID_IUnknown を比較 ---
+    ' --- Compare riid with IID_IUnknown ---
     If IsEqualGUIDInPlace(riid, m_iidIUnknown) Then
         ppvObject = this
         HandlerAddRefInternal this
@@ -2272,7 +2330,7 @@ Private Function Handler_QueryInterface( _
         Exit Function
     End If
 
-    ' --- riid と「自分の本来の IID」を比較 ---
+    ' --- Compare riid with "its own proper IID" ---
     Dim kind As HandlerKind
     kind = m_handlers(idx).kind
     If IsEqualGUIDInPlace(riid, m_iidTable(kind)) Then
@@ -2282,14 +2340,14 @@ Private Function Handler_QueryInterface( _
         Exit Function
     End If
 
-    ' --- どの IID とも一致しない: E_NOINTERFACE ---
-    '   riid.Data1 (先頭 4 byte、little-endian の Long) をログに出す。
-    '   QueryInterface が呼ばれた瞬間に WebView2 がどの IID を試したかが
-    '   観察できる (お行儀 IID = IMarshal / IAgileObject 等の検出にも有用)。
+    ' --- Matches no IID: E_NOINTERFACE ---
+    '   Log riid.Data1 (the first 4 bytes, a little-endian Long).
+    '   You can observe which IID WebView2 tried at the moment QueryInterface was called
+    '   (also useful for detecting well-behaved IIDs = IMarshal / IAgileObject etc.).
     Dim data1 As Long
     data1 = LongPtrLowDword(ReadLongPtr(riid))
     Debug.Print "  QI rejected [idx=" & idx & " kind=" & kind & _
-                "] riid.Data1=&H" & Hex(data1) & " → E_NOINTERFACE"
+                "] riid.Data1=&H" & Hex(data1) & " -> E_NOINTERFACE"
     ppvObject = 0
     Handler_QueryInterface = E_NOINTERFACE
 End Function
@@ -2304,26 +2362,26 @@ End Function
 
 
 ' ============================================================
-' IsEqualGUIDInPlace (第9.7a 段階で新規)
+' IsEqualGUIDInPlace (newly added in stage 9.7a)
 '
-'   2 つの GUID (16 byte) を比較する。
-'   片方は riid (ポインタ、WebView2 から渡される)、
-'   もう片方は m_iidTable / m_iidIUnknown (VBA 側の GUID 型変数)。
+'   Compares two GUIDs (16 bytes).
+'   One is riid (a pointer, passed from WebView2),
+'   the other is m_iidTable / m_iidIUnknown (a GUID-type variable on the VBA side).
 '
-'   実装方式: LongPtr (= x64 で 8 byte) を 2 個読んで比較する高速版。
-'     - 前半 8 byte: Data1 (4) + Data2 (2) + Data3 (2)
-'     - 後半 8 byte: Data4(0..7)
+'   Method: a fast version that reads two LongPtrs (= 8 bytes on x64) and compares them.
+'     - First 8 bytes: Data1 (4) + Data2 (2) + Data3 (2)
+'     - Last 8 bytes: Data4(0..7)
 '
-'   VBA 側の GUID 型変数のアドレスは VarPtr で取得する。
-'   x64 では GUID 型は 16 byte 連続配置 (パディングなし、データ並びは
-'   Win32 標準の little-endian と一致)。これは Win32 GUID 構造体と
-'   VBA の Type 宣言が偶然 (というか自然に) 一致しているため。
+'   The address of a GUID-type variable on the VBA side is obtained with VarPtr.
+'   On x64 the GUID type is laid out contiguously in 16 bytes (no padding, and the data order
+'   matches the Win32 standard little-endian). This is because the Win32 GUID structure and
+'   VBA's Type declaration coincide by chance (or rather, naturally).
 '
-'   検証ポイント:
-'     - VBA の Type が本当にパディングなしで 16 byte 連続配置になるか
-'     - Long / Integer が x64 メモリ上で little-endian で並ぶか
-'   いずれも x64 VBA の標準動作だが、もし不一致なら IID チェック自体が
-'   失敗する (riid と m_iidTable が一致しない) ため、検証で気付ける。
+'   Verification points:
+'     - Whether a VBA Type really is laid out contiguously in 16 bytes with no padding
+'     - Whether Long / Integer are arranged little-endian in x64 memory
+'   Both are standard behavior of x64 VBA, but if they do not match the IID check itself
+'   fails (riid and m_iidTable do not match), so it can be noticed in verification.
 ' ============================================================
 Private Function IsEqualGUIDInPlace(ByVal pRiid As LongPtr, ByRef refGuid As GUID) As Boolean
     Dim pRef As LongPtr
@@ -2337,12 +2395,12 @@ End Function
 
 
 ' ============================================================
-' LongPtrLowDword (補助ヘルパー、第9.7a 段階で新規)
+' LongPtrLowDword (auxiliary helper, newly added in stage 9.7a)
 '
-'   LongPtr の下位 32 bit を Long として取り出す。riid.Data1 (最初の
-'   4 byte) を Handler_QueryInterface のログ出力で使う。
-'   ComCallbackHandler.cls にも同名の Private 関数があるが、こちらは Module9 内専用。
-'   実装は同じ。
+'   Extracts the low 32 bits of a LongPtr as a Long. riid.Data1 (the first
+'   4 bytes) is used in the log output of Handler_QueryInterface.
+'   ComCallbackHandler.cls also has a Private function of the same name, but this one is for Module9 only.
+'   The implementation is the same.
 ' ============================================================
 Private Function LongPtrLowDword(ByVal v As LongPtr) As Long
     Dim u As LongLong
@@ -2356,26 +2414,26 @@ End Function
 
 
 ' ============================================================
-' InitIIDTable (第9.7a 段階で新規)
+' InitIIDTable (newly added in stage 9.7a)
 '
-'   m_iidIUnknown と m_iidTable(HK_xxx) を初期化する。
-'   Thunks_Init の末尾から 1 回だけ呼ばれる。
+'   Initializes m_iidIUnknown and m_iidTable(HK_xxx).
+'   Called only once from the end of Thunks_Init.
 '
-'   IID 値の出典: WebView2.h (Microsoft Edge WebView2 SDK)。
-'   各 IID は WebView2_IID_vtable_reference.md に記載済み。
+'   Source of the IID values: WebView2.h (Microsoft Edge WebView2 SDK).
+'   Each IID is already listed in WebView2_IID_vtable_reference.md.
 '
-'   GUID の各フィールドへの書き込み方:
-'     Data1 (Long、4 byte little-endian): 整数リテラル
-'     Data2 (Integer、2 byte little-endian): 整数リテラル (符号付き範囲のため、
-'       &H8000 以上は & サフィックスで Long 化してから CInt で Integer に
-'       戻す手間がある。本実装では FillGUID で String パース方式を採用し、
-'       コード上で整数値を直接書かないことで &H リテラル罠 (設計原則 29) を回避)
+'   How to write to each field of the GUID:
+'     Data1 (Long, 4-byte little-endian): integer literal
+'     Data2 (Integer, 2-byte little-endian): integer literal (because of the signed range,
+'       values of &H8000 and above take the trouble of becoming Long with the & suffix and then
+'       returning to Integer with CInt. This implementation adopts the String parsing method in FillGUID,
+'       and by not writing integer values directly in code avoids the &H literal trap (design principle 29))
 ' ============================================================
 Private Sub InitIIDTable()
-    ' --- IID_IUnknown (Win32 標準、{00000000-0000-0000-C000-000000000046}) ---
+    ' --- IID_IUnknown (Win32 standard, {00000000-0000-0000-C000-000000000046}) ---
     FillGUID m_iidIUnknown, "00000000-0000-0000-C000-000000000046"
 
-    ' --- HandlerKind ごとの本来の IID ---
+    ' --- The proper IID for each HandlerKind ---
 
     ' ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler
     FillGUID m_iidTable(HK_EnvironmentCompleted), _
@@ -2405,71 +2463,71 @@ Private Sub InitIIDTable()
     FillGUID m_iidTable(HK_NewWindowRequested), _
              "d4c185fe-c81c-4989-97af-2d3fa7ab5651"
 
-    ' ICoreWebView2ExecuteScriptCompletedHandler (第9.8c で追加)
+    ' ICoreWebView2ExecuteScriptCompletedHandler (added in 9.8c)
     FillGUID m_iidTable(HK_ExecuteScriptCompleted), _
              "49511172-cc67-4bca-9923-137112f4c4cc"
 
-    ' ICoreWebView2HistoryChangedEventHandler (第9.9b で追加)
-    '   出典: WebView2.h L3790
+    ' ICoreWebView2HistoryChangedEventHandler (added in 9.9b)
+    '   Source: WebView2.h L3790
     FillGUID m_iidTable(HK_HistoryChanged), _
              "c79a420c-efd9-4058-9295-3e8b4bcab645"
 
-    ' ICoreWebView2DOMContentLoadedEventHandler (第9.9b で追加)
-    '   出典: WebView2.h L5718
+    ' ICoreWebView2DOMContentLoadedEventHandler (added in 9.9b)
+    '   Source: WebView2.h L5718
     FillGUID m_iidTable(HK_DOMContentLoaded), _
              "4bac7e9c-199e-49ed-87ed-249303acf019"
 
-    ' ICoreWebView2WebResourceRequestedEventHandler (N-1 で追加)
-    '   出典: WebView2.h の MIDL_INTERFACE 行 (★推測ではなくヘッダから取った★)
+    ' ICoreWebView2WebResourceRequestedEventHandler (added in N-1)
+    '   Source: the MIDL_INTERFACE line of WebView2.h (**taken from the header, not guessed**)
     FillGUID m_iidTable(HK_WebResourceRequested), _
              "ab00b74c-15f1-4646-80e8-e76341d25d71"
 
-    ' ICoreWebView2WebResourceResponseReceivedEventHandler (N-3 で追加)
-    '   出典: WebView2.h の MIDL_INTERFACE 行
+    ' ICoreWebView2WebResourceResponseReceivedEventHandler (added in N-3)
+    '   Source: the MIDL_INTERFACE line of WebView2.h
     FillGUID m_iidTable(HK_WebResourceResponseReceived), _
              "7de9898a-24f5-40c3-a2de-d4f458e69828"
 
-    ' ICoreWebView2WebResourceResponseViewGetContentCompletedHandler (N-4 で追加)
-    '   出典: WebView2.h の MIDL_INTERFACE 行
+    ' ICoreWebView2WebResourceResponseViewGetContentCompletedHandler (added in N-4)
+    '   Source: the MIDL_INTERFACE line of WebView2.h
     FillGUID m_iidTable(HK_ResponseGetContent), _
              "875738e1-9fa2-40e3-8b74-2e8972dd6fe7"
 End Sub
 
 
 ' ============================================================
-' FillGUID (第9.7a 段階で新規、第9.9a で Public 昇格)
+' FillGUID (newly added in stage 9.7a, promoted to Public in 9.9a)
 '
-'   "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" 形式の文字列から GUID 構造体を埋める。
-'   コード上で &H リテラルを直接書くと罠 (設計原則 29) に嵌まる場合があるため、
-'   文字列経由でパースする方式を採用。
+'   Fills a GUID structure from a string of the form "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+'   Writing &H literals directly in code can fall into the trap (design principle 29), so
+'   the method of parsing via a string is adopted.
 '
-'   入力例: "4e8a3389-c9d8-4bd2-b6b5-124fee6cc14d"
-'   分割:
-'     g(0..7)   = "4e8a3389"  → Data1 (Long)
-'     g(9..12)  = "c9d8"      → Data2 (Integer)
-'     g(14..17) = "4bd2"      → Data3 (Integer)
-'     g(19..22) = "b6b5"      → Data4(0..1)
-'     g(24..35) = "124fee6cc14d" → Data4(2..7)
+'   Input example: "4e8a3389-c9d8-4bd2-b6b5-124fee6cc14d"
+'   Split:
+'     g(0..7)   = "4e8a3389"  -> Data1 (Long)
+'     g(9..12)  = "c9d8"      -> Data2 (Integer)
+'     g(14..17) = "4bd2"      -> Data3 (Integer)
+'     g(19..22) = "b6b5"      -> Data4(0..1)
+'     g(24..35) = "124fee6cc14d" -> Data4(2..7)
 '
-'   各 16 進文字列は HexStrToLong / HexStrToInt で数値化。
-'   Data2 / Data3 は Integer (符号付き 16 bit)。&HC9D8 のような値は
-'   素直に CInt() すると Overflow するので、一旦 Long で読んでから
-'   符号反転処理を入れる必要がある。本実装ではそのための専用ヘルパー
-'   HexStrToInt を用意。
+'   Each hexadecimal string is converted to a number by HexStrToLong / HexStrToInt.
+'   Data2 / Data3 are Integer (signed 16-bit). A value like &HC9D8 overflows if
+'   simply passed to CInt(), so it must first be read as a Long and then
+'   have sign inversion processing applied. This implementation provides a dedicated helper
+'   HexStrToInt for that.
 '
-'   第9.9a で Public 昇格:
-'     Wv2Pane.EnsureView2 から、QueryInterface 用のローカル GUID 構造体を
-'     初期化するために本関数を呼ぶ。Wv2Thunks の InitIIDTable 専用ユーティリティ
-'     だったものを、共通ユーティリティに格上げ。GUID 型 (Public Type) と
-'     ペアで使われる基本機能なので、公開しても自然 (= 設計原則 50 として
-'     新設、9.9a 検証後に確定予定)。
+'   Promoted to Public in 9.9a:
+'     Wv2Pane.EnsureView2 calls this function to initialize a local GUID structure
+'     for QueryInterface. What had been a utility dedicated to Wv2Thunks' InitIIDTable
+'     was upgraded to a common utility. It is a basic facility used as a pair with the GUID type (Public Type),
+'     so making it public is natural (= newly established as design principle 50,
+'     to be finalized after 9.9a verification).
 ' ============================================================
 Public Sub FillGUID(ByRef g As GUID, ByVal s As String)
     g.data1 = HexStrToLong(Mid$(s, 1, 8))
     g.Data2 = HexStrToInt(Mid$(s, 10, 4))
     g.Data3 = HexStrToInt(Mid$(s, 15, 4))
 
-    ' Data4(0..7): 残り 4 バイト分 (Mid 20..23) + 後半 12 桁 (Mid 25..36)
+    ' Data4(0..7): the remaining 4 bytes (Mid 20..23) + the latter 12 digits (Mid 25..36)
     g.Data4(0) = CByte("&H" & Mid$(s, 20, 2))
     g.Data4(1) = CByte("&H" & Mid$(s, 22, 2))
     g.Data4(2) = CByte("&H" & Mid$(s, 25, 2))
@@ -2482,23 +2540,23 @@ End Sub
 
 
 ' ============================================================
-' HexStrToLong (第9.7a 段階で新規)
+' HexStrToLong (newly added in stage 9.7a)
 '
-'   8 桁の 16 進文字列を Long に変換する。値が &H80000000 以上の場合は
-'   負の値になる (Long は符号付き 32 bit、二補表現)。
+'   Converts an 8-digit hexadecimal string to a Long. If the value is &H80000000 or above it becomes
+'   negative (Long is signed 32-bit, two's complement).
 '
-'   VBA の CLng("&H...") は値が Long の範囲を超えると Overflow する。
-'   そこで LongLong 経由で読んで、最上位ビットが立つときは
-'   2 の補数表現に変換してから CLng で Long に落とす。
+'   VBA's CLng("&H...") overflows when the value exceeds the Long range.
+'   So it is read via LongLong, and when the top bit is set it is
+'   converted to two's complement form and then dropped to Long with CLng.
 '
-'   入力例: "4e8a3389" → 1317797257
-'           "d33a35bf" → -752318529 (符号付き Long)
+'   Input example: "4e8a3389" -> 1317797257
+'           "d33a35bf" -> -752318529 (signed Long)
 ' ============================================================
 Private Function HexStrToLong(ByVal s As String) As Long
     Dim v As LongLong
-    v = CLngLng("&H" & s)                     ' 0..&HFFFFFFFF を LongLong (符号付き 64 bit) で受け取る
+    v = CLngLng("&H" & s)                     ' receive 0..&HFFFFFFFF as a LongLong (signed 64-bit)
     If v >= &H80000000^ Then
-        HexStrToLong = CLng(v - &H100000000^) ' 32 bit の符号反転処理 (2 の補数)
+        HexStrToLong = CLng(v - &H100000000^) ' 32-bit sign inversion (two's complement)
     Else
         HexStrToLong = CLng(v)
     End If
@@ -2506,23 +2564,23 @@ End Function
 
 
 ' ============================================================
-' HexStrToInt (第9.7a 段階で新規)
+' HexStrToInt (newly added in stage 9.7a)
 '
-'   4 桁の 16 進文字列を Integer (符号付き 16 bit) に変換する。
-'   値が &H8000 以上の場合は負の値になる。
+'   Converts a 4-digit hexadecimal string to an Integer (signed 16-bit).
+'   If the value is &H8000 or above it becomes negative.
 '
-'   VBA の CInt("&H...") は &H8000 以上で Overflow する可能性がある
-'   (= 「32768 を Integer の範囲に収めようとして例外」、これは設計原則 29
-'   の罠と同根の問題)。
+'   VBA's CInt("&H...") can overflow at &H8000 and above
+'   (= "an exception from trying to fit 32768 into the Integer range", a problem with the same root as the
+'   trap of design principle 29).
 '
-'   安全策として CLng で一旦 Long に取り、&H8000 以上なら手動で
-'   2 の補数表現に変換して CInt する。
+'   As a safety measure, take it once as a Long with CLng and, if &H8000 or above, convert it manually to
+'   two's complement form and then CInt.
 ' ============================================================
 Private Function HexStrToInt(ByVal s As String) As Integer
     Dim v As Long
-    v = CLng("&H" & s)                        ' 0..&HFFFF の Long として取得
+    v = CLng("&H" & s)                        ' obtain as a Long of 0..&HFFFF
     If v >= &H8000& Then
-        HexStrToInt = CInt(v - &H10000)       ' 負の Integer に変換
+        HexStrToInt = CInt(v - &H10000)       ' convert to a negative Integer
     Else
         HexStrToInt = CInt(v)
     End If
@@ -2532,16 +2590,16 @@ End Function
 ' ============================================================
 ' HandlerAddRefInternal / HandlerReleaseInternal
 '
-'   第9.2段階での実装:
-'     - this (= pSlot + VTABLE_OBJ_OFFSET) から idx を求める
-'     - m_handlers(idx) のオブジェクトを操作する
-'     - 不正な this は安全に 0 を返す
+'   Implementation in stage 9.2:
+'     - Find idx from this (= pSlot + VTABLE_OBJ_OFFSET)
+'     - Operate on the object in m_handlers(idx)
+'     - An invalid this safely returns 0
 '
-'   第9.3a 段階での変更:
-'     - HandlerReleaseInternal の自動解放経路から、末尾の
-'       「gHandler Is h」分岐を削除 (gHandler 自体が撤廃されたため)
+'   Changes in stage 9.3a:
+'     - Removed the trailing "gHandler Is h" branch from the automatic release path of
+'       HandlerReleaseInternal (because gHandler itself was abolished)
 '
-'   戻り値: 操作後の refcount
+'   Return value: refcount after the operation
 ' ============================================================
 Private Function HandlerAddRefInternal(ByVal this As LongPtr) As Long
     Dim idx As Long
@@ -2552,7 +2610,7 @@ Private Function HandlerAddRefInternal(ByVal this As LongPtr) As Long
     Dim n As Long
     n = m_handlers(idx).RefCount + 1
     m_handlers(idx).RefCount = n
-    Debug.Print "  AddRef [idx=" & idx & "] → refCount = " & n
+    Debug.Print "  AddRef [idx=" & idx & "] -> refCount = " & n
     HandlerAddRefInternal = n
 End Function
 
@@ -2564,20 +2622,20 @@ Private Function HandlerReleaseInternal(ByVal this As LongPtr) As Long
 
     Dim n As Long
     n = m_handlers(idx).RefCount - 1
-    If n < 0 Then n = 0                ' 防御 (本来あり得ない)
+    If n < 0 Then n = 0                ' defense (cannot happen by design)
     m_handlers(idx).RefCount = n
-    Debug.Print "  Release [idx=" & idx & "] → refCount = " & n
+    Debug.Print "  Release [idx=" & idx & "] -> refCount = " & n
 
     If n = 0 Then
-        ' refcount が 0 になったので、循環参照を切ってスロットを解放する。
-        ' 順序が重要 (第9.1段階以降同じ):
-        '   1. ClearOwner で循環参照を切る (ComCallbackHandler → 上位クラスの参照を切る)
-        '   2. ローカル参照を保持してから m_handlers(idx) を Nothing に
-        '   3. Thunks_ReleaseSlot でスロットをフリーリストに戻す
-        '   4. ローカル参照も Nothing に (ここで ComCallbackHandler が完全解放される)
+        ' refcount reached 0, so cut the circular reference and release the slot.
+        ' The order is important (the same since stage 9.1):
+        '   1. Cut the circular reference with ClearOwner (cut ComCallbackHandler -> the upper class reference)
+        '   2. Hold a local reference, then set m_handlers(idx) to Nothing
+        '   3. Return the slot to the free list with Thunks_ReleaseSlot
+        '   4. Set the local reference to Nothing too (ComCallbackHandler is completely released here)
         '
-        ' 第9.3a での変更: 旧 4. の「gHandler Is h なら gHandler も切る」
-        ' という分岐は不要になった (gHandler が撤廃されたため)。
+        ' Change in 9.3a: the old 4., the branch "if gHandler Is h, also cut gHandler",
+        ' became unnecessary (because gHandler was abolished).
 
         Dim h As ComCallbackHandler
         Set h = m_handlers(idx)
@@ -2585,22 +2643,22 @@ Private Function HandlerReleaseInternal(ByVal this As LongPtr) As Long
         Dim pSlot As LongPtr
         pSlot = h.Slot
 
-        ' 1. 循環参照を切る (ComCallbackHandler.m_owner = Nothing)
-        '    これにより上位クラス (Wv2Environment 等) への参照が切れ、
-        '    上位クラス側でも ComCallbackHandler への参照が切られていれば
-        '    両方が GC で解放される流れに乗る。
+        ' 1. Cut the circular reference (ComCallbackHandler.m_owner = Nothing)
+        '    This cuts the reference to the upper class (Wv2Environment etc.), and
+        '    if the upper class side has also cut its reference to ComCallbackHandler,
+        '    both get onto the path of being released by GC.
         h.ClearOwner
 
-        ' 2. m_handlers(idx) を Nothing に
+        ' 2. Set m_handlers(idx) to Nothing
         Set m_handlers(idx) = Nothing
 
-        ' 3. スロットをフリーリストに戻す
+        ' 3. Return the slot to the free list
         Thunks_ReleaseSlot pSlot
 
-        ' 4. h はこのプロシージャを抜ける時点で参照が切れて解放される
+        ' 4. h loses its reference and is released when this procedure exits
         Set h = Nothing
 
-        Debug.Print "  Release [idx=" & idx & "] → refCount = 0 → Slot " & idx & " auto-released"
+        Debug.Print "  Release [idx=" & idx & "] -> refCount = 0 -> Slot " & idx & " auto-released"
     End If
 
     HandlerReleaseInternal = n
@@ -2608,7 +2666,7 @@ End Function
 
 
 ' ============================================================
-' PointerAccessor によるメモリ操作プリミティブ
+' Memory operation primitives via PointerAccessor
 ' ============================================================
 Private Property Let MemLongPtr(ByVal addr As LongPtr, ByVal newValue As LongPtr)
     Dim pa(0 To 0) As PointerAccessor
@@ -2646,3 +2704,42 @@ Private Sub WritePtrNatively(ByRef ptrs() As LONG_PTR, ByVal Ptr As LongPtr)
     ptrs(0) = Ptr
 End Sub
 
+
+' ============================================================
+' EnsureWebView2Loader (English fork)
+'   Makes sure WebView2Loader.dll (x64) is loaded before the first call to
+'   CreateCoreWebView2EnvironmentWithOptions. Search order:
+'     1. already loaded in this process
+'     2. %WEBVIEW2_LOADER_PATH% (full path to the DLL, for your own copy)
+'     3. the workbook's folder
+'     4. Excel's folder (Application.Path)
+'     5. Office's Power Query copy:
+'        <Application.Path>\ADDINS\Microsoft Power Query for Excel Integrated\bin
+'   Returns the path that was loaded ("(already loaded)"), or "" if none.
+' ============================================================
+Public Function EnsureWebView2Loader() As String
+    Const DLL_NAME As String = "WebView2Loader.dll"
+    If GetModuleHandleW(StrPtr(DLL_NAME)) <> 0 Then
+        EnsureWebView2Loader = "(already loaded)"
+        Exit Function
+    End If
+
+    Dim cands(1 To 4) As String, i As Long
+    cands(1) = Environ$("WEBVIEW2_LOADER_PATH")
+    On Error Resume Next
+    cands(2) = ThisWorkbook.Path & "\" & DLL_NAME
+    cands(3) = Application.Path & "\" & DLL_NAME
+    cands(4) = Application.Path & "\ADDINS\Microsoft Power Query for Excel Integrated\bin\" & DLL_NAME
+    On Error GoTo 0
+
+    For i = 1 To 4
+        If Len(cands(i)) > Len(DLL_NAME) Then
+            If LenB(Dir$(cands(i))) > 0 Then
+                If LoadLibraryW(StrPtr(cands(i))) <> 0 Then
+                    EnsureWebView2Loader = cands(i)
+                    Exit Function
+                End If
+            End If
+        End If
+    Next i
+End Function

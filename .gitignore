@@ -1,16 +1,18 @@
-# Excel のロックファイル（ブックを開くと自動生成される）
+# Excel lock files (created automatically while a workbook is open)
 ~$*.xlsm
 ~$*.xlsx
 ~$*.xls
 
-# バックアップ・作業用
+# Backups / scratch
 *.bak
 book/backup/
 tools/tmp/
 
-# OneDrive の競合コピー
+# OneDrive conflict copies ("競合コピー" = Japanese "conflict copy")
 *競合コピー*
+*conflicted copy*
 
 # Python
 __pycache__/
 *.pyc
+tools/WebView2.h

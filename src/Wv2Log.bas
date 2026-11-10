@@ -1,78 +1,78 @@
 Attribute VB_Name = "Wv2Log"
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Log.bas  K-4b 段階 (時刻を GetLocalTime 1 回で取る) ---
+' --- Wv2Log.bas  Stage K-4b (take the time with a single GetLocalTime call) ---
 '
-'   ★K-4a の実測で実害が出たので直した★
+'   *Fixed because K-4a measurements showed real harm*
 '     000030  22:45:23.992
-'     000031  22:45:23.000   ← ★秒が繰り上がっていない★ (正しくは 24.000)
+'     000031  22:45:23.000   <- *the second did not roll over* (should be 24.000)
 '     000032  22:45:24.008
 '
-'   原因は ★Now と Timer という別々の時刻源を混ぜていたこと★。
-'   Timer が先に次の秒へ繰り上がると「秒は前のまま・ミリ秒は 000」になる。
-'   (逆向きのずれも起きうる。両者はソースも更新間隔も違う)
+'   The cause was *mixing two separate time sources, Now and Timer*.
+'   When Timer rolls over to the next second first, you get "previous second, milliseconds 000".
+'   (The opposite skew can also happen. The two differ in both source and update interval.)
 '
-'   ★実害★ 解放処理の所要を測っていて「1008 ms かかったステップがある」と
-'   読み違えかけた。★計測の土台が壊れていると実測そのものが信じられなくなる。★
+'   *Real harm* While timing the teardown I almost misread "one step took 1008 ms".
+'   *If the measuring base is broken, the measurements themselves can no longer be trusted.*
 '
-'   直し方は GetLocalTime を 1 回呼ぶだけ。年月日時分秒ミリ秒が同時に取れるので
-'   ★原理的にずれない★。
+'   The fix is just one call to GetLocalTime. Year/month/day/hour/minute/second/millisecond
+'   are obtained at the same instant, so they *cannot be skewed in principle*.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Log.bas  K-1 段階 (デバッグログのファイル出力) ---
+' --- Wv2Log.bas  Stage K-1 (debug log written to a file) ---
 '
-'   ★なぜ要るか★
-'     D-2 の検証で、イミディエイトウィンドウの保持行数が足りず前半のログが流れて
-'     確認できない事態が起きた。ハンドルの連番から健全性は確定できたが、
-'     ★流れたことに気づけない★のが本質的な危険。D 軸は 1 テストで数十往復するため
-'     必ず再発する。以降のすべての検証の土台。
+'   *Why it is needed*
+'     During D-2 verification, the Immediate window's line retention was too small and the first
+'     half of the log scrolled away and could not be checked. Handle serial numbers let us confirm
+'     health, but the real danger is *not noticing that lines scrolled away*. The D axis does dozens
+'     of round trips per test, so this is certain to recur. Basis of all later verification.
 '
-'   ★何を持つか★
-'     ・LogE / LogW / LogI / LogD : レベル別の 1 行出力
-'     ・LogPath                   : 現在のログファイルのフルパス (Property Get)
-'     ・LogLevel                  : しきい値 (Property Get/Let)。既定は LOG_DEBUG
-'     ・LogEcho                   : Debug.Print への併記 (Property Get/Let)。既定は True
-'     ・LogStart / LogStop / LogFlush : 明示制御
+'   *What it provides*
+'     - LogE / LogW / LogI / LogD : one-line output per level
+'     - LogPath                   : full path of the current log file (Property Get)
+'     - LogLevel                  : threshold (Property Get/Let). Default is LOG_DEBUG
+'     - LogEcho                   : also echo to Debug.Print (Property Get/Let). Default True
+'     - LogStart / LogStop / LogFlush : explicit control
 '
-'   ★設計の要点 (K-1 で 9 論点を一括合意)★
-'     ・出力先は %APPDATA%\Wv2Browser\logs\。settings.txt と同じ根に揃える。
-'       ブックと同じ場所に置くと OneDrive の同期と衝突しうるので避けた
-'     ・★起動ごとに 1 本★ (wv2_yyyymmdd_hhnnss.log)。古いものは 20 本残して自動削除。
-'       D 軸は「1 テスト = 数十往復」なので、テスト 1 回分が 1 ファイルに閉じているのが効く
-'     ・★LogPrint が内部で Debug.Print も撃つ★ 呼び出し側は 1 行だけ。
-'       これで Debug.Print "..." -> Wv2Log.LogD "..." の機械的な 1 対 1 置換で移行でき、
-'       イミディエイトの見え方は変わらない。LogEcho = False で切れる
-'     ・★ファイルは開きっぱなし★ 毎行書く。ERROR / WARN は書いた直後に強制フラッシュ
-'       ファイルは Shared で開く。★Lock Write では ADODB も外部エディタも
-'       開けなかった (K-1 の実機検証で実測)★ 書き手はこのプロセスだけなので、
-'       ロックを掛けずに読み手を通す方が要件に合う。
-'       (閉じて開き直す)。メモリに溜めて終了時に書く方式は、仕様事実20 でクラッシュが
-'       現実的な領域なので採らない
-'     ・★再入ガードはカウンタ + 保留キュー★ (設計原則78 と同じ型)。再入中の行を
-'       捨てると「流れたことに気づけない」という K-1 の目的そのものを裏切るので、
-'       積んでおいて抜けたときに書く
-'     ・★行に連番を振る★ 欠番を見れば「流れた」ことに気づける。K-1 の動機に直結する
+'   *Key design points (9 issues agreed in one go in K-1)*
+'     - Output goes to %APPDATA%\Wv2Browser\logs\, the same root as settings.txt.
+'       Putting it next to the workbook could collide with OneDrive sync, so we avoided that
+'     - *One file per launch* (wv2_yyyymmdd_hhnnss.log). Old ones are auto-deleted, keeping 20.
+'       The D axis is "one test = dozens of round trips", so one test per file works well
+'     - *LogPrint also fires Debug.Print internally* so the caller needs only one line.
+'       This lets us migrate by a mechanical 1-to-1 replacement of Debug.Print "..." -> Wv2Log.LogD "...",
+'       and the Immediate window looks the same. LogEcho = False turns it off
+'     - *The file stays open* and is written on every line. ERROR / WARN get a forced flush right after writing
+'       The file is opened Shared. *Neither ADODB nor an external editor
+'       could open it with Lock Write (measured in K-1 real-machine testing)* The only writer is this process,
+'       so letting readers through without a lock suits the requirement better.
+'       (close and reopen). We do not use the approach of accumulating in memory and writing at exit, because
+'       a crash is a realistic possibility (spec fact 20)
+'     - *The re-entrancy guard is a counter + pending queue* (same type as design principle 78). Dropping lines
+'       that arrive during re-entry would betray K-1's very purpose of "not noticing that lines scrolled away",
+'       so we queue them and write them when we leave
+'     - *Lines get a serial number* A missing number reveals that lines were lost. Directly tied to K-1's motivation
 '
-'   ★文字コード★
-'     ログファイルは UTF-8 / BOM なし / CRLF。UTF-8 変換は本モジュール内で
-'     手書きしている (ADODB.Stream を毎行作ると重いため)。実行時の String には
-'     Web ページ由来の任意の Unicode が入りうるので、サロゲートペアも正しく畳む。
-'     ※ VBA の「ソース」が CP932 に縛られること (仕様事実35) とは別の話。
+'   *Character encoding*
+'     The log file is UTF-8 / no BOM / CRLF. The UTF-8 conversion is hand-written in this module
+'     (creating an ADODB.Stream per line would be heavy). The runtime String can hold arbitrary
+'     Unicode from Web pages, so surrogate pairs are also folded correctly.
+'     Note: this is a separate matter from the VBA "source" being tied to CP932 (spec fact 35).
 '
-'   ★Wv2Tests.WriteUtf8NoBom は再利用しない★
-'     Wv2Tests は「検証専用。移植時に外せる」位置づけ (本番実体 12 本に入っていない)。
-'     製品コードがそこに依存してはいけない。
+'   *Do not reuse Wv2Tests.WriteUtf8NoBom*
+'     Wv2Tests is positioned as "verification only, removable when porting" (it is not among the 12
+'     production units). Product code must not depend on it.
 ''''''''''''''''''''''''''''''''''
 
 Option Explicit
 
-' ===== ログレベル =====
+' ===== Log levels =====
 Public Const LOG_ERROR As Long = 1
 Public Const LOG_WARN As Long = 2
 Public Const LOG_INFO As Long = 3
 Public Const LOG_DEBUG As Long = 4
 
-' --- K-4b: 時刻は GetLocalTime で 1 回に取る ---
-'   ★Now と Timer を混ぜない★ 別の時刻源なので秒境界でずれる (ヘッダー参照)。
+' --- K-4b: take the time with a single GetLocalTime call ---
+'   *Do not mix Now and Timer* They are separate time sources, so they skew at second boundaries (see header).
 Private Type SYSTEMTIME
     wYear As Integer
     wMonth As Integer
@@ -103,8 +103,8 @@ Private m_logInit As Boolean
 ' ============================================================
 ' LogE / LogW / LogI / LogD
 '
-'   レベル別の 1 行出力。呼び出し側はこれだけ書けばよい。
-'   ERROR と WARN は書いた直後に強制フラッシュする。
+'   One-line output per level. The caller only needs to write this.
+'   ERROR and WARN are force-flushed right after being written.
 ' ============================================================
 Public Sub LogE(ByVal logMsg As String)
     LogWrite LOG_ERROR, logMsg
@@ -160,8 +160,8 @@ End Property
 ' ============================================================
 ' InitDefaults
 '
-'   モジュール変数の既定値。標準モジュールには Class_Initialize が無いので、
-'   最初にアクセスされたときに 1 度だけ通す。
+'   Default values of the module variables. A standard module has no Class_Initialize,
+'   so this runs once, the first time anything is accessed.
 ' ============================================================
 Private Sub InitDefaults()
     If m_logInit Then Exit Sub
@@ -177,9 +177,9 @@ End Sub
 ' ============================================================
 ' LogStart
 '
-'   新しいログファイルを開く。既に開いていれば閉じてから開き直す。
-'   通常は明示で呼ばなくてよい (最初の LogD で自動的に開く)。
-'   検証を仕切り直したいときに使う。
+'   Opens a new log file. If one is already open, closes it and reopens.
+'   Normally there is no need to call this explicitly (the first LogD opens it automatically).
+'   Use it when you want to restart verification cleanly.
 ' ============================================================
 Public Sub LogStart()
     On Error Resume Next
@@ -203,15 +203,15 @@ Public Sub LogStart()
     Seek #m_logNum, LOF(m_logNum) + 1
 
     Dim logHead As String
-    logHead = "=== Wv2Log 開始 " & Format$(Now, "yyyy-mm-dd hh:nn:ss") & " ===" & vbCrLf & _
+    logHead = "=== Wv2Log start " & Format$(Now, "yyyy-mm-dd hh:nn:ss") & " ===" & vbCrLf & _
               "=== path = " & m_logPath & " ===" & vbCrLf & _
-              "=== 行頭の 6 桁は連番。欠番があればログが落ちている ===" & vbCrLf
+              "=== the 6 digits at the start of each line are a serial number; a gap means the log dropped lines ===" & vbCrLf
     PutBytes Utf8FromString(logHead)
 
     Debug.Print "Wv2Log.LogStart: " & m_logPath
     Exit Sub
 eh:
-    Debug.Print "Wv2Log.LogStart: 失敗 (" & Err.Number & ") " & Err.Description
+    Debug.Print "Wv2Log.LogStart: failed (" & Err.Number & ") " & Err.Description
     m_logNum = 0
     m_logPath = ""
 End Sub
@@ -232,8 +232,8 @@ End Sub
 ' ============================================================
 ' LogFlush
 '
-'   閉じて開き直すことで、OS のバッファをディスクへ落とす。
-'   ERROR / WARN のときは LogWrite が自動で呼ぶ。
+'   Closing and reopening pushes the OS buffer down to disk.
+'   LogWrite calls this automatically for ERROR / WARN.
 ' ============================================================
 Public Sub LogFlush()
     If m_logNum = 0 Then Exit Sub
@@ -246,17 +246,17 @@ Public Sub LogFlush()
     Seek #m_logNum, LOF(m_logNum) + 1
     Exit Sub
 eh:
-    Debug.Print "Wv2Log.LogFlush: 失敗 (" & Err.Number & ") " & Err.Description
+    Debug.Print "Wv2Log.LogFlush: failed (" & Err.Number & ") " & Err.Description
     m_logNum = 0
 End Sub
 
 
 ' ============================================================
-' LogWrite  (中核)
+' LogWrite  (core)
 '
-'   ・しきい値で早期 return
-'   ・Debug.Print への併記 (LogEcho)
-'   ・★再入ガード★ 書き込み中に再入したら保留キューへ積み、抜けるときに流す
+'   - early return on the threshold
+'   - echo to Debug.Print (LogEcho)
+'   - *re-entrancy guard* if re-entered while writing, push to the pending queue and flush it on the way out
 ' ============================================================
 Private Sub LogWrite(ByVal logArg As Long, ByVal logMsg As String)
     If Not m_logInit Then InitDefaults
@@ -270,7 +270,7 @@ Private Sub LogWrite(ByVal logArg As Long, ByVal logMsg As String)
 
     If m_logEcho Then Debug.Print logLine
 
-    ' --- 再入していたら積むだけ (設計原則78 と同じ型) ---
+    ' --- if re-entered, just queue (same type as design principle 78) ---
     If m_logDepth > 0 Then
         m_logPending = m_logPending & logLine & vbCrLf
         Exit Sub
@@ -283,7 +283,7 @@ Private Sub LogWrite(ByVal logArg As Long, ByVal logMsg As String)
     If m_logNum <> 0 Then
         PutBytes Utf8FromString(logLine & vbCrLf)
 
-        ' --- 再入中に積まれた分を流す ---
+        ' --- flush what was queued during re-entry ---
         If Len(m_logPending) > 0 Then
             Dim logDrain As String
             logDrain = m_logPending
@@ -300,11 +300,11 @@ End Sub
 
 
 ' ============================================================
-' Debug_SetLogDepth  (検証専用)
+' Debug_SetLogDepth  (verification only)
 '
-'   再入ガードを外から動かすためのフック。Wv2Pane.Debug_SetInCallback と同じ型。
-'   1 以上にすると LogWrite は保留キューへ積むだけになり、0 に戻したあとの
-'   次の 1 行でまとめて流れる。★製品コードからは呼ばない★
+'   A hook to drive the re-entrancy guard from outside. Same type as Wv2Pane.Debug_SetInCallback.
+'   Setting it to 1 or more makes LogWrite only push to the pending queue; after returning to 0,
+'   it is flushed all at once with the next line. *Do not call from product code*
 ' ============================================================
 Public Sub Debug_SetLogDepth(ByVal logArg As Long)
     If Not m_logInit Then InitDefaults
@@ -336,14 +336,14 @@ End Function
 
 
 ' ============================================================
-' NowStamp (K-4b で作り直した)
+' NowStamp (rebuilt in K-4b)
 '
 '   yyyy-mm-dd hh:nn:ss.mmm
 '
-'   ★GetLocalTime を 1 回呼ぶ★ 年月日から ミリ秒までが同時に取れるので、
-'   秒とミリ秒が食い違うことが原理的に無い。
-'   従前は Now (秒まで) と Timer (ミリ秒) を別々に読んでいたため、
-'   ★秒境界で「秒は前のまま・ミリ秒は 000」という行が出ていた★ (K-4a で実害)。
+'   *Call GetLocalTime once* Year/month/day through milliseconds are obtained at the same instant,
+'   so the seconds and milliseconds cannot disagree in principle.
+'   Previously Now (to the second) and Timer (milliseconds) were read separately,
+'   so *at second boundaries a line with "previous second, milliseconds 000" appeared* (real harm in K-4a).
 ' ============================================================
 Private Function NowStamp() As String
     Dim st As SYSTEMTIME
@@ -363,7 +363,7 @@ End Function
 ' ============================================================
 ' LogFolderPath
 '
-'   %APPDATA%\Wv2Browser\logs\ を作って返す。失敗したら空文字。
+'   Creates %APPDATA%\Wv2Browser\logs\ and returns it. Returns an empty string on failure.
 ' ============================================================
 Private Function LogFolderPath() As String
     On Error GoTo eh
@@ -381,16 +381,16 @@ Private Function LogFolderPath() As String
     LogFolderPath = logFolder
     Exit Function
 eh:
-    Debug.Print "Wv2Log.LogFolderPath: 失敗 (" & Err.Number & ") " & Err.Description
+    Debug.Print "Wv2Log.LogFolderPath: failed (" & Err.Number & ") " & Err.Description
 End Function
 
 
 ' ============================================================
 ' RotateOldLogs
 '
-'   wv2_*.log を新しい順に LOG_KEEP_FILES 本残して、それより古いものを消す。
-'   ファイル名がタイムスタンプなので、名前順 = 時刻順になる。
-'   ★Dir は状態を持つので、先に全部集めてから消す★
+'   Keeps the newest LOG_KEEP_FILES of wv2_*.log and deletes anything older.
+'   File names are timestamps, so name order = time order.
+'   *Dir keeps state, so collect everything first and delete afterwards*
 ' ============================================================
 Private Sub RotateOldLogs(ByVal logFolder As String)
     On Error GoTo eh
@@ -411,7 +411,7 @@ Private Sub RotateOldLogs(ByVal logFolder As String)
 
     If logCount <= LOG_KEEP_FILES Then Exit Sub
 
-    ' --- 名前順に並べる (単純な挿入ソート。本数が少ないので十分) ---
+    ' --- sort by name (simple insertion sort; the count is small, so it is enough) ---
     Dim logIdx As Long
     Dim logLow As Long
     Dim logHigh As String
@@ -434,20 +434,20 @@ Private Sub RotateOldLogs(ByVal logFolder As String)
         On Error GoTo 0
     Next logIdx
 
-    Debug.Print "Wv2Log.RotateOldLogs: " & logKept & " 本を削除 (" & LOG_KEEP_FILES & " 本を保持)"
+    Debug.Print "Wv2Log.RotateOldLogs: deleted " & logKept & " (kept " & LOG_KEEP_FILES & ")"
     Exit Sub
 eh:
-    Debug.Print "Wv2Log.RotateOldLogs: 失敗 (" & Err.Number & ") " & Err.Description
+    Debug.Print "Wv2Log.RotateOldLogs: failed (" & Err.Number & ") " & Err.Description
 End Sub
 
 
 ' ============================================================
 ' Utf8FromString
 '
-'   String (UTF-16 コードユニット列) を UTF-8 バイト列にする。
-'   ★サロゲートペアを 4 バイトに畳む★ 実行時の String には Web ページ由来の
-'   任意の Unicode が入りうるため。
-'   ADODB.Stream を毎行作ると重いので手書きしている。
+'   Converts a String (sequence of UTF-16 code units) to a UTF-8 byte array.
+'   *Folds surrogate pairs into 4 bytes* because the runtime String can hold
+'   arbitrary Unicode from Web pages.
+'   Hand-written because creating an ADODB.Stream per line would be heavy.
 ' ============================================================
 Private Function Utf8FromString(ByVal logText As String) As Byte()
     Dim outBytes() As Byte
@@ -464,17 +464,17 @@ Private Function Utf8FromString(ByVal logText As String) As Byte()
         Exit Function
     End If
 
-    ' 最悪 1 文字 4 バイト
+'   Worst case 4 bytes per character
     ReDim outBytes(0 To logLen * 4 - 1)
     logCount = 0
     logIdx = 1
 
     Do While logIdx <= logLen
         logCode = AscW(Mid$(logText, logIdx, 1))
-        ' ★AscW は 0x8000 以上を負の Integer で返す (仕様事実16)★
+        ' *AscW returns 0x8000 and above as a negative Integer (spec fact 16)*
         If logCode < 0 Then logCode = logCode + 65536
 
-        ' --- サロゲートペア (上位 D800-DBFF + 下位 DC00-DFFF) ---
+        ' --- surrogate pair (high D800-DBFF + low DC00-DFFF) ---
         If logCode >= &HD800& And logCode <= &HDBFF& And logIdx < logLen Then
             logLow = AscW(Mid$(logText, logIdx + 1, 1))
             If logLow < 0 Then logLow = logLow + 65536
@@ -511,3 +511,50 @@ Private Function Utf8FromString(ByVal logText As String) As Byte()
     Utf8FromString = outBytes
 End Function
 
+
+' ============================================================
+' SecondsSince (English fork)
+'   Seconds elapsed since a value taken from VBA's Timer.
+'   Timer resets to 0 at midnight; plain "Timer - t" then goes negative and
+'   a "(Timer - t) < timeout" wait loop never times out. This wraps correctly.
+' ============================================================
+Public Function SecondsSince(ByVal sinceTimer As Single) As Single
+    Dim d As Single
+    d = Timer - sinceTimer
+    If d < 0 Then d = d + 86400
+    SecondsSince = d
+End Function
+
+
+' ============================================================
+' AppFolder (English fork)
+'   Per-user working folder: %LOCALAPPDATA%\Wv2Browser\<subName>, created
+'   (with all parents) if missing. Replaces the old hard-coded C:\Temp\...
+'   paths: folders under C:\ are usually writable by every user of the
+'   machine, which exposed the WebView2 profile (cookies) and the HTML that is
+'   served to pages holding host objects. Falls back to %TEMP% when
+'   LOCALAPPDATA is not set. Returns the path without a trailing backslash.
+' ============================================================
+Public Function AppFolder(ByVal subName As String) As String
+    Dim root As String
+    root = Environ$("LOCALAPPDATA")
+    If LenB(root) = 0 Then root = Environ$("TEMP")
+    If Right$(root, 1) = "\" Then root = Left$(root, Len(root) - 1)
+    root = root & "\Wv2Browser"
+    If LenB(subName) > 0 Then root = root & "\" & subName
+    EnsureFolderTree root
+    AppFolder = root
+End Function
+
+' Creates a folder and any missing parents. Raises if a level cannot be made.
+Public Sub EnsureFolderTree(ByVal folderPath As String)
+    Dim parts() As String, cur As String, i As Long
+    parts = Split(folderPath, "\")
+    cur = parts(0)
+    For i = 1 To UBound(parts)
+        If LenB(parts(i)) > 0 Then
+            cur = cur & "\" & parts(i)
+            If LenB(Dir$(cur, vbDirectory)) = 0 Then MkDir cur
+        End If
+    Next i
+End Sub

@@ -8,363 +8,363 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 ''''''''''''''''''''''''''''''''''
-' --- Wv2NavBar.cls  K-4a 段階 (解放経路のログを Wv2Log へ移す) ---
+' --- Wv2NavBar.cls  stage K-4a (move the release-path logging to Wv2Log) ---
 '
-'   ★目的は計測★ フォームを閉じたときの解放が遅い (1 件ごとに 0.5 秒ほどの間)
-'   という報告を受けたが、この経路は Debug.Print のままでログに何も残らず、
-'   どこで時間を食っているのか分からなかった。
+'   *Purpose is measurement* Releasing on form close is slow (a pause of about 0.5 s per item)
+'   was the report, but this path was still Debug.Print and left nothing in a log,
+'   so it was impossible to tell where the time was going.
 '
-'   Wv2Log はミリ秒のタイムスタンプを持つので、★置き換えるだけで所要が読める★。
-'   さらに Wv2Log.LogEcho = False / True で 2 回測れば、
-'   ★「COM の解放が遅い」のか「イミディエイトへの出力が遅い」のか★ が切り分く。
+'   Wv2Log has millisecond timestamps, so *just swapping it in lets us read the durations*.
+'   Furthermore, measuring twice with Wv2Log.LogEcho = False / True separates
+'   *"COM release is slow" from "output to the Immediate window is slow"*.
 '
-'   ★この段階では直さない。測るだけ。★ (D-7 で推測を 3 回続けて外したため)
+'   *We do not fix anything at this stage. We only measure.* (D-7 guessed wrong 3 times in a row)
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2NavBar.cls  第9.25b 段階 (検証プローブの撤去 / 引数ゼロを恒久確定) ---
+' --- Wv2NavBar.cls  stage 9.25b (removal of the verification probe / zero arguments confirmed permanently) ---
 '
-'   第9.25 の検証が「パターンA = 安全」で決着したので、一時コードを撤去した回。
+'   The 9.25 verification settled on "pattern A = safe", so this round removed the temporary code.
 '
-'   ★検証結果 (第9.25 実機)★ プローブのログは次の順で出た:
-'       (1) 取得の直前
-'       (2) 取得の直後            ← ★この間に HostProbe の実行ログが無い★
-'       ★HostProbe が実行された★ (通算 1 回目)
-'       (3) f() 呼び出し 成功
-'       ★HostProbe が実行された★ (通算 2 回目)
-'       (5) nb.HostProbe() 直呼び 成功
-'     ・(1)-(2) 間に実行ログが無い = プロパティ取得の時点では VBA 側を呼んでいない。
-'     ・(3) が出た = 取得できた値は関数オブジェクトであり、後から呼び出せる。
-'       つまり sync プロキシは『メソッドかプロパティか』の判断を実際の () まで遅延している。
-'     ・(5) が出た = 実際に使う nb.HostProbe() の形が正常に通る。
-'     ・通算 2 回ちょうど = 余計な実行はゼロ。
-'     実物のボタンでも HostBack / HostForward / HostReload がそれぞれ 1 行だけで、
-'     postMessage フォールバックへの落下も無く、← は 1 ページだけ戻った。
+'   *Verification result (9.25 real machine)* The probe's log came out in this order:
+'       (1) just before the get
+'       (2) just after the get            <- *there is no HostProbe execution log in between*
+'       *HostProbe was executed* (1st overall)
+'       (3) f() call succeeded
+'       *HostProbe was executed* (2nd overall)
+'       (5) direct nb.HostProbe() call succeeded
+'     - No execution log between (1)-(2) = the VBA side was not called at the time of the property get.
+'     - (3) appeared = the value obtained is a function object, and it can be called later.
+'       In other words the sync proxy defers the "method or property" decision until the actual ().
+'     - (5) appeared = the form nb.HostProbe() that is actually used passes normally.
+'     - Exactly 2 overall = zero extra executions.
+'     With the real buttons too, HostBack / HostForward / HostReload each logged just one line,
+'     there was no fall to the postMessage fallback, and <- went back exactly one page.
 '
-'   → **仕様事実 22** として記録 (詳細は開発メモ)。9.24 のダミー引数 reserved は
-'     不要な保険だったことが確定したので、引数ゼロを恒久確定とする。
-'     ※ただし「安全側から入って後で削る」という順序自体は正しかった。二重実行は
-'       起きると『1 クリックで 2 ページ戻る』という分かりにくい形で現れ、しかも
-'       ハイブリッドの保険が裏目に出るため後から気付きにくい種類の不具合になる。
+'   -> Recorded as **spec fact 22** (details in the dev notes). It is now confirmed that the dummy argument
+'     reserved of 9.24 was unnecessary insurance, so zero arguments is confirmed permanently.
+'     Note: however, the order itself of "start from the safe side and trim later" was correct. A double execution
+'       would show up in the confusing form "one click goes back 2 pages", and since the hybrid's
+'       insurance backfires, it is the kind of defect that is hard to notice afterwards.
 '
-'   ★撤去したもの (第9.25 で入れた一時コード)★
-'     ・Public Function HostProbe() / HostProbeMark(phase) の 2 本
-'     ・BuildNavBarHtml 内の probeParamless() と setTimeout(probeParamless, 500)
-'     これで NavBar は 9.24 の構造そのままで、Host メソッド 3 本が引数ゼロになった形に
-'     落ち着く。JS からの呼び出しは nb.HostBack() / nb.HostForward() / nb.HostReload() /
-'     nb.HostNavigate(url)。
+'   *Removed (temporary code put in at 9.25)*
+'     - the two Public Function HostProbe() / HostProbeMark(phase)
+'     - probeParamless() and setTimeout(probeParamless, 500) inside BuildNavBarHtml
+'     With this NavBar settles into exactly the 9.24 structure, with the 3 Host methods taking zero arguments.
+'     Calls from JS are nb.HostBack() / nb.HostForward() / nb.HostReload() /
+'     nb.HostNavigate(url).
 '
-'   ★触らないもの★ Host メソッド 4 本の中身 / OnPaneWebMessage の委譲構造 /
-'     navHost() の三段構え / attach / ready / Escape / editing / PushNavSyncToJs。
-'     設計原則は 71 個のまま。仕様事実は 21 → 22 個。
+'   *Not touched* the bodies of the 4 Host methods / the delegation structure of OnPaneWebMessage /
+'     the three tiers of navHost() / attach / ready / Escape / editing / PushNavSyncToJs.
+'     Design principles stay at 71. Spec facts go from 21 to 22.
 '
-' --- Wv2NavBar.cls  第9.25 段階 (検証: 引数ゼロ Host メソッドの可否 + reserved 削除) ---
+' --- Wv2NavBar.cls  stage 9.25 (verification: whether zero-argument Host methods are viable + deleting reserved) ---
 '
-'   第9.25 のスコープ (9.24 の宿題を潰す小さい検証ステージ。案C を採用):
-'     ★問い★ 引数ゼロの Public Function を hostObjects の sync プロキシから触ったとき、
-'       『プロパティ取得の時点で実行されてしまう』のか。9.24 ではこれを恐れてダミー引数
-'       reserved を持たせたが、安全側に倒したので現象が出なかっただけで、要否は未検証
-'       だった (「出なかった」は「不要」の証明ではない)。
+'   Scope of 9.25 (a small verification stage that clears the open item of 9.24. Plan C adopted):
+'     *Question* When a zero-argument Public Function is touched from the hostObjects sync proxy,
+'       does it get "executed at the time of the property get"? In 9.24 we feared this and kept the dummy argument
+'       reserved, but the phenomenon did not appear only because we erred on the safe side, and whether it was needed
+'       was never verified ("did not appear" is not proof of "unnecessary").
 '
-'     ★案C = プローブ追加 + reserved 削除を同時に行う★
-'       ・案A (reserved を外して実物のボタンで試すだけ) は最小変更だが、二重実行が
-'         起きたとき原因が『取得で実行』なのかを推測でしか言えない。
-'       ・案B (プローブだけ足して reserved は据え置き) は因果が完全に分かるが 2 段になる。
-'       ・→ 案C なら 1 回の起動で「機構の事実 (プローブ)」と「実物の挙動 (ボタン)」が
-'         同時に取れる。外れても実害は『← 1 回で 2 ページ戻る』だけで、しかも一度
-'         観測すれば十分なので、安価に両方の答えが出る。
+'     *Plan C = add a probe + delete reserved at the same time*
+'       - Plan A (just remove reserved and try with the real buttons) is the smallest change, but when a double execution
+'         occurs we could only guess whether the cause is "executed on get".
+'       - Plan B (add only the probe and leave reserved) makes causality fully clear but takes 2 stages.
+'       - -> With Plan C one launch gives both "the mechanism's facts (probe)" and "the real behavior (buttons)"
+'         at the same time. Even if it misses, the real harm is only "<- goes back 2 pages once", and
+'         one observation is enough, so both answers come out cheaply.
 '
-'     ★変更 1: reserved を削除★
-'       HostBack / HostForward / HostReload から Optional ByVal reserved As Long を外し、
-'       素の引数ゼロ関数に戻した。JS 側も nb.HostBack(0) → nb.HostBack() へ。
-'       ★これが今回いちばん壊れやすい変更★ もし『取得で実行』が起きるなら、
-'         (1) 取得で 1 回実行 → (2) 返り値が Boolean なので () が TypeError →
-'         (3) catch して postMessage フォールバック → もう 1 回実行
-'       となり、← 1 回で 2 ページ戻る。ログには HostBack が 2 行 (間に
-'       OnPaneWebMessage の back) 出るので一目で分かる。
+'     *Change 1: delete reserved*
+'       Removed Optional ByVal reserved As Long from HostBack / HostForward / HostReload,
+'       returning them to plain zero-argument functions. On the JS side nb.HostBack(0) -> nb.HostBack().
+'       *This is the most breakable change this time.* If "executed on get" happens,
+'         (1) one execution on get -> (2) the return value is Boolean so () gives a TypeError ->
+'         (3) catch and postMessage fallback -> one more execution
+'       and <- once goes back 2 pages. In the log HostBack appears as 2 lines (with the back of
+'       OnPaneWebMessage between them) so it is obvious at a glance.
 '
-'     ★変更 2: 検証専用プローブを追加 (次段で撤去する一時コード)★
-'       ・Public Function HostProbeMark(ByVal phase As Long) As Boolean
-'           引数ありなので安全。位相を刻んでログに出すだけ。
-'       ・Public Function HostProbe() As Boolean
-'           ★引数ゼロ★。呼ばれたらログを出すだけで副作用ゼロ。実ブラウザ操作を
-'           一切伴わないので、二重実行が起きても害がない。
-'       JS 側は ready 送信の直後に setTimeout(probeParamless, 500) を仕掛け、
-'       起動のたびに一度だけ次を実行する:
-'           Mark(1) → var f = nb.HostProbe (取得だけ) → Mark(2)
-'           → f() 成功 Mark(3) / 失敗 Mark(4)
-'           → nb.HostProbe() 直呼び 成功 Mark(5) / 失敗 Mark(6)
-'           (取得そのもので例外なら Mark(9))
-'       ★読み方★ HostProbe の実行ログが Mark(1) と Mark(2) の『間』に出れば
-'         『取得で実行されている』= reserved は必要だった。Mark(2) より後にしか
-'         出なければ安全 = reserved は不要。Mark(5) が出れば実際に使う
-'         nb.HostProbe() の形が通ることの直接証明になる。
-'       ★500ms 遅延の理由★ ready ハンドシェイクと初期 navsync の往復を邪魔せず、
-'         WebView2 初期化バーストからも少し離すため。ログのブロックも読みやすくなる。
+'     *Change 2: add a verification-only probe (temporary code removed in the next stage)*
+'       - Public Function HostProbeMark(ByVal phase As Long) As Boolean
+'           Has an argument so it is safe. Just stamps the phase into the log.
+'       - Public Function HostProbe() As Boolean
+'           *Zero arguments*. Just emits a log when called, with zero side effects. It involves no real
+'           browser operation, so a double execution does no harm.
+'       The JS side sets up setTimeout(probeParamless, 500) right after sending ready,
+'       and at every startup runs the following once:
+'           Mark(1) -> var f = nb.HostProbe (get only) -> Mark(2)
+'           -> f() success Mark(3) / failure Mark(4)
+'           -> direct nb.HostProbe() call success Mark(5) / failure Mark(6)
+'           (if the get itself throws, Mark(9))
+'       *How to read* If the execution log of HostProbe appears *between* Mark(1) and Mark(2),
+'         then "it is executed on get" = reserved was needed. If it appears only after Mark(2)
+'         it is safe = reserved is unnecessary. If Mark(5) appears it is direct proof that the
+'         form nb.HostProbe() actually used passes.
+'       *Reason for the 500ms delay* So as not to disturb the ready handshake and the round trip of the initial navsync,
+'         and to keep a little away from the WebView2 initialization burst. It also makes the log blocks easier to read.
 '
-'     ★トリガーを JS 内の setTimeout にした理由★
-'       Wv2Pane.View_ExecuteScript (9.8c) は既にあるが、NavBar インスタンスは
-'       UserForm1 が Private フィールドで握っているため、外から叩くには
-'       UserForm1.frm に公開口を足すことになる。検証専用の一時コードのために
-'       本番ファイルを増やしたくないので、JS 内で自走させる方を採った。
-'       たーぼーさんは普通に起動してログを読むだけでよい。
+'     *Why the trigger is a setTimeout inside JS*
+'       Wv2Pane.View_ExecuteScript (9.8c) already exists, but the NavBar instance is held by
+'       UserForm1 as a Private field, so hitting it from outside would require adding a public entry
+'       to UserForm1.frm. We do not want to grow production files for verification-only temporary code,
+'       so we took the way of letting it run by itself inside JS.
+'       tarboh only needs to launch normally and read the log.
 '
-'   ★触らないもの★ Host メソッド 4 本の中身 / OnPaneWebMessage の委譲構造 /
-'     navHost() の三段構え / ready / Escape / editing / PushNavSyncToJs。
-'     設計原則は 71 個のまま。仕様事実は検証結果を見てから立てる。
+'   *Not touched* the bodies of the 4 Host methods / the delegation structure of OnPaneWebMessage /
+'     the three tiers of navHost() / ready / Escape / editing / PushNavSyncToJs.
+'     Design principles stay at 71. Spec facts are set up after seeing the verification result.
 '
-' --- Wv2NavBar.cls  第9.24 段階 (NavBar の hostObjects 化 + 処理の Host 一元化) ---
+' --- Wv2NavBar.cls  stage 9.24 (hostObjects conversion of NavBar + consolidating handling into Host) ---
 '
-'   第9.24 のスコープ (9.23 で TabBar に確立した型を NavBar へ同型展開する):
-'     ★狙い★ 9.21～9.23 で TabBar の activate/close/reorder は
-'       「JS はハイブリッド (hostObjects 優先・postMessage フォールバック)、
-'       VBA は処理を Host メソッド 1 箇所に集約、Select Case は薄いアダプタ」
-'       という形に落ち着いた。NavBar の back/forward/reload/navigate も
-'       まったく同じ型に揃える。TabBar で型が確立済みのため、9.21/9.22 のような
-'       「まず hostObjects 化だけ」の段は踏まず、最初から案C-1 で一気に組む (案2)。
+'   Scope of 9.24 (roll out to NavBar, in the same form, the pattern established for TabBar in 9.23):
+'     *Aim* In 9.21-9.23 TabBar's activate/close/reorder settled into the form
+'       "JS is a hybrid (hostObjects first, postMessage fallback),
+'       VBA consolidates the handling in one Host method, and the Select Case is a thin adapter".
+'       NavBar's back/forward/reload/navigate are also aligned to exactly
+'       the same pattern. Since the pattern is already established in TabBar, we do not take a stage like 9.21/9.22
+'       of "first only hostObjects conversion", but assemble it all at once with Plan C-1 from the start (Plan 2).
 '
-'     ★追加した口 (Host メソッド 4 本)★
-'       ・Public Function HostBack(Optional reserved) As Boolean    → GoBackActive
-'       ・Public Function HostForward(Optional reserved) As Boolean → GoForwardActive
-'       ・Public Function HostReload(Optional reserved) As Boolean  → ReloadActive
-'       ・Public Function HostNavigate(url) As Boolean              → NavigateActive
-'       いずれも Browser 側が撃ちっぱなし (完了待ちなし = 案4-A) なので、JS からの
-'       sync 直呼びでも 仕様事実 14 のデッドロックに嵌まらない。
+'     *Entry points added (4 Host methods)*
+'       - Public Function HostBack(Optional reserved) As Boolean    -> GoBackActive
+'       - Public Function HostForward(Optional reserved) As Boolean -> GoForwardActive
+'       - Public Function HostReload(Optional reserved) As Boolean  -> ReloadActive
+'       - Public Function HostNavigate(url) As Boolean              -> NavigateActive
+'       All are fire-and-forget on the Browser side (no completion wait = Plan 4-A), so even a direct
+'       sync call from JS does not fall into the spec fact 14 deadlock.
 '
-'     ★★ダミー引数 reserved の理由 (論点4b)★★
-'       TabBar の 3 本はすべて引数ありだったが、back/forward/reload は本来
-'       引数ゼロになる。hostObjects の sync プロキシは JS 側から「メソッドか
-'       プロパティか」を区別できないため、ho.NavBar.HostBack を『取得』した
-'       時点で IDispatch::Invoke(DISPATCH_PROPERTYGET) が飛ぶ実装であり得る。
-'       VBA は引数なし Public Function に対してこれを寛容に受け付けて実行して
-'       しまうため、最悪 (1) 取得で 1 回実行 → (2) 返り値が Boolean なので ()
-'       が TypeError → (3) catch して postMessage フォールバック → もう 1 回実行、
-'       という「← を 1 回押すと 2 回戻る」二重実行が起こり得る。ハイブリッドの
-'       保険が裏目に出る形なのでフォールバックでは防げない。
-'       → 引数を 1 個持たせて曖昧さを原理的に消す (JS は nb.HostBack(0) と呼ぶ)。
-'       VBA 側の Case からは Optional なので HostBack と素で呼べる。実機で
-'       「引数ゼロでも安全」と判明したら次段で reserved を落としてよい。
+'     **Reason for the dummy argument reserved (point 4b)**
+'       All 3 of TabBar's had arguments, but back/forward/reload naturally
+'       take zero arguments. The hostObjects sync proxy cannot distinguish from the JS side
+'       "method or property", so it may be implemented so that at the moment of *getting* ho.NavBar.HostBack
+'       IDispatch::Invoke(DISPATCH_PROPERTYGET) is sent.
+'       VBA tolerantly accepts this for a Public Function without arguments and executes
+'       it, so in the worst case (1) one execution on get -> (2) the return value is Boolean so ()
+'       gives a TypeError -> (3) catch and postMessage fallback -> one more execution,
+'       a double execution where "pressing <- once goes back twice" could happen. Since it is a form where the hybrid's
+'       insurance backfires, the fallback cannot prevent it.
+'       -> Give it one argument to eliminate the ambiguity in principle (JS calls nb.HostBack(0)).
+'       From the VBA-side Case it is Optional so HostBack can be called plainly. If the real machine shows
+'       "zero arguments is safe too", reserved may be dropped in the next stage.
 '
-'     ★空 URL ガードの置き場所 (論点3)★ Case 内にあった If Len(Trim$(url)) = 0
-'       の判定を HostNavigate の中へ移した。これで hostObjects 経路・postMessage
-'       経路のどちらから来ても同じガードを通る (9.23 と同じ DRY の考え方)。
-'       JS 側の if(v && v.length) は保険として残す。
+'     *Where the empty-URL guard goes (point 3)* The If Len(Trim$(url)) = 0 check
+'       that was inside the Case was moved into HostNavigate. Now whether it arrives from the hostObjects path
+'       or the postMessage path, it passes through the same guard (same DRY thinking as 9.23).
+'       The JS-side if(v && v.length) is left as insurance.
 '
-'     ★JS 側は navHost() ヘルパでハイブリッド化★ TabBar は 3 箇所を素で書き
-'       下したが、NavBar は 4 箇所と多く形も揃っているのでヘルパに括る。
+'     *The JS side is made hybrid with the navHost() helper* TabBar wrote out 3 places
+'       plainly, but NavBar has 4 places and the form is uniform, so they are bundled into a helper.
 '         navHost(msgObj, callHost)
-'           (1) ho.NavBar があれば callHost(ho.NavBar) を同期直呼び → [host]
-'           (2) 例外なら catch して postCmd(msgObj)      → [host-fail→postmsg]
-'           (3) そもそも取れなければ postCmd(msgObj)     → [postmsg]
-'       フォールバックで送る JSON は 9.12d と完全に同一なので、VBA 側の
-'       Select Case (薄いアダプタ) がそのまま受け止められる。
-'       ★ho.NavBar へのアクセスはドット表記のみ★ (TabBar で実績のある形。
-'       ho.NavBar[name] のような計算プロパティ表記は proxy の挙動が読めない。)
+'           (1) if ho.NavBar exists, call callHost(ho.NavBar) as a direct sync call -> [host]
+'           (2) on exception, catch and postCmd(msgObj)      -> [host-fail->postmsg]
+'           (3) if it could not be obtained at all, postCmd(msgObj)     -> [postmsg]
+'       The JSON sent by the fallback is exactly the same as 9.12d, so the VBA-side
+'       Select Case (thin adapter) can take it as is.
+'       *Access to ho.NavBar is with dot notation only* (the form with a track record in TabBar.
+'       With a computed property notation like ho.NavBar[name] the proxy's behavior cannot be predicted.)
 '
-'     ★attach★ Init の Navigate の前に
-'       m_barPane.View_AddHostObjectToScript("NavBar", Me) を置く (仕様事実 18/19
-'       の順序A。TabBar の 5b と同じ位置)。失敗しても致命ではないので hr をログ
-'       して Init は続行する (JS が postMessage に落ちるだけ)。
+'     *attach* In Init, before Navigate, put
+'       m_barPane.View_AddHostObjectToScript("NavBar", Me) (order A of spec facts 18/19.
+'       The same position as 5b of TabBar). Failure is not fatal, so hr is logged
+'       and Init continues (JS just falls to postMessage).
 '
-'   ★触らないもの★ ready ケース (通知なので postMessage が正着、設計原則 61) /
-'     Case "" / Case Else / PushNavSyncToJs / SendNavSync / navsync 受信側の JS /
-'     編集中フラグ (editing) と lastUrl の挙動 / Escape の編集破棄 / Browser の
-'     5 イベント購読 / 3 段レイアウト。設計原則は 71 個のまま (案4-A と DRY の
-'     実践であり新原則ではない)。
+'   *Not touched* the ready case (it is a notification so postMessage is right, design principle 61) /
+'     Case "" / Case Else / PushNavSyncToJs / SendNavSync / the JS on the navsync receiving side /
+'     the behavior of the editing flag (editing) and lastUrl / discarding the edit on Escape / the Browser's
+'     5-event subscription / the 3-tier layout. Design principles stay at 71 (it is a practice of Plan 4-A and DRY,
+'     not a new principle).
 '
-'   ★実機で確かめる新規事実の候補 (仕様事実 21)★
-'     hostObjects.sync 経由で JS→VBA へ「文字列引数」を渡すのは今回が初めて
-'     (TabBar は Long だけだった)。日本語や記号を含む URL / 検索語が BSTR の
-'     まま欠落なく届けば 仕様事実 21 として記録する。postMessage 経路は JSON
-'     エスケープを通っていた (仕様事実 16 の当事者) ので、hostObjects のほうが
-'     むしろ安全になるはず、というのが事前の見立て。
+'   *Candidate for a new fact to confirm on the real machine (spec fact 21)*
+'     Passing a "string argument" from JS to VBA via hostObjects.sync is a first this time
+'     (TabBar had only Long). If URLs / search terms containing Japanese or symbols arrive as BSTR
+'     without loss, record it as spec fact 21. The postMessage path went through JSON
+'     escaping (a party to spec fact 16), so the prior expectation is that hostObjects should
+'     if anything be safer.
 '
-' --- Wv2NavBar.cls  第9.13 段階 ---
+' --- Wv2NavBar.cls  stage 9.13 ---
 '
-'   第9.13 の変更 (整理: JSON ヘルパーの共通化):
-'     Private に持っていた JsonEscape / GetJsonStr / BoolToJson を撤去し、
-'     新設した標準モジュール Wv2Json.bas の Public 関数を使うようにした。
-'     Wv2TabBar にも同じ関数が重複していたのを 1 箇所に集約する。
-'       GetJsonStr → Wv2Json.JsonGetStr
-'       BoolToJson → Wv2Json.JsonBool
-'       JsonEscape → Wv2Json.JsonEscape (名前は同じ)
-'     ★JsonEscape の \u 経路も修正された★ 高位文字 (日本語等) が \uXXXX に
-'     化けなくなった (仕様事実 16。挙動は変わらないがログが読みやすくなる)。
+'   Changes in 9.13 (tidying: sharing the JSON helpers):
+'     Removed JsonEscape / GetJsonStr / BoolToJson that were held as Private, and
+'     switched to using the Public functions of the newly created standard module Wv2Json.bas.
+'     The same functions were duplicated in Wv2TabBar too; they are consolidated in one place.
+'       GetJsonStr -> Wv2Json.JsonGetStr
+'       BoolToJson -> Wv2Json.JsonBool
+'       JsonEscape -> Wv2Json.JsonEscape (same name)
+'     *The \u path of JsonEscape was also fixed.* High characters (Japanese etc.) no longer
+'     get garbled into \uXXXX (spec fact 16. Behavior is unchanged but the log is easier to read).
 '
-' --- Wv2NavBar.cls  第9.12d 段階 ---
+' --- Wv2NavBar.cls  stage 9.12d ---
 '
-'   第9.12d のスコープ (JS->VBA: 入力・クリックの有効化)。これで 9.12 完結:
-'     ナビバーのボタンと URL 入力を VBA のナビゲーション操作に繋ぐ。
-'       ・←  クリック    → {"cmd":"back"}                 → Browser.GoBackActive
-'       ・→  クリック    → {"cmd":"forward"}              → Browser.GoForwardActive
-'       ・[更新]  クリック    → {"cmd":"reload"}               → Browser.ReloadActive
-'       ・URL 欄で Enter → {"cmd":"navigate","url":"..."} → Browser.NavigateActive
+'   Scope of 9.12d (JS->VBA: enabling input and clicks). With this 9.12 is complete:
+'     Connect the nav bar's buttons and URL input to VBA navigation operations.
+'       - <- click    -> {"cmd":"back"}                 -> Browser.GoBackActive
+'       - -> click    -> {"cmd":"forward"}              -> Browser.GoForwardActive
+'       - [Reload] click    -> {"cmd":"reload"}               -> Browser.ReloadActive
+'       - Enter in the URL field -> {"cmd":"navigate","url":"..."} -> Browser.NavigateActive
 '
-'   ★再入の安全性 = 設計原則 63★ ナビゲーション系はすべて「完了待ちを含まない」
-'     操作 (Navigate / GoBack / GoForward / Reload はいずれも撃ちっぱなし) なので、
-'     WebMessage のイベントハンドラ内から同期で呼んで安全。9.11d の newtab
-'     (Controller 生成待ち → 仕様事実 14 のデッドロック) のような遅延実行は不要。
+'   *Re-entrancy safety = design principle 63* All navigation operations are ones that "contain no completion wait"
+'     (Navigate / GoBack / GoForward / Reload are all fire-and-forget), so
+'     it is safe to call them synchronously from inside a WebMessage event handler. The delayed execution of newtab in 9.11d
+'     (waiting for Controller creation -> spec fact 14 deadlock) is not needed.
 '
-'   ★スキーム補完は Browser 側 (NavigateActive) が行う (案3-A)★
-'     JS は入力文字列をそのまま送るだけ。"example.com" → "https://example.com" の
-'     正規化は Wv2Browser.NormalizeUrl の責務 (9.12a で実装済み)。
+'   *Scheme completion is done on the Browser side (NavigateActive) (Plan 3-A)*
+'     JS just sends the input string as is. The normalization "example.com" -> "https://example.com" is
+'     the responsibility of Wv2Browser.NormalizeUrl (implemented in 9.12a).
 '
-'   ★Escape で編集破棄 (案A: JS 側の lastUrl から即復元)★
-'     当初 Escape は editing = false にして blur するだけだったが、その後 URL 欄の
-'     値を戻す処理がなく、打った文字列が残ったままになった (実機で発覚)。
-'     u.value が書き換わるのは次に navsync が飛んできたときだけで、Escape では
-'     VBA 側で何も起きない (= sync が飛ばない) ため。
-'     → JS 側に lastUrl (直近の navsync が伝えた「今表示すべき URL」) を持ち、
-'        Escape で即座に復元する。VBA 往復が不要で体感も良い。lastUrl は
-'        ★編集中でも必ず更新する★ (編集中に裏で遷移が起きても、Escape で
-'        「今の本当の URL」に戻れるように)。
+'   *Discard the edit on Escape (Plan A: restore immediately from lastUrl on the JS side)*
+'     At first Escape only set editing = false and blurred, but after that there was nothing to put back
+'     the value of the URL field, so the typed string stayed (found on the real machine).
+'     u.value gets rewritten only when the next navsync arrives, and with Escape nothing happens
+'     on the VBA side (= no sync is sent).
+'     -> The JS side keeps lastUrl (the "URL that should be shown now" conveyed by the latest navsync) and
+'        restores it immediately on Escape. No VBA round trip is needed and the feel is good. lastUrl is
+'        *always updated even while editing* (so that even if a navigation happens in the background during editing,
+'        Escape can return to "the real current URL").
 '
-'   ★Enter で editing = false にする★
-'     遷移が始まると TabUrlChanged → navsync で URL 欄が正規化後の URL に
-'     置き換わる ("example.com" と打つと "https://example.com/" に化ける)。
-'     これは Chrome/Edge と同じ挙動。editing を落とさないと URL 欄が打った文字列の
-'     まま固まってしまう。
+'   *Set editing = false on Enter*
+'     When navigation starts, TabUrlChanged -> navsync replaces the URL field with the normalized URL
+'     (typing "example.com" turns into "https://example.com/").
+'     This is the same behavior as Chrome/Edge. If editing is not dropped, the URL field stays frozen
+'     with the typed string.
 '
-' --- Wv2NavBar.cls  第9.12c 段階 ---
+' --- Wv2NavBar.cls  stage 9.12c ---
 '
-'   第9.12c のスコープ (VBA->JS: URL とボタン状態の表示。入力・クリックは 9.12d):
-'     Browser のイベントを受けて、ナビバー JS に「アクティブタブの URL /
-'     戻れるか / 進めるか」を送って表示させる。
+'   Scope of 9.12c (VBA->JS: display of the URL and button states. Input and clicks are 9.12d):
+'     Receiving Browser's events, send the nav bar JS the active tab's "URL /
+'     can go back / can go forward" and have it displayed.
 '
-'   ★全体同期方式 (設計原則 60)★ 9.11c と同じ。状態が変わるたびに丸ごと送る:
+'   *Full-sync method (design principle 60)* Same as 9.11c. Sent in full every time the state changes:
 '       {"type":"navsync","url":"...","canBack":true,"canForward":false}
-'     JS 側は受け取った値で URL 欄とボタンの disabled を上書きするだけ。
+'     The JS side just overwrites the URL field and the buttons' disabled with the received values.
 '
-'   ★ready ハンドシェイク (設計原則 61)★ 9.11c と同じ。JS がロード完了時に
-'     {"cmd":"ready"} を postMessage → VBA が受けて初めて初期同期を返す。
-'     PostWebMessageAsString は JS の message リスナー登録前に送ると落ちる
-'     (仕様事実 15)。
+'   *ready handshake (design principle 61)* Same as 9.11c. JS postMessages
+'     {"cmd":"ready"} when loading completes -> only after VBA receives it does it return the initial sync.
+'     A PostWebMessageAsString sent before the JS message listener is registered gets dropped
+'     (spec fact 15).
 '
-'   ★★index フィルタ (9.12c 固有の論点)★★
-'     TabUrlChanged は「どのタブの」URL が変わったかを index で伝える。ナビバーは
-'     アクティブタブの状態だけを表示するので、index <> ActiveIndex のイベントは
-'     ★無視しなければならない★。無視しないと、裏のタブが読み込み完了した瞬間に
-'     URL 欄が裏タブの URL に化ける (実際 9.12b のログで、index=2 の TabUrlChanged が
-'     index=3 アクティブ時に飛んでいる)。
+'   **index filter (a point specific to 9.12c)**
+'     TabUrlChanged conveys by index "which tab's" URL changed. The nav bar
+'     shows only the active tab's state, so events with index <> ActiveIndex
+'     *must be ignored*. If not ignored, the moment a background tab finishes loading
+'     the URL field turns into the background tab's URL (in fact in the 9.12b log, a TabUrlChanged of index=2
+'     was sent while index=3 was active).
 '
-'   ★ActiveChanged では Browser に現在状態を問い合わせる★
-'     タブを切り替えたとき、新しいアクティブタブの URL は TabUrlChanged では
-'     飛んでこない (そのタブでは何も起きていないため)。よって ActiveChanged を
-'     受けたら Browser.GetActiveUrl / GetActiveCanGoBack / GetActiveCanGoForward で
-'     現在状態を読み直して送る。9.12a でこの読み取り口を用意してある。
+'   *On ActiveChanged, ask Browser for the current state*
+'     When tabs are switched, the new active tab's URL does not come through
+'     TabUrlChanged (because nothing happened in that tab). So on receiving ActiveChanged,
+'     re-read the current state with Browser.GetActiveUrl / GetActiveCanGoBack / GetActiveCanGoForward
+'     and send it. These read entries were prepared in 9.12a.
 '
-'   ★実機で発覚したバグと修正 その3 (9.12c: 入力中の URL が消える)★
-'     URL 欄に入力している最中にリンクをクリックして新タブが開くと、入力中の
-'     文字列が消えた。原因は「その2」で入れた u.disabled の同期:
-'       disabled を代入すると input が blur する
-'         → blur ハンドラが editing = false にする
-'         → 次の同期で u.value が上書きされ、入力が消える
-'     ★タブ 0 対応 (その2) が編集中保護 (その1) を壊した★
-'     → 対策は 2 段構え:
-'        (1) 編集中は URL 欄に一切触らない (value も disabled も)
-'        (2) disabled は値が変わるときだけ代入する (無駄な blur を防ぐ)
-'        ボタン類はフォーカスを奪わないので常に同期してよい。
-'     教訓: disabled の付け外しはフォーカスを飛ばす。フォーカス依存の状態
-'           (編集中フラグ等) を持つ要素には、無条件に属性を代入しない。
+'   *Bug found on the real machine and its fix, No. 3 (9.12c: the URL being typed disappears)*
+'     When a link was clicked while typing in the URL field and a new tab opened, the
+'     string being typed disappeared. The cause was the u.disabled sync introduced in "No. 2":
+'       assigning disabled makes the input blur
+'         -> the blur handler sets editing = false
+'         -> at the next sync u.value is overwritten and the input vanishes
+'     *The 0-tab handling (No. 2) broke the protection while editing (No. 1)*
+'     -> The countermeasure is two-tiered:
+'        (1) While editing, do not touch the URL field at all (neither value nor disabled)
+'        (2) Assign disabled only when the value changes (prevents useless blur)
+'        Buttons do not steal focus, so they may always be synced.
+'     Lesson: attaching/detaching disabled throws focus away. For an element that holds focus-dependent
+'           state (such as an editing flag), do not assign the attribute unconditionally.
 '
-'   ★実機で発覚したバグと修正 その2 (9.12c: タブ 0 で URL 欄が固まる)★
-'     最後の 1 タブを閉じると、ナビバーの URL 欄が閉じたタブの URL のまま残った。
-'     原因: Wv2Browser.CloseTab は「アクティブにするタブがない」場合 ActivateTab を
-'     呼ばないため ★ActiveChanged が撃たれない★ (9.11a の 4 分岐設計。タブ 0 は
-'     許容するが ActiveChanged(0) は撃たない)。NavBar は ActiveChanged しか
-'     購読していなかったので、タブ 0 になったことを知らされなかった。
-'     → 対処 (案A): NavBar が TabClosed も購読して PushNavSyncToJs する。
-'        PushNavSyncToJs は既にタブ 0 を正しく扱う (URL 空・全ボタン無効)。
-'        ★Browser のイベント契約は変えない★ 「表示に必要なイベントは表示側が
-'        購読する」という疎結合の原則に従う。TabClosed と ActiveChanged が両方
-'        飛ぶケースでは 2 回撃つが、全体同期方式なので無害 (設計原則 60)。
-'     あわせて navsync に hasTab を追加し、リロードボタンもタブ 0 で無効にする。
+'   *Bug found on the real machine and its fix, No. 2 (9.12c: the URL field freezes at 0 tabs)*
+'     When the last tab was closed, the nav bar's URL field kept the closed tab's URL.
+'     Cause: Wv2Browser.CloseTab does not call ActivateTab when "there is no tab to activate", so
+'     *ActiveChanged is not fired* (the 4-branch design of 9.11a: 0 tabs is
+'     allowed but ActiveChanged(0) is not fired). NavBar only subscribed to
+'     ActiveChanged, so it was not told that the tab count became 0.
+'     -> Fix (Plan A): NavBar also subscribes to TabClosed and does PushNavSyncToJs.
+'        PushNavSyncToJs already handles 0 tabs correctly (empty URL, all buttons disabled).
+'        *The Browser's event contract is not changed.* It follows the loose-coupling principle that
+'        "the display side subscribes to the events needed for display". In cases where both TabClosed and ActiveChanged
+'        are fired it fires twice, but with the full-sync method it is harmless (design principle 60).
+'     Along with this hasTab was added to navsync, and the reload button is also disabled at 0 tabs.
 '
-'   ★実機で発覚したバグと修正 その1 (9.12c)★
-'     当初 URL 欄の編集中保護を document.activeElement !== u で判定していたが、
-'     WebView2 の単独ドキュメントでは #url が activeElement になったまま戻らず、
-'     ★初期同期の 1 回だけ効いて以降 URL 欄が二度と更新されない★ という症状が出た
-'     (ボタンの活性は正しく追従していたので、applyNavSync 自体は毎回走っていた)。
-'     → 「ユーザーが実際に編集を始めたか」を明示フラグ (editing) で持つ方式に変更。
-'        focus しただけでは編集中にせず、キー入力 (input イベント) で編集中にし、
-'        blur / Enter / Escape で解除する。
-'     教訓: フォーカス状態を「編集中かどうか」の代理指標に使わない (設計原則 65)。
+'   *Bug found on the real machine and its fix, No. 1 (9.12c)*
+'     At first protection while editing the URL field was judged with document.activeElement !== u, but
+'     in WebView2's standalone document #url stayed as activeElement and never came back, giving the symptom
+'     *it worked only for the single initial sync and the URL field was never updated again*
+'     (the buttons' enabled state followed correctly, so applyNavSync itself ran every time).
+'     -> Changed to a method that holds "whether the user has actually started editing" in an explicit flag (editing).
+'        Merely focusing does not make it editing; key input (the input event) makes it editing,
+'        and blur / Enter / Escape release it.
+'     Lesson: do not use focus state as a proxy for "whether editing" (design principle 65).
 '
-'   ★JSON ヘルパーの重複について★
-'     JsonEscape / GetJsonStr は Wv2TabBar にも同じものがある (Private のため
-'     共有できない)。標準モジュールへの切り出しは将来の整理段階でまとめて行う
-'     方針とし、現時点では 2 箇所の重複を許容する (合意済み)。
+'   *About the duplicated JSON helpers*
+'     JsonEscape / GetJsonStr also exist identically in Wv2TabBar (they are Private so
+'     cannot be shared). The policy is to do the extraction to a standard module together in a future tidying stage,
+'     and for now the duplication in 2 places is tolerated (agreed).
 '
-' --- Wv2NavBar.cls  第9.12b 段階 ---
+' --- Wv2NavBar.cls  stage 9.12b ---
 '
-'   ★WebView2 製ナビゲーションバー (アドレスバー + 戻る/進む/リロード)★
+'   *WebView2-based navigation bar (address bar + back/forward/reload)*
 '
-'   第9.11 で確立した「WebView2 を UI 部品として使う」パターン (Wv2TabBar) を
-'   そのまま踏襲する。画面上部の 2 段目に細長い WebView2 をもう 1 枚置き、
-'   HTML/CSS/JS でナビバーを描画する。
+'   Follows as is the pattern of "using WebView2 as a UI component" (Wv2TabBar) established in 9.11.
+'   Another thin, long WebView2 is placed in the 2nd row at the top of the screen,
+'   and the nav bar is drawn with HTML/CSS/JS.
 '
-'   レイアウト (UserForm_Resize が 3 分割する):
+'   Layout (UserForm_Resize splits it into 3):
 '     +--------------------------+
-'     | [Bing][MSN x] [+]        | <- Wv2TabBar   (高さ TABBAR_HEIGHT_PX)
+'     | [Bing][MSN x] [+]        | <- Wv2TabBar   (height TABBAR_HEIGHT_PX)
 '     +--------------------------+
-'     | [<][>][R] [https://...  ]| <- Wv2NavBar   (高さ NAVBAR_HEIGHT_PX) ★本クラス
+'     | [<][>][R] [https://...  ]| <- Wv2NavBar   (height NAVBAR_HEIGHT_PX) *this class
 '     +--------------------------+
-'     |      コンテンツ          | <- Wv2Browser のタブ群
+'     |         Content          | <- the tab group of Wv2Browser
 '     +--------------------------+
 '
-'   ★所有構造 (Wv2TabBar と同じ、案b)★
-'     Wv2NavBar が自前の Wv2Pane (m_barPane) を 1 枚持つ。この m_barPane は
-'     Wv2Browser.m_tabs には入れない (タブ管理下に置かない)。よって AddTab は
-'     使わず、Wv2Pane を直接生成する。
+'   *Ownership structure (same as Wv2TabBar, Plan b)*
+'     Wv2NavBar holds one Wv2Pane of its own (m_barPane). This m_barPane is not put into
+'     Wv2Browser.m_tabs (it is not placed under tab management). Therefore AddTab is not
+'     used and Wv2Pane is created directly.
 '
-'   ★疎結合 (第9.12a で用意した口を使う)★
-'     Wv2Browser は Wv2NavBar の存在を知らない。NavBar が Browser のイベントを
-'     WithEvents で購読し、Browser の公開 API (NavigateActive / GoBackActive 等)
-'     を呼ぶだけ。Browser 側は 9.12a で以下を用意済み:
+'   *Loose coupling (uses the entries prepared in 9.12a)*
+'     Wv2Browser does not know the existence of Wv2NavBar. NavBar subscribes to Browser's events
+'     with WithEvents and only calls Browser's public API (NavigateActive / GoBackActive etc.).
+'     On the Browser side the following were already prepared in 9.12a:
 '       - Public Event TabUrlChanged(index, url, canGoBack, canGoForward)
-'       - Public Event ActiveChanged(index)  (タブ切替時に URL 表示を切り替える)
+'       - Public Event ActiveChanged(index)  (switches the URL display when tabs are switched)
 '       - NavigateActive / GoBackActive / GoForwardActive / ReloadActive / StopActive
 '       - GetActiveUrl / GetActiveCanGoBack / GetActiveCanGoForward
 '
-'   ★Environment 共有★
-'     m_barPane は Wv2Browser と同じ Environment を共有する。Init で
-'     browser.Environment を受け取って m_barPane.Init に渡す。
+'   *Environment sharing*
+'     m_barPane shares the same Environment as Wv2Browser. Init receives
+'     browser.Environment and passes it to m_barPane.Init.
 '
-'   第9.12b のスコープ (骨格のみ):
-'     作る  : Init (ペイン生成 → View 取得 → 仮想ホストマッピング → 静的 HTML 表示)
-'             / Resize / Shutdown / IsReady / WithEvents ハンドラの空実装
-'     作らない: URL とボタン状態の表示 (9.12c) / 入力・クリックの有効化 (9.12d)
-'     → 9.12b では 2 段目に「見た目だけのナビバー」が表示される。ボタンは押せず、
-'       URL 欄も更新されない。3 分割レイアウトが正しく共存することを確認するのが目的。
+'   Scope of 9.12b (skeleton only):
+'     Build : Init (pane creation -> get View -> virtual host mapping -> show static HTML)
+'             / Resize / Shutdown / IsReady / empty implementations of the WithEvents handlers
+'     Not built: display of the URL and button states (9.12c) / enabling input and clicks (9.12d)
+'     -> In 9.12b a "look-only nav bar" is shown in the 2nd row. The buttons cannot be pressed and
+'       the URL field is not updated. The purpose is to confirm that the 3-way split layout coexists correctly.
 '
-'   ★HTML 配信★
-'     Wv2TabBar と同じく SetVirtualHostNameToFolderMapping を使う。
-'     ★フォルダは TabBar と別にすること★ ホスト名は appassets.navbar
-'     (TabBar は appassets.tabbar)。配信フォルダも分ける (呼び出し側が指定)。
+'   *HTML delivery*
+'     Like Wv2TabBar, uses SetVirtualHostNameToFolderMapping.
+'     *Use a folder separate from TabBar.* The host name is appassets.navbar
+'     (TabBar is appassets.tabbar). The delivery folder is also separate (specified by the caller).
 '
-'   ★仕様事実 13★ Navigate 先はファイル名まで明示する
-'     (https://appassets.navbar/navbar.html)。
-'   ★設計原則 56★ Ctrl_GetCoreWebView2 を省略すると Navigate が E_POINTER。
+'   *Spec fact 13* Specify the Navigate target down to the file name
+'     (https://appassets.navbar/navbar.html).
+'   *Design principle 56* If Ctrl_GetCoreWebView2 is omitted, Navigate gives E_POINTER.
 ''''''''''''''''''''''''''''''''''
 
 Option Explicit
 
 ' ============================================================
-' フィールド
+' Fields
 ' ============================================================
-Private WithEvents m_browser As Wv2Browser   ' Browser のイベントを購読
+Private WithEvents m_browser As Wv2Browser   ' Subscribes to Browser's events
 Attribute m_browser.VB_VarHelpID = -1
-Private m_barPane    As Wv2Pane              ' ナビバー描画用の単一ペイン
-Private m_hwndHost   As LongPtr              ' ホスト (親フレーム) の hwnd
-Private m_folderPath As String               ' ナビバー HTML の配信フォルダ
-Private m_ready      As Boolean              ' Init 完了フラグ
+Private m_barPane    As Wv2Pane              ' Single pane for drawing the nav bar
+Private m_hwndHost   As LongPtr              ' hwnd of the host (parent frame)
+Private m_folderPath As String               ' Delivery folder of the nav bar HTML
+Private m_ready      As Boolean              ' Init-complete flag
 
 ' ============================================================
-' 定数
+' Constants
 ' ============================================================
 Private Const NAVBAR_HOST As String = "appassets.navbar"
 Private Const NAVBAR_FILE As String = "navbar.html"
 
-' Controller Ready 待ちのタイムアウト (秒)
+' Timeout for waiting for Controller Ready (seconds)
 Private Const READY_TIMEOUT As Single = 10#
 
 
@@ -378,25 +378,25 @@ End Sub
 
 
 ' ============================================================
-' Init ? ナビバーを起動する
+' Init ? Starts the nav bar
 '
-'   引数:
-'     browser    : Wv2Browser (Init 済みであること。Environment を借りる)
-'     hwnd       : 親フレームの hwnd (Browser と同じホストに載せる)
-'     folderPath : navbar.html を書き出すフォルダ
-'                  ★TabBar とは別フォルダにすること★
+'   Arguments:
+'     browser    : Wv2Browser (must be Init-ed. Its Environment is borrowed)
+'     hwnd       : hwnd of the parent frame (placed on the same host as Browser)
+'     folderPath : folder to write navbar.html to
+'                  *Use a folder separate from TabBar*
 '
-'   手順 (Wv2TabBar.Init と同じ):
-'     1. ナビバー HTML を書き出す
-'     2. ペイン生成 (AddTab は使わない = タブ管理下に置かない)
-'     3. Controller Ready 待ち
-'     4. View 取得 (設計原則 56)
-'     5. 仮想ホストマッピング (Navigate の前に必須)
-'     6. Navigate (仕様事実 13: ファイル名まで明示)
+'   Procedure (same as Wv2TabBar.Init):
+'     1. Write out the nav bar HTML
+'     2. Create the pane (AddTab is not used = not placed under tab management)
+'     3. Wait for Controller Ready
+'     4. Get View (design principle 56)
+'     5. Virtual host mapping (required before Navigate)
+'     6. Navigate (spec fact 13: specify down to the file name)
 '
-'   ★Set m_browser = browser で WithEvents 購読が始まる★
-'     以降、Browser の TabUrlChanged / ActiveChanged が本クラスに届く。
-'     9.12b ではハンドラは Debug.Print のみ (中身は 9.12c)。
+'   *Set m_browser = browser starts the WithEvents subscription*
+'     From then on, Browser's TabUrlChanged / ActiveChanged reach this class.
+'     In 9.12b the handlers are Debug.Print only (the content is 9.12c).
 ' ============================================================
 Public Function Init( _
     ByVal browser As Wv2Browser, _
@@ -404,134 +404,134 @@ Public Function Init( _
     ByVal folderPath As String) As Boolean
 
     If browser Is Nothing Then
-        Debug.Print "Wv2NavBar.Init: browser が Nothing"
+        Debug.Print "Wv2NavBar.Init: browser is Nothing"
         Exit Function
     End If
 
     Dim env As Wv2Environment
     Set env = browser.Environment
     If env Is Nothing Then
-        Debug.Print "Wv2NavBar.Init: browser.Environment が Nothing (Browser.Init 未完了?)"
+        Debug.Print "Wv2NavBar.Init: browser.Environment is Nothing (Browser.Init not finished?)"
         Exit Function
     End If
 
-    Set m_browser = browser        ' ★これで WithEvents 購読が始まる
+    Set m_browser = browser        ' *The WithEvents subscription starts with this
     m_hwndHost = hwnd
     m_folderPath = folderPath
 
-    ' --- 1. ナビバー HTML を書き出す ---
+    ' --- 1. Write out the nav bar HTML ---
     If Not WriteNavBarHtml() Then
-        Debug.Print "Wv2NavBar.Init: HTML 書き出し失敗"
+        Debug.Print "Wv2NavBar.Init: HTML write failed"
         Exit Function
     End If
 
-    ' --- 2. ナビバー用ペインを生成 (AddTab は使わない) ---
+    ' --- 2. Create the pane for the nav bar (AddTab is not used) ---
     Set m_barPane = New Wv2Pane
     m_barPane.Init env, m_hwndHost
 
-    ' --- 3. Controller Ready 待ち ---
+    ' --- 3. Wait for Controller Ready ---
     If Not WaitPaneReady(m_barPane) Then
         If m_barPane.IsFailed Then
-            Debug.Print "Wv2NavBar.Init: Controller 生成失敗 (lastError=&H" & _
+            Debug.Print "Wv2NavBar.Init: Controller creation failed (lastError=&H" & _
                         Hex(m_barPane.LastError) & ")"
         Else
-            Debug.Print "Wv2NavBar.Init: Controller 生成タイムアウト"
+            Debug.Print "Wv2NavBar.Init: Controller creation timed out"
         End If
         Exit Function
     End If
-    Debug.Print "Wv2NavBar.Init: Controller 生成 OK (pCtrl=" & m_barPane.CtrlPtr & ")"
+    Debug.Print "Wv2NavBar.Init: Controller creation OK (pCtrl=" & m_barPane.CtrlPtr & ")"
 
-    ' --- 4. View 取得 (省略すると Navigate が E_POINTER、設計原則 56) ---
+    ' --- 4. Get View (if omitted, Navigate gives E_POINTER, design principle 56) ---
     Dim hr As Long
     hr = m_barPane.Ctrl_GetCoreWebView2()
     If hr <> 0 Or m_barPane.ViewPtr = 0 Then
-        Debug.Print "Wv2NavBar.Init: View 取得失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2NavBar.Init: View acquisition failed hr=&H" & Hex(hr)
         Exit Function
     End If
-    Debug.Print "Wv2NavBar.Init: View 取得 OK (pView=" & m_barPane.ViewPtr & ")"
+    Debug.Print "Wv2NavBar.Init: View acquisition OK (pView=" & m_barPane.ViewPtr & ")"
 
-    ' --- 5. 仮想ホストマッピング (Navigate の前に必須) ---
-    hr = m_barPane.View3_SetVirtualHostNameToFolderMapping(NAVBAR_HOST, m_folderPath, 1)  ' 1 = ALLOW
+    ' --- 5. Virtual host mapping (required before Navigate) ---
+    hr = m_barPane.View3_SetVirtualHostNameToFolderMapping(NAVBAR_HOST, m_folderPath, 2)  ' 2 = DENY_CORS (English fork; was 1 = ALLOW, which let any site read the mapped folder)
     If hr <> 0 Then
-        Debug.Print "Wv2NavBar.Init: マッピング失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2NavBar.Init: mapping failed hr=&H" & Hex(hr)
         Exit Function
     End If
 
-    ' --- 5b. hostObjects 公開 (第9.24、Navigate の前に必須: 仕様事実 18/19 の順序A) ---
-    '   TabBar の 5b (9.21) と同じ位置・同じ形。attach するのは NavBar 自身 (Me)。
-    '   JS からは window.chrome.webview.hostObjects.sync.NavBar.HostBack() /
-    '   HostForward() / HostReload() / HostNavigate(url) で呼ばれる (第9.25 で引数ゼロ化)。
-    '   失敗しても致命ではない (JS 側が postMessage にフォールバックする) ため、
-    '   ここでは hr をログするだけで Init は続行する。
+    ' --- 5b. Expose hostObjects (9.24, required before Navigate: order A of spec facts 18/19) ---
+    '   Same position and same form as 5b (9.21) of TabBar. What is attached is NavBar itself (Me).
+    '   From JS it is called as window.chrome.webview.hostObjects.sync.NavBar.HostBack() /
+    '   HostForward() / HostReload() / HostNavigate(url) (made zero-argument in 9.25).
+    '   Failure is not fatal (the JS side falls back to postMessage), so
+    '   here we only log hr and Init continues.
     Dim hrHost As Long
     hrHost = m_barPane.View_AddHostObjectToScript("NavBar", Me)
     If hrHost <> 0 Then
-        Debug.Print "Wv2NavBar.Init: AddHostObjectToScript(NavBar) 失敗 hr=&H" & Hex(hrHost) & " (JS は postMessage にフォールバック)"
+        Debug.Print "Wv2NavBar.Init: AddHostObjectToScript(NavBar) failed hr=&H" & Hex(hrHost) & " (JS falls back to postMessage)"
     Else
-        Debug.Print "Wv2NavBar.Init: NavBar ブリッジを attach OK (back/forward/reload/navigate は hostObjects 優先)"
+        Debug.Print "Wv2NavBar.Init: NavBar bridge attach OK (back/forward/reload/navigate prefer hostObjects)"
     End If
 
-    ' --- 6. Navigate (仕様事実 13: ファイル名まで明示) ---
+    ' --- 6. Navigate (spec fact 13: specify down to the file name) ---
     Dim url As String
     url = "https://" & NAVBAR_HOST & "/" & NAVBAR_FILE
     hr = m_barPane.View_Navigate(url)
     If hr <> 0 Then
-        Debug.Print "Wv2NavBar.Init: Navigate 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2NavBar.Init: Navigate failed hr=&H" & Hex(hr)
         Exit Function
     End If
     Debug.Print "Wv2NavBar.Init: Navigate OK (" & url & ")"
 
-    ' --- 7. WebMessage シンク登録 + 受信有効化 (第9.12c、案P) ---
-    '   ナビバー JS からの postMessage (ready / 将来のクリック・URL 入力) を
-    '   OnPaneWebMessage で受け取れるようにする。
-    '   ★初期同期は「ここでは撃たない」★ JS の message リスナー登録前に
-    '   PostMessage すると落ちる (仕様事実 15)。JS が {"cmd":"ready"} を
-    '   送ってきてから OnPaneWebMessage 内で PushNavSyncToJs する (設計原則 61)。
+    ' --- 7. Register WebMessage sink + enable reception (9.12c, Plan P) ---
+    '   Make it possible to receive postMessage from the nav bar JS (ready / future clicks and URL input)
+    '   in OnPaneWebMessage.
+    '   *The initial sync is "not fired here"* A PostMessage before the JS message
+    '   listener is registered gets dropped (spec fact 15). We do PushNavSyncToJs inside OnPaneWebMessage
+    '   after JS sends {"cmd":"ready"} (design principle 61).
     m_barPane.SetWebMsgSink Me
     hr = m_barPane.View_AddWebMessageReceived()
     If hr <> 0 Then
-        Debug.Print "Wv2NavBar.Init: View_AddWebMessageReceived 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2NavBar.Init: View_AddWebMessageReceived failed hr=&H" & Hex(hr)
         Exit Function
     End If
-    Debug.Print "Wv2NavBar.Init: WebMessage 受信を有効化 (ready 待ち)"
+    Debug.Print "Wv2NavBar.Init: WebMessage reception enabled (waiting for ready)"
 
     m_ready = True
     Init = True
-    Debug.Print "Wv2NavBar.Init: 完了 (ナビバー起動、初期同期は ready 受信後)"
+    Debug.Print "Wv2NavBar.Init: done (nav bar started, initial sync after ready is received)"
 End Function
 
 
 ' ============================================================
-' Resize ? ナビバー帯の矩形を適用する
-'   UserForm_Resize が計算した「2 段目の帯」の矩形をそのまま受け取る。
-'   ★NavBar は自分がどこに置かれるかを計算しない★ レイアウトの真実源は
-'   上位 (UserForm)。ここは言われた矩形に従うだけ (設計原則 59 の考え方)。
+' Resize ? Applies the rectangle of the nav bar band
+'   Takes as is the rectangle of the "2nd-row band" that UserForm_Resize computed.
+'   *NavBar does not compute where it is placed.* The source of truth for the layout is
+'   the upper layer (UserForm). Here it just follows the rectangle it is told (the thinking of design principle 59).
 ' ============================================================
 Public Sub Resize(ByRef barRect As RECT)
     If m_barPane Is Nothing Then Exit Sub
     Dim hr As Long
     hr = m_barPane.Ctrl_PutBounds(barRect)
     If hr <> 0 Then
-        Debug.Print "Wv2NavBar.Resize: Ctrl_PutBounds 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2NavBar.Resize: Ctrl_PutBounds failed hr=&H" & Hex(hr)
     End If
-    m_barPane.Ctrl_PutIsVisible True   ' ナビバーは常時可視
+    m_barPane.Ctrl_PutIsVisible True   ' The nav bar is always visible
 End Sub
 
 
 ' ============================================================
-' Shutdown ? 明示的に解放する (設計原則 58)
-'   WithEvents 参照と自前ペインを断つ。UserForm_Terminate から呼ぶ。
+' Shutdown ? Release explicitly (design principle 58)
+'   Cuts the WithEvents reference and the own pane. Called from UserForm_Terminate.
 ' ============================================================
 Public Sub Shutdown()
-    Wv2Log.LogD "Wv2NavBar.Shutdown 開始"
+    Wv2Log.LogD "Wv2NavBar.Shutdown start"
     If Not m_barPane Is Nothing Then
-        m_barPane.ClearWebMsgSink   ' 9.12d でシンク登録するので先に切る作法を入れておく
+        m_barPane.ClearWebMsgSink   ' The sink is registered in 9.12d, so build in the habit of cutting it first
         m_barPane.Ctrl_Close
         Set m_barPane = Nothing
     End If
-    Set m_browser = Nothing   ' WithEvents 購読を解除
+    Set m_browser = Nothing   ' Cancel the WithEvents subscription
     m_ready = False
-    Wv2Log.LogD "Wv2NavBar.Shutdown 完了"
+    Wv2Log.LogD "Wv2NavBar.Shutdown done"
 End Sub
 
 
@@ -541,65 +541,65 @@ End Property
 
 
 ' ============================================================
-' ★Wv2Browser イベントハンドラ (第9.12c: 全体同期でナビバーへ反映)★
+' *Wv2Browser event handlers (9.12c: reflect to the nav bar via full sync)*
 '
-'   TabUrlChanged : アクティブタブの URL / 戻る・進むの可否が変わった。
-'                   ★index フィルタ必須★ 裏のタブのイベントは無視する
-'                   (無視しないと URL 欄が裏タブの URL に化ける)。
-'                   NavigationCompleted と HistoryChanged の両方から撃たれるので
-'                   1 回の遷移で複数回来るのが正常 (全体同期なので無害)。
+'   TabUrlChanged : the active tab's URL / whether back and forward are possible changed.
+'                   *The index filter is mandatory* Events of background tabs are ignored
+'                   (if not ignored the URL field turns into the background tab's URL).
+'                   It is fired from both NavigationCompleted and HistoryChanged, so
+'                   multiple arrivals for one navigation are normal (harmless thanks to full sync).
 '
-'   ActiveChanged : タブが切り替わった。★新しいアクティブタブの URL は
-'                   TabUrlChanged では飛んでこない★ (そのタブでは何も起きて
-'                   いないため)。よって Browser に現在状態を問い合わせて送る。
+'   ActiveChanged : the tab was switched. *The new active tab's URL does not
+'                   come through TabUrlChanged* (because nothing happened
+'                   in that tab). So ask Browser for the current state and send it.
 ' ============================================================
 Private Sub m_browser_TabUrlChanged(ByVal index As Long, ByVal url As String, _
                                     ByVal canGoBack As Boolean, ByVal canGoForward As Boolean)
-    ' --- ★index フィルタ★ 裏タブのイベントは無視する ---
+    ' --- *index filter* ignore events of background tabs ---
     If m_browser Is Nothing Then Exit Sub
     If index <> m_browser.ActiveIndex Then
-        Debug.Print "Wv2NavBar[EVT] TabUrlChanged(index=" & index & ") → 裏タブなので無視 " & _
+        Debug.Print "Wv2NavBar[EVT] TabUrlChanged(index=" & index & ") -> ignored (background tab) " & _
                     "(ActiveIndex=" & m_browser.ActiveIndex & ")"
         Exit Sub
     End If
 
     Debug.Print "Wv2NavBar[EVT] TabUrlChanged(index=" & index & ", url=" & url & _
-                ", back=" & canGoBack & ", fwd=" & canGoForward & ") → PushNavSyncToJs"
+                ", back=" & canGoBack & ", fwd=" & canGoForward & ") -> PushNavSyncToJs"
 
-    ' イベントが運んできた値をそのまま使う (Browser に問い合わせ直さない)
+    ' Use the value the event carried as is (do not query Browser again)
     SendNavSync url, canGoBack, canGoForward
 End Sub
 
 Private Sub m_browser_ActiveChanged(ByVal index As Long)
-    Debug.Print "Wv2NavBar[EVT] ActiveChanged(index=" & index & ") → PushNavSyncToJs"
+    Debug.Print "Wv2NavBar[EVT] ActiveChanged(index=" & index & ") -> PushNavSyncToJs"
     PushNavSyncToJs
 End Sub
 
-' --- TabClosed (第9.12c で追加、案A) ---
-'   ★なぜ必要か★ CloseTab は「アクティブにするタブがない」場合 (= 最後の 1 タブを
-'   閉じたとき) ActivateTab を呼ばないので ActiveChanged が撃たれない。ActiveChanged
-'   だけを購読していると、タブ 0 になったことを知らされず URL 欄が固まる (実機で発覚)。
-'   TabClosed も購読して PushNavSyncToJs すれば、タブ 0 なら URL 空・全ボタン無効に
-'   なる (PushNavSyncToJs が既にタブ 0 を扱っている)。
-'   タブが残っている場合は ActiveChanged と二重に撃たれるが、全体同期方式なので無害。
+' --- TabClosed (added in 9.12c, Plan A) ---
+'   *Why it is needed* CloseTab does not call ActivateTab when "there is no tab to activate" (= when the last
+'   tab is closed), so ActiveChanged is not fired. If only ActiveChanged
+'   is subscribed, it is not told that the tab count became 0 and the URL field freezes (found on the real machine).
+'   If TabClosed is also subscribed and PushNavSyncToJs is done, at 0 tabs the URL becomes empty and all buttons are disabled
+'   (PushNavSyncToJs already handles 0 tabs).
+'   When tabs remain it fires twice together with ActiveChanged, but this is harmless with the full-sync method.
 Private Sub m_browser_TabClosed(ByVal index As Long)
-    Debug.Print "Wv2NavBar[EVT] TabClosed(index=" & index & ") → PushNavSyncToJs"
+    Debug.Print "Wv2NavBar[EVT] TabClosed(index=" & index & ") -> PushNavSyncToJs"
     PushNavSyncToJs
 End Sub
 
 
 ' ============================================================
-' OnPaneWebMessage (第9.12c、案P: m_barPane の WebMessage シンク受け口)
+' OnPaneWebMessage (9.12c, Plan P: receiving end of the m_barPane WebMessage sink)
 '
-'   ナビバー JS の postMessage が Wv2Pane 経由でここに届く。
-'   第9.12c では "ready" だけを解釈する。クリック系 (back/forward/reload/navigate)
-'   のコマンド解釈は 9.12d で追加する。
+'   The nav bar JS's postMessage arrives here via Wv2Pane.
+'   In 9.12c only "ready" is interpreted. The command interpretation for the click types (back/forward/reload/navigate)
+'   is added in 9.12d.
 ' ============================================================
 Public Sub OnPaneWebMessage(ByVal pane As Wv2Pane, ByVal source As String, ByVal msg As String)
     Debug.Print "Wv2NavBar.OnPaneWebMessage: msg=" & msg
 
     If m_browser Is Nothing Then
-        Debug.Print "  → m_browser が Nothing のため無視"
+        Debug.Print "  -> ignored because m_browser is Nothing"
         Exit Sub
     End If
 
@@ -609,187 +609,187 @@ Public Sub OnPaneWebMessage(ByVal pane As Wv2Pane, ByVal source As String, ByVal
     Select Case cmd
 
         Case "ready"
-            Debug.Print "  → ready 受信。初期同期 navsync を送信する。"
+            Debug.Print "  -> ready received. Sending the initial navsync."
             PushNavSyncToJs
 
         Case "back"
-            ' --- 第9.12d/9.24: ← クリック (postMessage フォールバック経路) ---
-            '   ★第9.24: 処理を HostBack へ一元化 (案C-1)★ JS がハイブリッドで
-            '   hostObjects を掴めなかった時だけここへ落ちる。GoBackActive の
-            '   呼び出しと失敗ログは HostBack 内に集約済みなので、ここは呼び捨て
-            '   委譲のみ (戻り値は受けない)。遷移が始まれば HistoryChanged /
-            '   NavigationCompleted → TabUrlChanged → PushNavSyncToJs でナビバーが
-            '   自動追従する (全体同期) のは従来どおり。
-            Debug.Print "  → back [postmsg fallback → HostBack]"
+            ' --- 9.12d/9.24: <- click (postMessage fallback path) ---
+            '   *9.24: processing consolidated into HostBack (Plan C-1)* Only when JS in the hybrid
+            '   could not grab hostObjects does it fall here. The GoBackActive call and the
+            '   failure log are already consolidated inside HostBack, so here it is fire-and-forget
+            '   delegation only (the return value is not taken). That once navigation starts, HistoryChanged /
+            '   NavigationCompleted -> TabUrlChanged -> PushNavSyncToJs makes the nav bar
+            '   follow automatically (full sync) is as before.
+            Debug.Print "  -> back [postmsg fallback -> HostBack]"
             HostBack
 
         Case "forward"
-            ' --- 第9.12d/9.24: → クリック (postMessage フォールバック経路) ---
-            Debug.Print "  → forward [postmsg fallback → HostForward]"
+            ' --- 9.12d/9.24: -> click (postMessage fallback path) ---
+            Debug.Print "  -> forward [postmsg fallback -> HostForward]"
             HostForward
 
         Case "reload"
-            ' --- 第9.12d/9.24: [更新] クリック (postMessage フォールバック経路) ---
-            Debug.Print "  → reload [postmsg fallback → HostReload]"
+            ' --- 9.12d/9.24: [Reload] click (postMessage fallback path) ---
+            Debug.Print "  -> reload [postmsg fallback -> HostReload]"
             HostReload
 
         Case "navigate"
-            ' --- 第9.12d/9.24: URL 欄で Enter (postMessage フォールバック経路) ---
-            '   ★第9.24: 処理を HostNavigate へ一元化 (案C-1)★ 空 URL ガード /
-            '   NavigateActive の呼び出し / 失敗ログはすべて HostNavigate 内へ
-            '   移した (論点3)。ここでは JSON から url を復元して呼び捨て委譲する
-            '   だけ。JSON パース (JsonGetStr) はフォールバック経路の引数復元に
-            '   必要なので Case 側に残る (hostObjects 経路では JS が文字列を直接
-            '   渡すためパース不要)。
-            '   ★スキーム補完・検索エンジンへの振り分けは Browser 側 (NormalizeUrl)
-            '   の責務★ ここも Host メソッドも入力文字列をそのまま流す (案3-A)。
+            ' --- 9.12d/9.24: Enter in the URL field (postMessage fallback path) ---
+            '   *9.24: processing consolidated into HostNavigate (Plan C-1)* The empty-URL guard /
+            '   the NavigateActive call / the failure log have all been moved into HostNavigate
+            '   (point 3). Here we only restore url from JSON and delegate fire-and-forget.
+            '   The JSON parse (JsonGetStr) is needed to restore the arguments on the
+            '   fallback path, so it stays on the Case side (on the hostObjects path JS passes the string
+            '   directly so no parsing is needed).
+            '   *Scheme completion and routing to the search engine are the responsibility of the Browser side (NormalizeUrl)*
+            '   Neither this nor the Host method touches the input string; they pass it through as is (Plan 3-A).
             Dim url As String
             url = JsonGetStr(msg, "url")
-            Debug.Print "  → navigate(url=" & url & ") [postmsg fallback → HostNavigate]"
+            Debug.Print "  -> navigate(url=" & url & ") [postmsg fallback -> HostNavigate]"
             HostNavigate url
 
         Case ""
-            Debug.Print "  → cmd を取り出せなかった (msg=" & msg & ")"
+            Debug.Print "  -> could not extract cmd (msg=" & msg & ")"
 
         Case Else
-            Debug.Print "  → 未知のコマンド: " & cmd
+            Debug.Print "  -> unknown command: " & cmd
 
     End Select
 End Sub
 
 
 ' ============================================================
-' HostBack (第9.24、hostObjects 経路の back 受け口)
+' HostBack (9.24, the back entry of the hostObjects path)
 '
-'   JS から window.chrome.webview.hostObjects.sync.NavBar.HostBack() で直接
-'   呼ばれる (postMessage を介さない同期 RPC)。中身は OnPaneWebMessage の back
-'   ケースと同一で、m_browser.GoBackActive を同期で呼ぶだけ。
+'   Called directly from JS as window.chrome.webview.hostObjects.sync.NavBar.HostBack()
+'   (a synchronous RPC that does not go through postMessage). The body is the same as the back
+'   case of OnPaneWebMessage: it just calls m_browser.GoBackActive synchronously.
 '
-'   ★同期呼び出しの安全性 (案4-A)★ GoBackActive は View_GoBack を撃つだけで
-'     完了待ちを含まないため、JS->VBA の sync 直接呼び出しでも 仕様事実 14 の
-'     デッドロックに嵌まらない。遷移が始まると HistoryChanged /
-'     NavigationCompleted → TabUrlChanged → PushNavSyncToJs でナビバーが全体
-'     同期で追従する。
+'   *Safety of the synchronous call (Plan 4-A)* GoBackActive only fires View_GoBack and
+'     contains no completion wait, so even a JS->VBA sync direct call does not fall into the spec fact 14
+'     deadlock. When navigation starts, HistoryChanged /
+'     NavigationCompleted -> TabUrlChanged -> PushNavSyncToJs makes the nav bar follow
+'     through full sync.
 '
-'   ★引数ゼロで確定 (第9.25 → 9.25b)★ 9.24 では『引数ゼロの Public Function は
-'     hostObjects の sync プロキシからプロパティ取得と誤認され、取得の時点で 1 回実行 →
-'     フォールバックでもう 1 回実行、という二重実行を招くのではないか』という懸念から
-'     Optional ByVal reserved As Long を持たせていた。9.25 で専用プローブによる実測を
-'     行った結果、sync プロキシは取得の時点では VBA を呼ばず、判断を実際の () まで
-'     遅延していることが確認できた (仕様事実 22)。よって reserved は不要と確定し、
-'     素の引数ゼロに戻した。JS からは nb.HostBack() の形で呼ぶ。
+'   *Zero arguments confirmed (9.25 -> 9.25b)* In 9.24 we had given it
+'     Optional ByVal reserved As Long out of the concern that "a zero-argument Public Function
+'     would be mistaken by the hostObjects sync proxy for a property get, causing a double execution:
+'     one execution at the time of the get, and another by the fallback".
+'     As a result of measuring with a dedicated probe in 9.25, it was confirmed that the sync proxy
+'     does not call VBA at the time of the get and defers the decision until the actual ()
+'     (spec fact 22). So reserved was confirmed unnecessary and returned to plain zero arguments. JS calls it as nb.HostBack().
 ' ============================================================
 Public Function HostBack() As Boolean
-    Debug.Print "Wv2NavBar.HostBack: (host経由)"
+    Debug.Print "Wv2NavBar.HostBack: (via host)"
     If m_browser Is Nothing Then
-        Debug.Print "  → m_browser が Nothing のため無視"
+        Debug.Print "  -> ignored because m_browser is Nothing"
         HostBack = False
         Exit Function
     End If
     Dim ok As Boolean
     ok = m_browser.GoBackActive()
     If Not ok Then
-        Debug.Print "    [警告] GoBackActive 失敗/戻れない"
+        Debug.Print "    [warning] GoBackActive failed / cannot go back"
     End If
     HostBack = ok
 End Function
 
 
 ' ============================================================
-' HostForward (第9.24、hostObjects 経路の forward 受け口)
+' HostForward (9.24, the forward entry of the hostObjects path)
 '
-'   JS から hostObjects.sync.NavBar.HostForward() で直接呼ばれる。中身は
-'   forward ケースと同一の m_browser.GoForwardActive。View_GoForward を撃つ
-'   だけで完了待ちがない (案4-A)。第9.25 で reserved を削除し引数ゼロに戻した。
+'   Called directly from JS as hostObjects.sync.NavBar.HostForward(). The body is
+'   m_browser.GoForwardActive, same as the forward case. It only fires View_GoForward
+'   with no completion wait (Plan 4-A). In 9.25 reserved was deleted and it returned to zero arguments.
 ' ============================================================
 Public Function HostForward() As Boolean
-    Debug.Print "Wv2NavBar.HostForward: (host経由)"
+    Debug.Print "Wv2NavBar.HostForward: (via host)"
     If m_browser Is Nothing Then
-        Debug.Print "  → m_browser が Nothing のため無視"
+        Debug.Print "  -> ignored because m_browser is Nothing"
         HostForward = False
         Exit Function
     End If
     Dim ok As Boolean
     ok = m_browser.GoForwardActive()
     If Not ok Then
-        Debug.Print "    [警告] GoForwardActive 失敗/進めない"
+        Debug.Print "    [warning] GoForwardActive failed / cannot go forward"
     End If
     HostForward = ok
 End Function
 
 
 ' ============================================================
-' HostReload (第9.24、hostObjects 経路の reload 受け口)
+' HostReload (9.24, the reload entry of the hostObjects path)
 '
-'   JS から hostObjects.sync.NavBar.HostReload() で直接呼ばれる。中身は
-'   reload ケースと同一の m_browser.ReloadActive。View_Reload を撃つだけで
-'   完了待ちがない (案4-A)。第9.25 で reserved を削除し引数ゼロに戻した。
+'   Called directly from JS as hostObjects.sync.NavBar.HostReload(). The body is
+'   m_browser.ReloadActive, same as the reload case. It only fires View_Reload
+'   with no completion wait (Plan 4-A). In 9.25 reserved was deleted and it returned to zero arguments.
 ' ============================================================
 Public Function HostReload() As Boolean
-    Debug.Print "Wv2NavBar.HostReload: (host経由)"
+    Debug.Print "Wv2NavBar.HostReload: (via host)"
     If m_browser Is Nothing Then
-        Debug.Print "  → m_browser が Nothing のため無視"
+        Debug.Print "  -> ignored because m_browser is Nothing"
         HostReload = False
         Exit Function
     End If
     Dim ok As Boolean
     ok = m_browser.ReloadActive()
     If Not ok Then
-        Debug.Print "    [警告] ReloadActive 失敗"
+        Debug.Print "    [warning] ReloadActive failed"
     End If
     HostReload = ok
 End Function
 
 
 ' ============================================================
-' HostNavigate (第9.24、hostObjects 経路の navigate 受け口)
+' HostNavigate (9.24, the navigate entry of the hostObjects path)
 '
-'   JS から hostObjects.sync.NavBar.HostNavigate(url) で直接呼ばれる。中身は
-'   navigate ケースと同一の m_browser.NavigateActive。
+'   Called directly from JS as hostObjects.sync.NavBar.HostNavigate(url). The body is
+'   m_browser.NavigateActive, same as the navigate case.
 '
-'   ★★今回の検証の目玉 = 文字列引数★★ TabBar の 3 メソッドは Long しか
-'     受け取らなかったので、hostObjects.sync 経由で JS→VBA へ String を渡すのは
-'     ここが初めて。JS の string は VARIANT(BSTR) として届くはずで、postMessage
-'     経路のような JSON エスケープを一切通らない。日本語の検索語や記号入り URL が
-'     欠落なく届けば 仕様事実 21 として記録する。→ 判定用に受け取った url を
-'     そのまま Debug.Print する (イミディエイトで文字化けの有無が見える)。
+'   ** The highlight of this verification = the string argument ** TabBar's 3 methods accepted only
+'     Long, so this is the first time a String is passed from JS->VBA via hostObjects.sync.
+'     A JS string should arrive as VARIANT(BSTR) and passes through no JSON escaping
+'     like the postMessage path. If Japanese search terms and URLs with symbols arrive without
+'     loss, record it as spec fact 21. -> For judging, the received url is
+'     Debug.Print-ed as is (garbling can be seen in the Immediate window).
 '
-'   ★空 URL ガードはここに一元化 (論点3)★ hostObjects 経路・postMessage 経路の
-'     どちらから来ても同じガードを通す。
+'   *The empty-URL guard is consolidated here (point 3)* Whether it comes from the hostObjects path or the postMessage path,
+'     it passes through the same guard.
 '
-'   ★同期呼び出しの安全性 (案4-A)★ NavigateActive は NormalizeUrl (純粋変換) と
-'     View_Navigate (撃ちっぱなし) のみで完了待ちを含まない。
+'   *Safety of the synchronous call (Plan 4-A)* NavigateActive does NormalizeUrl (pure conversion) and
+'     View_Navigate (fire-and-forget) only, with no completion wait.
 ' ============================================================
 Public Function HostNavigate(ByVal url As String) As Boolean
-    Debug.Print "Wv2NavBar.HostNavigate: url=" & url & " (host経由)"
+    Debug.Print "Wv2NavBar.HostNavigate: url=" & url & " (via host)"
     If m_browser Is Nothing Then
-        Debug.Print "  → m_browser が Nothing のため無視"
+        Debug.Print "  -> ignored because m_browser is Nothing"
         HostNavigate = False
         Exit Function
     End If
     If Len(Trim$(url)) = 0 Then
-        Debug.Print "    [警告] URL が空 (無視)"
+        Debug.Print "    [warning] URL is empty (ignored)"
         HostNavigate = False
         Exit Function
     End If
     Dim ok As Boolean
     ok = m_browser.NavigateActive(url)
     If Not ok Then
-        Debug.Print "    [警告] NavigateActive 失敗/無視 (アクティブタブなし?)"
+        Debug.Print "    [warning] NavigateActive failed / ignored (no active tab?)"
     End If
     HostNavigate = ok
 End Function
 
 
 ' ============================================================
-' PushNavSyncToJs (第9.12c、Browser に現在状態を問い合わせて JS へ送る)
+' PushNavSyncToJs (9.12c, ask Browser for the current state and send it to JS)
 '
-'   アクティブタブの URL / 戻れるか / 進めるか を Browser の読み取り口
-'   (9.12a で用意) から取得して送る。タブ 0 のときは URL 空・両ボタン無効。
+'   Gets the active tab's URL / whether it can go back / whether it can go forward from Browser's read entries
+'   (prepared in 9.12a) and sends them. At 0 tabs: empty URL, both buttons disabled.
 '
-'   呼び出し元:
-'     - ready 受信時 (初期同期)
-'     - ActiveChanged (タブ切替。新タブの状態はイベントが運んでこないので問い合わせ)
+'   Callers:
+'     - when ready is received (initial sync)
+'     - ActiveChanged (tab switch. The new tab's state is not carried by the event, so it is queried)
 ' ============================================================
 Private Sub PushNavSyncToJs()
     If m_browser Is Nothing Then Exit Sub
@@ -799,7 +799,7 @@ Private Sub PushNavSyncToJs()
     Dim canFwd As Boolean
 
     If m_browser.TabCount = 0 Or m_browser.ActiveIndex < 1 Then
-        ' タブ 0 (アクティブなし): URL 空・両ボタン無効
+        ' 0 tabs (no active tab): empty URL, both buttons disabled
         url = ""
         canBack = False
         canFwd = False
@@ -814,29 +814,29 @@ End Sub
 
 
 ' ============================================================
-' SendNavSync (第9.12c、navsync JSON を組み立てて JS へ送る)
+' SendNavSync (9.12c, build the navsync JSON and send it to JS)
 '
-'   送る JSON:
+'   JSON sent:
 '     {"type":"navsync","url":"...","canBack":true,"canForward":false}
 '
-'   PushNavSyncToJs (Browser に問い合わせる版) と、TabUrlChanged ハンドラ
-'   (イベントが運んできた値をそのまま使う版) の両方から呼ばれる共通の送信部。
+'   The common sending part called from both PushNavSyncToJs (the version that queries Browser) and the TabUrlChanged handler
+'   (the version that uses the values the event carried as is).
 ' ============================================================
 Private Sub SendNavSync(ByVal url As String, ByVal canBack As Boolean, ByVal canFwd As Boolean)
     If m_barPane Is Nothing Then Exit Sub
     If Not m_ready Then Exit Sub
 
-    ' --- hasTab: アクティブタブがあるか (第9.12c) ---
-    '   タブ 0 のときはリロードボタンも無効にする。戻る/進むは canBack/canForward が
-    '   もともと False になるので自動的に無効になるが、リロードはそれらと独立なため
-    '   明示的に伝える必要がある。
+    ' --- hasTab: whether there is an active tab (9.12c) ---
+    '   At 0 tabs the reload button is also disabled. Back/forward are automatically disabled because canBack/canForward
+    '   are False to begin with, but reload is independent of them,
+    '   so it must be conveyed explicitly.
     Dim hasTab As Boolean
     If Not m_browser Is Nothing Then
         hasTab = (m_browser.TabCount > 0 And m_browser.ActiveIndex >= 1)
     End If
 
-    ' about:blank は「まだ何も読み込んでいない」状態なので URL 欄には出さない
-    ' (Controller 生成直後に一瞬だけ来る。仕様事実 6)
+    ' about:blank is the state of "nothing loaded yet", so it is not shown in the URL field
+    ' (it comes briefly right after Controller creation. Spec fact 6)
     Dim shown As String
     If url = "about:blank" Then
         shown = ""
@@ -853,23 +853,23 @@ Private Sub SendNavSync(ByVal url As String, ByVal canBack As Boolean, ByVal can
     Dim hr As Long
     hr = m_barPane.View_PostWebMessageAsString(json)
     If hr <> 0 Then
-        Debug.Print "Wv2NavBar.SendNavSync: PostWebMessageAsString 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2NavBar.SendNavSync: PostWebMessageAsString failed hr=&H" & Hex(hr)
     Else
-        Debug.Print "Wv2NavBar.SendNavSync: 送信 OK"
+        Debug.Print "Wv2NavBar.SendNavSync: send OK"
         Debug.Print "  json=" & json
     End If
 End Sub
 
 
 ' ============================================================
-' WaitPaneReady ? Controller の生成完了を待つ
-'   ★ここは Init の中 (= イベントハンドラの外) なので同期待ちしてよい★
-'   イベントハンドラ内で同じことをするとデッドロックする (仕様事実 14 / 設計原則 63)。
+' WaitPaneReady ? Wait for Controller creation to complete
+'   *This is inside Init (= outside an event handler), so a synchronous wait is fine.*
+'   Doing the same thing inside an event handler deadlocks (spec fact 14 / design principle 63).
 ' ============================================================
 Private Function WaitPaneReady(ByVal pane As Wv2Pane) As Boolean
     Dim t As Single
     t = Timer
-    Do While (Not pane.IsReady) And (Not pane.IsFailed) And ((Timer - t) < READY_TIMEOUT)
+    Do While (Not pane.IsReady) And (Not pane.IsFailed) And (Wv2Log.SecondsSince(t) < READY_TIMEOUT)
         DoEvents
     Loop
     WaitPaneReady = pane.IsReady
@@ -877,16 +877,16 @@ End Function
 
 
 ' ============================================================
-' WriteNavBarHtml ? navbar.html を UTF-8 (BOM 無し) で書き出す
-'   日本語や将来の動的差し込みに備え、Wv2TabBar と同じ ADODB.Stream 方式。
+' WriteNavBarHtml ? Writes navbar.html in UTF-8 (no BOM)
+'   In preparation for Japanese and future dynamic insertion, the same ADODB.Stream method as Wv2TabBar.
 ' ============================================================
 Private Function WriteNavBarHtml() As Boolean
     On Error GoTo eh
 
-    ' フォルダがなければ作成
+    ' Create the folder if it does not exist
     If Dir(m_folderPath, vbDirectory) = "" Then
         MkDir m_folderPath
-        Debug.Print "Wv2NavBar.WriteNavBarHtml: フォルダ作成 " & m_folderPath
+        Debug.Print "Wv2NavBar.WriteNavBarHtml: creating folder " & m_folderPath
     End If
 
     Dim fullPath As String
@@ -897,17 +897,17 @@ Private Function WriteNavBarHtml() As Boolean
     Dim html As String
     html = BuildNavBarHtml()
 
-    ' ADODB.Stream で UTF-8 (BOM 無し) 書き出し
+    ' Write UTF-8 (no BOM) with ADODB.Stream
     Dim bin As Object
     Set bin = CreateObject("ADODB.Stream")
     bin.Type = 2                ' adTypeText
     bin.Charset = "UTF-8"
     bin.Open
     bin.WriteText html
-    ' テキストで書き、バイナリで読み直して先頭 3 バイト (BOM) を捨てる
+    ' Write as text, then re-read as binary and discard the first 3 bytes (BOM)
     bin.Position = 0
     bin.Type = 1                ' adTypeBinary
-    bin.Position = 3            ' EF BB BF をスキップ
+    bin.Position = 3            ' Skip EF BB BF
     Dim bytes() As Byte
     bytes = bin.Read
     bin.Close
@@ -920,30 +920,30 @@ Private Function WriteNavBarHtml() As Boolean
     outStream.SaveToFile fullPath, 2   ' 2 = adSaveCreateOverWrite
     outStream.Close
 
-    Debug.Print "Wv2NavBar.WriteNavBarHtml: 書き出し OK " & fullPath & " (" & Len(html) & " 文字, UTF-8)"
+    Debug.Print "Wv2NavBar.WriteNavBarHtml: write OK " & fullPath & " (" & Len(html) & " chars, UTF-8)"
     WriteNavBarHtml = True
     Exit Function
 eh:
-    Debug.Print "Wv2NavBar.WriteNavBarHtml: エラー " & Err.Number & " " & Err.Description
+    Debug.Print "Wv2NavBar.WriteNavBarHtml: error " & Err.Number & " " & Err.Description
     WriteNavBarHtml = False
 End Function
 
 
 ' ============================================================
-' BuildNavBarHtml ? ナビバー HTML を組み立てる (9.12b は静的)
+' BuildNavBarHtml ? Builds the nav bar HTML (9.12b is static)
 '
-'   9.12b の時点では「見た目だけ」。ボタンは押せず、URL 欄も更新されない。
-'     - 戻る / 進む / リロード ボタン (戻る・進むは disabled 表示)
-'     - URL 入力欄 (プレースホルダのみ)
-'   第9.12c で navsync を受けて URL とボタン活性を反映するようにした。
-'   クリック/入力の送信は 9.12d (今はコメントアウトの器のまま)。
+'   At 9.12b it is "look only". The buttons cannot be pressed and the URL field is not updated.
+'     - Back / forward / reload buttons (back and forward are shown disabled)
+'     - URL input field (placeholder only)
+'   In 9.12c it was made to receive navsync and reflect the URL and button enabled states.
+'   Sending of clicks/input is 9.12d (for now still a commented-out vessel).
 '
-'   ★URL 欄の編集中保護★ ユーザーが URL を入力している最中に裏で同期が走ると
-'     入力途中の文字列が消えてしまう。document.activeElement が URL 欄のときは
-'     value を書き換えない。
+'   *Protection while editing the URL field* If a sync runs in the background while the user is typing a URL,
+'     the string being typed disappears. When document.activeElement is the URL field,
+'     value is not rewritten.
 '
-'   ★ボタンの記号★ 環境依存を避けるため HTML 数値文字参照で書く
-'     (&#8592; = ← / &#8594; = → / &#10227; = 循環矢印)。
+'   *Button symbols* To avoid environment dependence, written with HTML numeric character references
+'     (&#8592; = left arrow / &#8594; = right arrow / &#10227; = circular arrow).
 ' ============================================================
 Private Function BuildNavBarHtml() As String
     Dim s As String
@@ -966,41 +966,41 @@ Private Function BuildNavBarHtml() As String
     s = s & "  #url:focus{border-color:#0078d4;box-shadow:0 0 0 1px #0078d4;}" & vbLf
     s = s & "  #url:disabled{background:#f0f0f0;color:#999;}" & vbLf
     s = s & "</style></head><body>" & vbLf
-    s = s & "  <button id=""back""    title=""戻る""       disabled>&#8592;</button>" & vbLf
-    s = s & "  <button id=""forward"" title=""進む""       disabled>&#8594;</button>" & vbLf
-    s = s & "  <button id=""reload""  title=""再読み込み"" disabled>&#10227;</button>" & vbLf
-    s = s & "  <input  id=""url"" type=""text"" placeholder=""URL を入力"" spellcheck=""false"" disabled>" & vbLf
+    s = s & "  <button id=""back""    title=""Back""       disabled>&#8592;</button>" & vbLf
+    s = s & "  <button id=""forward"" title=""Forward""       disabled>&#8594;</button>" & vbLf
+    s = s & "  <button id=""reload""  title=""Reload"" disabled>&#10227;</button>" & vbLf
+    s = s & "  <input  id=""url"" type=""text"" placeholder=""Enter URL"" spellcheck=""false"" disabled>" & vbLf
     s = s & "<script>" & vbLf
     s = s & "  var W = window.chrome && window.chrome.webview;" & vbLf
     s = s & "  function postCmd(obj){ if(W){ W.postMessage(JSON.stringify(obj)); } }" & vbLf
-    ' --- 第9.24: hostObjects 優先 + postMessage フォールバック (TabBar 9.21 と同型) ---
-    '   HO() は hostObjects.sync が取れれば返し、なければ null (設定タブの null
-    '   ガードと同型)。navHost(msgObj, callHost) は 4 コマンド共通の三段構え。
-    '   フォールバックで送る JSON は 9.12d と完全に同一 (VBA 側の薄い Case が
-    '   そのまま受け止める)。
+    ' --- 9.24: hostObjects first + postMessage fallback (same form as TabBar 9.21) ---
+    '   HO() returns hostObjects.sync if it can be obtained, otherwise null (same form as the settings tab's
+    '   null guard). navHost(msgObj, callHost) is the three-tier structure common to the 4 commands.
+    '   The JSON sent by the fallback is exactly the same as 9.12d (the thin VBA-side Case
+    '   takes it as is).
     s = s & "  function HO(){ return (W && W.hostObjects && W.hostObjects.sync) ? W.hostObjects.sync : null; }" & vbLf
     s = s & "  function navHost(msgObj, callHost){" & vbLf
     s = s & "    var ho = HO();" & vbLf
     s = s & "    if(ho && ho.NavBar){" & vbLf
     s = s & "      try{ callHost(ho.NavBar); console.log('[host] '+msgObj.cmd); return; }" & vbLf
-    s = s & "      catch(e){ console.log('[host-fail→postmsg] '+e); postCmd(msgObj); return; }" & vbLf
+    s = s & "      catch(e){ console.log('[host-fail->postmsg] '+e); postCmd(msgObj); return; }" & vbLf
     s = s & "    }" & vbLf
     s = s & "    console.log('[postmsg] '+msgObj.cmd); postCmd(msgObj);" & vbLf
     s = s & "  }" & vbLf
-    ' ★編集中フラグは全ハンドラより先に宣言する (巻き上げに頼らない)★
+    ' *Declare the editing flag before all handlers (do not rely on hoisting)*
     s = s & "  var editing = false;" & vbLf
-    ' ★lastUrl (第9.12d)★ 直近の navsync が伝えてきた「今表示すべき URL」。
-    '   Escape で編集を破棄するとき、VBA に問い合わせずここから即座に復元する。
-    '   navsync のたびに更新されるので常に正しい値を持つ (表示用キャッシュ)。
+    ' *lastUrl (9.12d)* The "URL that should be shown now" conveyed by the latest navsync.
+    '   When Escape discards the edit, restore immediately from here without asking VBA.
+    '   It is updated at every navsync so it always holds the correct value (a cache for display).
     s = s & "  var lastUrl = '';" & vbLf
-    ' --- ボタン 3 種 (第9.12d で有効化 → 第9.24 で hostObjects 優先へ) ---
+    ' --- The 3 kinds of buttons (enabled in 9.12d -> hostObjects first in 9.24) ---
     s = s & "  document.getElementById('back').onclick = function(){ navHost({cmd:'back'}, function(nb){ nb.HostBack(); }); };" & vbLf
     s = s & "  document.getElementById('forward').onclick = function(){ navHost({cmd:'forward'}, function(nb){ nb.HostForward(); }); };" & vbLf
     s = s & "  document.getElementById('reload').onclick = function(){ navHost({cmd:'reload'}, function(nb){ nb.HostReload(); }); };" & vbLf
-    ' --- URL 欄: Enter で遷移、Escape で編集破棄 (第9.12d) ---
-    '   ★Enter で editing = false★ 遷移が始まると navsync で URL 欄が正規化後の
-    '   URL に置き換わる。editing を落とさないと打った文字列のまま固まる。
-    '   スキーム補完は VBA 側 (NormalizeUrl) がやるので、ここは値をそのまま送る。
+    ' --- URL field: Enter navigates, Escape discards the edit (9.12d) ---
+    '   *Set editing = false on Enter* When navigation starts, navsync replaces the URL field with the normalized
+    '   URL. If editing is not dropped it stays frozen with the typed string.
+    '   Scheme completion is done by the VBA side (NormalizeUrl), so here the value is sent as is.
     s = s & "  document.getElementById('url').onkeydown = function(ev){" & vbLf
     s = s & "    if(ev.key === 'Enter'){" & vbLf
     s = s & "      var v = this.value;" & vbLf
@@ -1008,38 +1008,38 @@ Private Function BuildNavBarHtml() As String
     s = s & "      if(v && v.length){ navHost({cmd:'navigate', url:v}, function(nb){ nb.HostNavigate(v); }); }" & vbLf
     s = s & "    } else if(ev.key === 'Escape'){" & vbLf
     s = s & "      editing = false;" & vbLf
-    s = s & "      this.value = lastUrl;   /* 編集破棄 → 今表示すべき URL に即復元 */" & vbLf
+    s = s & "      this.value = lastUrl;   /* edit discarded -> restore immediately to the URL that should be shown now */" & vbLf
     s = s & "      this.blur();" & vbLf
     s = s & "    }" & vbLf
     s = s & "  };" & vbLf
-    ' --- 第9.12c: VBA からの navsync を受けて URL 欄とボタン活性を更新 ---
-    ' ★編集中フラグ (第9.12c 修正)★
-    '   当初 document.activeElement !== u で判定していたが、WebView2 の
-    '   単独ドキュメントでは #url が activeElement になったまま戻らないことがあり、
-    '   URL 欄が二度と更新されなくなった (実機で発覚)。
-    '   「ユーザーが実際に編集を始めたか」を明示フラグで持つ方が確実。
-    '     - focus しただけでは編集中にしない (クリックしただけで固まらないように)
-    '     - キー入力 (input イベント) が来たら編集中にする
-    '     - blur / Enter / Escape で編集中を解除する
+    ' --- 9.12c: receive navsync from VBA and update the URL field and button enabled states ---
+    ' *Editing flag (9.12c fix)*
+    '   At first this was judged with document.activeElement !== u, but in WebView2's
+    '   standalone document #url sometimes stays as activeElement and does not come back, so
+    '   the URL field was never updated again (found on the real machine).
+    '   Holding "whether the user has actually started editing" in an explicit flag is more reliable.
+    '     - Merely focusing does not make it editing (so it does not freeze just from a click)
+    '     - When key input (the input event) arrives, make it editing
+    '     - Release editing on blur / Enter / Escape
     s = s & "  function applyNavSync(st){" & vbLf
     s = s & "    var u = document.getElementById('url');" & vbLf
-    ' ★lastUrl は編集中でも必ず更新する★ 編集中に裏で遷移が起きても、
-    ' Escape を押したら「今の本当の URL」に戻れるようにするため。
+    ' *lastUrl is always updated even while editing* So that even if a navigation happens in the background during editing,
+    ' pressing Escape can return to "the real current URL".
     s = s & "    lastUrl = st.url || '';" & vbLf
     s = s & "    var b = document.getElementById('back');" & vbLf
     s = s & "    var f = document.getElementById('forward');" & vbLf
     s = s & "    var r = document.getElementById('reload');" & vbLf
-    ' --- ボタン類は常に同期してよい (フォーカスを奪わない) ---
+    ' --- Buttons may always be synced (they do not steal focus) ---
     s = s & "    b.disabled = !st.canBack;" & vbLf
     s = s & "    f.disabled = !st.canForward;" & vbLf
     s = s & "    r.disabled = !st.hasTab;" & vbLf
-    ' --- ★URL 欄は編集中なら一切触らない (value も disabled も)★ ---
-    '   ★★実機で発覚したバグ★★ disabled を代入すると input が blur し、
-    '   blur ハンドラが editing = false にしてしまうため、次の同期で入力中の
-    '   文字列が消える (リンククリックで新タブが開いた瞬間に発生)。
-    '   対策は 2 段構え:
-    '     (1) 編集中は URL 欄に触らない (value も disabled も)
-    '     (2) disabled は値が変わるときだけ代入する (無駄な blur を防ぐ)
+    ' --- *If the URL field is being edited, do not touch it at all (neither value nor disabled)* ---
+    '   ** Bug found on the real machine ** Assigning disabled makes the input blur, and
+    '   the blur handler sets editing = false, so at the next sync the string being typed
+    '   disappears (occurred the moment a new tab opened by a link click).
+    '   The countermeasure is two-tiered:
+    '     (1) While editing, do not touch the URL field (neither value nor disabled)
+    '     (2) Assign disabled only when the value changes (prevents useless blur)
     s = s & "    if(!editing){" & vbLf
     s = s & "      var want = !st.hasTab;" & vbLf
     s = s & "      if(u.disabled !== want){ u.disabled = want; }" & vbLf
@@ -1058,7 +1058,7 @@ Private Function BuildNavBarHtml() As String
     s = s & "      if(data && data.type === 'navsync'){ applyNavSync(data); }" & vbLf
     s = s & "    });" & vbLf
     s = s & "  }" & vbLf
-    ' --- ready ハンドシェイク: リスナー登録後に ready を送る (設計原則 61) ---
+    ' --- ready handshake: send ready after the listener is registered (design principle 61) ---
     s = s & "  postCmd({cmd:'ready'});" & vbLf
     s = s & "</script>" & vbLf
     s = s & "</body></html>"

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-check_vba.py -- VBA ソースの整形・構文検査 (定型検査の 1 番)
+check_vba.py -- formatting and syntax check of VBA sources (standard check no. 1)
 
-    python tools/check_vba.py                 # src/ を全部
-    python tools/check_vba.py src/Wv2Log.bas  # ファイル指定
+    python tools/check_vba.py                 # all of src/
+    python tools/check_vba.py src/Wv2Log.bas  # specify a file
 
-見るもの:
-    ・BOM / CRLF / 裸 LF / 裸 CR
-    ・行末の空白 (VBE が落とすので差分の元になる)
-    ・引用符の偶奇
-    ・行継続記号の右側に同じ行内でコメント (構文エラーになる)
-    ・Sub / Function / Property / Enum / Type の開閉一致
-    ・If / Do / Select / For / With の均衡
-    ・Exit の対象が、そのとき開いているブロックと合っているか
-    ・&H リテラルが 0x8000〜0xFFFF なのに & サフィックスが無い (設計原則29)
-    ・コロン区切りの 1 行完結 Sub / Enum も正しく閉じとみなす
+What it looks at:
+    - BOM / CRLF / bare LF / bare CR
+    - trailing whitespace (the VBE drops it, so it becomes a source of diffs)
+    - even/odd count of quotation marks
+    - a comment on the same line to the right of a line-continuation mark (a syntax error)
+    - matching open/close of Sub / Function / Property / Enum / Type
+    - balance of If / Do / Select / For / With
+    - whether the target of Exit matches the block that is open at that point
+    - an &H literal in 0x8000-0xFFFF without the & suffix (design principle 29)
+    - one-line Sub / Enum completed with a colon are also regarded as correctly closed
 
-終了コード: 0 = 問題なし / 1 = 問題あり
+Exit code: 0 = no problems / 1 = problems found
 """
 
 import os
@@ -56,7 +56,7 @@ EXIT_RE = re.compile(r'^\s*Exit\s+(Sub|Function|Property|Do|For)\b', re.I)
 
 
 def strip_comment(line):
-    """文字列リテラルの外にあるアポストロフィ以降を落とす。引用符の偶奇も返す。"""
+    """Drop everything from an apostrophe outside a string literal. Also return the parity of quotation marks."""
     out = []
     in_str = False
     quotes = 0
@@ -81,7 +81,7 @@ for _k in ("sub", "function", "property", "enum", "type", "with", "select"):
 
 
 def is_one_liner(code, kind, pat):
-    """Private Sub EntryPoint(): End Sub のようにコロンで 1 行完結しているか"""
+    """Whether it is completed on one line with a colon, like Private Sub EntryPoint(): End Sub"""
     m = pat.match(code)
     if not m:
         return False
@@ -96,43 +96,43 @@ def check_file(path):
 
     raw = open(path, "rb").read()
     if raw[:3] == b"\xef\xbb\xbf":
-        bad(0, "BOM が付いている")
+        bad(0, "a BOM is present")
         raw = raw[3:]
     crlf = raw.count(b"\r\n")
     bare_lf = raw.count(b"\n") - crlf
     bare_cr = raw.count(b"\r") - crlf
     if bare_lf:
-        bad(0, "裸 LF が %d 個" % bare_lf)
+        bad(0, "%d bare LF" % bare_lf)
     if bare_cr:
-        bad(0, "裸 CR が %d 個" % bare_cr)
+        bad(0, "%d bare CR" % bare_cr)
 
     text = raw.decode("utf-8")
     lines = text.split("\r\n")
     if lines and lines[-1] == "":
         lines = lines[:-1]
 
-    # --- 行継続 (_) を連結して「論理行」にする ---
-    # ★これをやらないと、複数行に跨る If ... Then を開きとして拾えず、
-    #   End If が「対応する If が無い」と誤検知になる★
-    logical = []        # (先頭の物理行番号, 連結したコード, 元の行)
+    # --- Join line continuations (_) into "logical lines" ---
+    # **Without this, an If ... Then spanning several lines is not picked up as an opener,
+    #   and End If is falsely detected as "no matching If"**
+    logical = []        # (first physical line number, joined code, original line)
     buf = ""
     buf_line = 0
     for i, line in enumerate(lines, 1):
         if line.rstrip() != line:
-            bad(i, "行末に空白がある", line)
+            bad(i, "trailing whitespace", line)
         code, quotes = strip_comment(line)
         if quotes % 2 != 0:
-            bad(i, "引用符が奇数個", line)
+            bad(i, "odd number of quotation marks", line)
         s = code.rstrip()
         if buf == "":
             buf_line = i
         if s.endswith("_"):
-            # ★行継続の右側に同じ行内でコメントを書くと構文エラーになる★
-            #   このチェックは「物理行」でしかできない。論理行に畳んだ後だと
-            #   継続行そのものが手元に来ないため素通しになる。
+            # **Writing a comment on the same line to the right of a line continuation is a syntax error**
+            #   This check can only be done on the "physical line". After folding into a logical line
+            #   the continuation line itself no longer reaches us, so it would slip through.
             pos = line.rfind("_")
             if pos >= 0 and "'" in line[pos:]:
-                bad(i, "行継続の右側に同じ行内でコメント (構文エラー)", line)
+                bad(i, "comment on the same line to the right of a line continuation (syntax error)", line)
             buf = buf + s[:-1] + " "
             continue
         logical.append((buf_line, buf + s, line))
@@ -140,11 +140,11 @@ def check_file(path):
     if buf:
         logical.append((buf_line, buf, ""))
 
-    # --- メンバー属性行が宣言から引き離されていないか ---
-    #   ★Attribute m_foo.VB_VarHelpID = -1 は「宣言行の直後」でなければならない★
-    #   間に行を差し込むと VBE が属性として吸収できず、コードとして露出する。
-    #   K-2 でパッチが宣言と属性の間に挿入してしまい、これを踏みかけた。
-    #   Export したファイルを編集するときの定番の事故なので常設で見る。
+    # --- Check that member attribute lines are not separated from the declaration ---
+    #   **Attribute m_foo.VB_VarHelpID = -1 must be "immediately after the declaration line"**
+    #   If a line is inserted in between, the VBE cannot absorb it as an attribute and it is exposed as code.
+    #   In K-2 a patch inserted a line between a declaration and its attribute and we nearly stepped on this.
+    #   It is a classic accident when editing an exported file, so it is always checked.
     prev_code = ""
     for i, code, line in logical:
         s = code.strip()
@@ -152,7 +152,7 @@ def check_file(path):
         if m:
             name = m.group(1)
             if not re.search(r'\b' + re.escape(name) + r'\b', prev_code):
-                bad(i, "メンバー属性 %s が宣言行の直後にない (VBE がコードとして扱う)"
+                bad(i, "member attribute %s is not immediately after the declaration line (the VBE treats it as code)"
                     % name, line)
         if s:
             prev_code = s
@@ -160,14 +160,14 @@ def check_file(path):
     stack = []          # (kind, lineno)
     for i, code, line in logical:
 
-        # &H リテラル (設計原則29)
-        # ★危険なのは 0x8000..0xFFFF だけ★ この範囲は Integer と解釈されて
-        #   負の値になる。0x10000 以上は最初から Long なので問題ない。
-        #   & (Long) / ^ (LongLong) のサフィックスが付いていれば明示済み。
+        # &H literal (design principle 29)
+        # **Only 0x8000..0xFFFF is dangerous** This range is interpreted as an Integer and
+        #   becomes negative. 0x10000 and above is a Long from the start, so there is no problem.
+        #   If the & (Long) / ^ (LongLong) suffix is attached, it is already explicit.
         for mh in re.finditer(r'&H([0-9A-Fa-f]+)([&^]?)', code):
             v = int(mh.group(1), 16)
             if 0x8000 <= v <= 0xFFFF and mh.group(2) == "":
-                bad(i, "&H%s は Integer に化ける。& サフィックスが要る (設計原則29)"
+                bad(i, "&H%s turns into an Integer. The & suffix is needed (design principle 29)"
                     % mh.group(1), line)
 
         s = code.strip()
@@ -176,11 +176,11 @@ def check_file(path):
         if DECLARE_RE.match(code):
             continue
 
-        # 開き
+        # Open
         matched = False
         for kind, pat in OPENERS.items():
             if pat.match(code):
-                # ★コロン区切りの 1 行完結★ 例: Private Sub EntryPoint(): End Sub
+                # **One line completed with a colon** e.g. Private Sub EntryPoint(): End Sub
                 if is_one_liner(code, kind, pat):
                     matched = True
                     break
@@ -190,13 +190,13 @@ def check_file(path):
         if matched:
             continue
 
-        # 閉じ
+        # Close
         for kind, pat in CLOSERS.items():
             if pat.match(code):
                 if not stack:
-                    bad(i, "End %s に対応する開きが無い" % kind, line)
+                    bad(i, "End %s has no matching opener" % kind, line)
                 elif stack[-1][0] != kind:
-                    bad(i, "End %s だが直近の開きは %s (%d 行目)" % (kind, stack[-1][0], stack[-1][1]), line)
+                    bad(i, "End %s but the nearest opener is %s (line %d)" % (kind, stack[-1][0], stack[-1][1]), line)
                     stack.pop()
                 else:
                     stack.pop()
@@ -211,32 +211,32 @@ def check_file(path):
             if stack and stack[-1][0] == "if":
                 stack.pop()
             else:
-                bad(i, "End If に対応する If が無い", line)
+                bad(i, "End If has no matching If", line)
         elif FOR_OPEN_RE.match(code):
             stack.append(("for", i))
         elif FOR_END_RE.match(code):
             if stack and stack[-1][0] == "for":
                 stack.pop()
             else:
-                bad(i, "Next に対応する For が無い", line)
+                bad(i, "Next has no matching For", line)
         elif DO_OPEN_RE.match(code):
             stack.append(("do", i))
         elif DO_END_RE.match(code):
             if stack and stack[-1][0] == "do":
                 stack.pop()
             else:
-                bad(i, "Loop に対応する Do が無い", line)
+                bad(i, "Loop has no matching Do", line)
         else:
             me = EXIT_RE.match(code)
             if me:
                 want = me.group(1).lower()
                 kinds = [k for k, _ in stack]
                 if want not in kinds:
-                    bad(i, "Exit %s だが %s ブロックの中に居ない (開いているのは %s)"
-                        % (me.group(1), want, "/".join(kinds) or "なし"), line)
+                    bad(i, "Exit %s but not inside a %s block (what is open is %s)"
+                        % (me.group(1), want, "/".join(kinds) or "none"), line)
 
     for kind, lineno in stack:
-        bad(lineno, "%s が閉じていない" % kind)
+        bad(lineno, "%s is not closed" % kind)
 
     return problems
 
@@ -261,7 +261,7 @@ def main(argv):
         problems = check_file(f)
         rel = os.path.relpath(f, repo).replace("\\", "/")
         if problems:
-            print("=== %s : %d 件 ===" % (rel, len(problems)))
+            print("=== %s : %d item(s) ===" % (rel, len(problems)))
             for lineno, msg, txt in problems:
                 print("  %s:%d  %s" % (rel, lineno, msg))
                 if txt:
@@ -271,9 +271,9 @@ def main(argv):
             print("OK  %s" % rel)
     print()
     if total:
-        print("★問題 %d 件★" % total)
+        print("**%d problem(s)**" % total)
     else:
-        print("問題なし (%d ファイル)" % len(files))
+        print("No problems (%d files)" % len(files))
     return 1 if total else 0
 
 

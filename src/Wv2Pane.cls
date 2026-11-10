@@ -8,101 +8,101 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  N-4 段階 (レスポンス本文) ---
+' --- Wv2Pane.cls  Stage N-4 (response body) ---
 '
-'   ★N-1～N-3 と作りが違う。初めて非同期になる★
-'   詳細一式は N-4 の節 (このファイルの末尾) にまとめてある。要点だけ:
+'   *Built differently from N-1 to N-3. This is the first asynchronous one*
+'   The full details are collected in the N-4 section (at the end of this file). Key points only:
 '
-'     ・`GetContent` はハンドラを渡して即座に戻る。本文は後から届く
-'     ・★N-2 と違って Seek(0) は要らない★ 応答のコピーを読むだけ
-'     ・★本文は別のスイッチ★ (`NetRespBodyOn`、既定 False)
-'     ・★圧縮は決めつけず観測する★ encoding と先頭 32 バイトの hex を必ず残す
-'     ・★ResponseView は完了まで AddRef して保持する★ (解放してよいか不明のため)
+'     *`GetContent` takes a handler and returns immediately. The body arrives later
+'     **Unlike N-2, no Seek(0) is needed* we only read a copy of the response
+'     **The body has its own switch* (`NetRespBodyOn`, default False)
+'     **Do not assume compression; observe it* always keep the encoding and the hex of the first 32 bytes
+'     **ResponseView is AddRef'd and held until completion* (it is unclear whether releasing it is safe)
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  N-3 段階 (レスポンスのステータスとヘッダ) ---
+' --- Wv2Pane.cls  Stage N-3 (response status and headers) ---
 '
-'   一覧の 1 行に★結果★が付いた。詳細には★応答ヘッダ★が付いた。
-'   詳細一式は N-3 の節 (このファイルの末尾) にまとめてある。要点だけ:
+'   Each row of the list now carries a *result*. The detail now carries the *response headers*.
+'   The full details are collected in the N-3 section (at the end of this file). Key points only:
 '
-'     ・★このイベントにはフィルタが無い★ 画像も CSS も全部来る。だから
-'       ★一覧に既に居る要求に対応するものだけ★ 記録する (絞り方を二重に持たない)
-'     ・突き合わせは URI + メソッドで「まだ応答が付いていない最古の要求」に (FIFO)。
-'       ★同じ URL への同時並行要求は取り違えるし、取り違えは検出できない★
-'     ・★まだ応答が来ていない行は空欄★ (0 を書くと本物と見分けが付かない)
-'     ・★応答側の GetIterator は 7、要求側は 8★ 流用すると 1 つずれる
+'     **This event has no filter* images and CSS all arrive too. So we
+'       record *only those that match a request already in the list* (the narrowing is not kept in two places)
+'     *Matching is by URI + method, against "the oldest request that has no response yet" (FIFO).
+'       *Concurrent requests to the same URL get mixed up, and the mix-up cannot be detected*
+'     **Rows whose response has not arrived yet stay blank* (writing 0 would be indistinguishable from a real one)
+'     **GetIterator on the response side is 7, on the request side 8* reusing one shifts by 1
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  N-2 段階 (リクエストのヘッダとボディ) ---
+' --- Wv2Pane.cls  Stage N-2 (request headers and body) ---
 '
-'   N-1 の一覧 (URL / メソッド / 種別) の上に、★1 本を再現するのに要るもの★を足す。
-'   詳細一式は N-2 の節 (このファイルの末尾) にまとめてある。要点だけ:
+'   On top of the N-1 list (URL / method / kind), add *what is needed to reproduce a single request*.
+'   The full details are collected in the N-2 section (at the end of this file). Key points only:
 '
-'     ・★詳細はまるごと既定 OFF★ (NetDetailOn = True で ON)
-'     ・★読んだ IStream は必ず Seek(0) で戻す★ さもないと空のボディが飛ぶ
-'     ・★Cookie / Authorization は既定で伏せる★ (リング上は生のまま)
-'     ・詳細は一覧とは別のリング (既定 50 件)。一覧は 500 件のまま
+'     **The detail is entirely OFF by default* (ON with NetDetailOn = True)
+'     **Always rewind a read IStream with Seek(0)* otherwise an empty body goes out
+'     **Cookie / Authorization are hidden by default* (raw on the ring)
+'     *The detail uses a ring separate from the list (default 50 entries). The list stays at 500 entries
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  N-1b 段階 (実機で分かったことの反映) ---
+' --- Wv2Pane.cls  Stage N-1b (reflecting what was learned on the real machine) ---
 '
-'   ■ ★仕様事実: 仮想ホストの要求は WebResourceRequested に乗らない★
-'     SetVirtualHostNameToFolderMapping で配信した要求 (DOCUMENT / fetch / XHR /
-'     画像 / CSS のすべて) はイベントに乗らない。ランタイムが内部の資材ハンドラで
-'     直接返しているため。★N-1 の初回検証が全滅した原因はこれ★ で、配線側は
-'     最初から正しかった (実サイトでは 10 件すべて捕まっていた)。
-'     検証ページの的は「到達不能なローカルアドレス」と「外部サービス」に置く。
+'   # *Spec fact: virtual host requests do not ride on WebResourceRequested*
+'     Requests served via SetVirtualHostNameToFolderMapping (all of DOCUMENT / fetch / XHR /
+'     images / CSS) do not ride on the event, because the runtime
+'     answers directly with an internal resource handler. *This was the cause of the N-1 first verification
+'     failing completely*, and the wiring side was correct from the start (on a real site all 10 were caught).
+'     The targets of the verification page are "an unreachable local address" and "an external service".
 '
-'   ■ ★NetLogDrain は通算カウンタを 0 に戻さない (論点3 案Y)★
-'     NetLogTotal / NetLogDropped は「★捕捉開始からの★ 通算」と説明しているのに、
-'     Drain がリングごと作り直して 0 に戻していた。そのせいで実機ログの最後が
-'       NetCaptureStop: 捕捉終了 (総発火 0 件 ...)
-'     となり、★10 件来ていたのに「1 件も来なかった」と読める★ 行が残った。
-'     ・NetLogDrain … リングの中身だけ空にする (NetRingEmpty)。通算は保つ
-'     ・NetLogClear … 通算も含めて全部リセット (NetRingAlloc)
-'     ・NetCaptureStart … NetLogClear を通るので毎回 0 から数え直す
+'   # *NetLogDrain does not reset the cumulative counters to 0 (issue 3, option Y)*
+'     NetLogTotal / NetLogDropped are documented as cumulative "*since the capture started*", but
+'     Drain rebuilt the whole ring and reset them to 0. As a result the last line of the real-machine log was
+'       NetCaptureStop: capture ended (total fired 0 ...)
+'     which left a line that could be read as *"none came" even though 10 had come*.
+'     *NetLogDrain ... empties only the ring contents (NetRingEmpty). The cumulative counts are kept
+'     *NetLogClear ... resets everything including the cumulative counts (NetRingAlloc)
+'     *NetCaptureStart ... goes through NetLogClear, so it counts from 0 each time
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  N-1 段階 (WebResourceRequested の配線) ---
+' --- Wv2Pane.cls  Stage N-1 (wiring up WebResourceRequested) ---
 '
-'   ★ブラウザが実際に何を叩いているかを Excel VBA だけで見る★
-'   F12 の Network タブに相当するものの第一段。N-1 は URL / メソッド / 種別だけ
-'   (ヘッダもボディもレスポンスも後段)。
+'   *See what the browser is actually hitting, using only Excel VBA*
+'   The first step toward the equivalent of the F12 Network tab. N-1 covers only URL / method / kind
+'   (headers, body and response come in later stages).
 '
-'   ■ 追加した Public メンバ
-'     NetCaptureStart(contexts, uriFilter) As Boolean  捕捉を始める
-'     NetCaptureStop()  As Boolean                     捕捉をやめる
-'     NetCaptureOn      As Boolean                     捕捉中か
-'     NetLogDrain()     As Long     溜まった分を Wv2Log へ流して空にする
-'     NetLogLine(i)     As String   ★流さずに 1 件だけ読む★ (古い順、1 起点)
+'   # Added Public members
+'     NetCaptureStart(contexts, uriFilter) As Boolean  start capturing
+'     NetCaptureStop()  As Boolean                     stop capturing
+'     NetCaptureOn      As Boolean                     whether capturing
+'     NetLogDrain()     As Long     flush what has accumulated to Wv2Log and empty the ring
+'     NetLogLine(i)     As String   *read a single entry without flushing* (oldest first, 1-based)
 '     NetLogCount / NetLogTotal / NetLogDropped As Long
-'     NetLogCapacity    As Long     リングの容量 (Get/Let)
-'     NetLogClear()                 リングを空にする
+'     NetLogCapacity    As Long     ring capacity (Get/Let)
+'     NetLogClear()                 empty the ring
 '     View_AddWebResourceRequested / View_RemoveWebResourceRequested
 '     View_AddWebResourceRequestedFilter / View_RemoveWebResourceRequestedFilter
-'     View_OnWebResourceRequested   (ComCallbackHandler からの受け口)
+'     View_OnWebResourceRequested   (entry point from ComCallbackHandler)
 '
-'   ■ ★記録だけしてすぐ返す (論点5)★
-'     WebResourceRequested は「要求を止める / 書き換える」ためのイベントで、
-'     ★ハンドラが遅いと通信そのものが詰まる★。だからハンドラの中では
-'     ・Wv2Log も Debug.Print も撃たない
-'     ・EvalSync は当然呼ばない (仕様事実14 / 20)
-'     args から URL / メソッド / 種別を読んでリングに置くだけで戻る。
+'   # *Record only, then return immediately (issue 5)*
+'     WebResourceRequested is an event for "stopping / rewriting a request", so
+'     *a slow handler jams the traffic itself*. Therefore inside the handler
+'     *fire neither Wv2Log nor Debug.Print
+'     *of course never call EvalSync (spec facts 14 / 20)
+'     just read URL / method / kind from args, put them on the ring, and return.
 '
-'   ■ ★記録はメモリ上のリングバッファ (論点6)★
-'     要求は 1 ページで数十～数百件出る。ログに直書きすると量で溢れるので、
-'     D-4 の SpaProbeDrainLog と同じ型にした (溜める ← まとめて取り出す)。
-'     ★溢れた分は黙って捨てない★ NetLogDropped で見える (D-6 論点3 と同じ判断)。
+'   # *Records live in an in-memory ring buffer (issue 6)*
+'     One page produces tens to hundreds of requests. Writing straight to the log would overflow it, so
+'     we used the same pattern as D-4's SpaProbeDrainLog (accumulate -> take out in bulk).
+'     *Overflowed entries are not silently discarded* they are visible via NetLogDropped (same judgement as D-6 issue 3).
 '
-'   ■ ★フィルタを 1 つも登録しないとイベントは 1 件も来ない★
-'     AddWebResourceRequestedFilter(uri, ctx) を種別ごとに撃つ。既定は
-'     DOCUMENT(1) / XML_HTTP_REQUEST(7) / FETCH(8) の 3 つ (論点4)。
-'     ★登録したフィルタは覚えておいて NetCaptureStop で外す★ (設計原則106 の趣旨。
-'     相手側に前の設定を残すと、次の Start が知らないうちに広い網になる)。
+'   # *If no filter is registered, not a single event arrives*
+'     Fire AddWebResourceRequestedFilter(uri, ctx) per kind. The default is
+'     the three of DOCUMENT(1) / XML_HTTP_REQUEST(7) / FETCH(8) (issue 4).
+'     *Remember the registered filters and remove them in NetCaptureStop* (in the spirit of design principle 106.
+'     If the previous setting is left on the other side, the next Start unknowingly becomes a wide net).
 '
-'   ■ ★vtable index は SDK のヘッダで確定させた (設計原則115)★
-'     既存の配線からの逆算では add_WebResourceRequested を 54 と読み違えていた
-'     (正解 55、OpenDevToolsWindow を数え落としていた)。道具は tools/vtable.py。
+'   # *The vtable index was settled from the SDK header (design principle 115)*
+'     Working backwards from the existing wiring, add_WebResourceRequested had been misread as 54
+'     (correct is 55; OpenDevToolsWindow had been missed in the count). The tool is tools/vtable.py.
 '       ICoreWebView2::add_WebResourceRequested              55
 '       ICoreWebView2::remove_WebResourceRequested           56
 '       ICoreWebView2::AddWebResourceRequestedFilter         57
@@ -113,750 +113,750 @@ Attribute VB_Exposed = False
 '       ICoreWebView2WebResourceRequest::get_Method           5
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  K-4a 段階 (解放経路のログを Wv2Log へ移す) ---
+' --- Wv2Pane.cls  Stage K-4a (move the release-path log to Wv2Log) ---
 '
-'   ★目的は計測★ フォームを閉じたときの解放が遅い (1 件ごとに 0.5 秒ほどの間)
-'   という報告を受けたが、この経路は Debug.Print のままでログに何も残らず、
-'   どこで時間を食っているのか分からなかった。
+'   *The purpose is measurement* We received a report that release when closing the form is slow (a pause of about 0.5 s per item),
+'   but this path was still Debug.Print and left nothing in the log, so
+'   it was unclear where the time was going.
 '
-'   Wv2Log はミリ秒のタイムスタンプを持つので、★置き換えるだけで所要が読める★。
-'   さらに Wv2Log.LogEcho = False / True で 2 回測れば、
-'   ★「COM の解放が遅い」のか「イミディエイトへの出力が遅い」のか★ が切り分く。
+'   Wv2Log has millisecond timestamps, so *just replacing it lets us read the elapsed time*.
+'   Furthermore, measuring twice with Wv2Log.LogEcho = False / True separates
+'   *"COM release is slow" from "output to the Immediate window is slow"*.
 '
-'   ★この段階では直さない。測るだけ。★ (D-7 で推測を 3 回続けて外したため)
+'   *This stage does not fix anything. It only measures.* (because guesses missed three times in a row in D-7)
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  D-6 段階 (QuerySelectorAll と寿命管理) ---
+' --- Wv2Pane.cls  Stage D-6 (QuerySelectorAll and lifetime management) ---
 '
-'   ■ 追加した Public メンバ
+'   # Added Public members
 '     QuerySelectorAll(selector, maxCount) As Collection
-'     LastAllTruncated  As Boolean  直前の QuerySelectorAll が打ち切られたか
-'     ElementCount      As Long     JS 側レジストリに積まれている要素の数
+'     LastAllTruncated  As Boolean  whether the previous QuerySelectorAll was truncated
+'     ElementCount      As Long     number of elements stacked in the JS-side registry
 '
-'   ■ ★複数は Collection で返す (論点2)★
-'     For Each el In els と書けて VBA に最も自然。0 件は Count = 0 で素直。
-'     ★配列にしなかった理由★ 空配列の UBound は実行時エラーになり、呼び出し側に
-'     毎回の防御を強いる。★独自クラスにしなかった理由★ For Each を効かせるには
-'     メンバー属性行 (Attribute Item.VB_UserMemId = 0) が要るが、import.ps1 は
-'     属性行を落とす仕様 (仕様事実47) なので往復と相性が悪い。
+'   # *Multiple results are returned as a Collection (issue 2)*
+'     You can write For Each el In els, which is the most natural for VBA. Zero results is simply Count = 0.
+'     *Why not an array* UBound of an empty array is a runtime error, forcing the caller to
+'     guard every time. *Why not a custom class* To make For Each work you need
+'     a member attribute line (Attribute Item.VB_UserMemId = 0), but import.ps1 drops
+'     attribute lines by design (spec fact 47), so it does not go well with round trips.
 '
-'   ■ ★打ち切りは黙ってやらない (論点3)★
-'     既定 200 件。超えたら LastAllTruncated = True にして警告ログも出す。
-'     「返ってきた件数がページの実数」と思い込ませない。
+'   # *Truncation is not done silently (issue 3)*
+'     Default 200 entries. If exceeded, set LastAllTruncated = True and also emit a warning log.
+'     Do not let anyone assume "the returned count is the real count on the page".
 '
-'   ■ ★寿命管理は「見せる」だけ。勝手に捨てない (論点4)★
-'     QuerySelectorAll は 1 回で 200 個積みうるので、レジストリは D-2 の想定より
-'     速く伸びる。だが古いものを勝手に捨てると★手元の Wv2Element が黙って
-'     stale になる★ (設計原則91 / D-2 論点3 の判断がそのまま効く)。
-'     そこで:
-'       ・ElementCount で今の数を見せる
-'       ・一定数を超えたら LogW で知らせる
-'       ・捨てるのは ClearElementRegistry を呼んだときだけ (D-2 から在る)
-'
-''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  D-4b 段階 (静穏待ち) ---
-'
-'   D-4a で置いたプローブを使って★落ち着くまで待つ★。
-'
-'   ■ 追加した Public メンバ
-'     WaitSettled(timeoutSec, stableMs) As Boolean  静穏になるまで待つ
-'     AutoWaitAfterAction  As Boolean  ★既定 False★ 操作の後に自動で待つ (opt-in)
-'     AddIgnoreNetwork(pattern)        静穏判定から外す URL の部分一致パターン
-'     ClearIgnoreNetwork()             同上を空にする
-'     IgnoreSelectors  As String       静穏判定から外す DOM 変化のセレクタ
-'     LastSettleInfo   As String       直前の待ちの内訳 (診断用)
-'
-'   ■ 静穏の判定式 (論点4)
-'     実行中の fetch + XHR が 0 かつ、最後の DOM 変化から stableMs 以上たったら静穏。
-'     ★ただし静穏窓は「WaitSettled を呼んだ時点」から測る★ 呼ぶ前から静かでも
-'     いきなり成立させない。したがって★最短でも stableMs は待つ★。
-'     既定は stableMs = 500 / 上限 10 秒 / ポーリング 100ms (参考プロダクトに倣った)。
-'
-'   ★★★ WaitSettled が True でも「アプリの処理が終わった」証明にはならない ★★★
-'     静かなだけである。**アプリが要求を無視して静かなのか、終わって静かなのかは
-'     区別できない。** 重要な操作では D-4c の明示シグナル (arm) を併用すること。
-'     ★名前を WaitIdle でなく WaitSettled にしたのはこのため★ (論点8)
-'     「idle = 何も起きていない」と読めると保証と誤解される。
-'
-'   ■ 戻り値 (D-2 / D-3 の規約を踏襲、設計原則93)
-'     True                     … 静穏に達した
-'     False + LastEvalOk=True  … 時間内に静まらなかった (★正常な結果★)
-'     False + LastEvalOk=False … 失敗 (in-callback / Close 済み等)
-'     どちらでも LastSettleInfo に内訳が入る (slack / 実行中の通信 / 経過)。
-'
-'   ■ ノイズ除外 (論点5)
-'     ★除外リストは VBA 側が持ち、毎回の往復でページへ送り込む★
-'     ページ側に持たせると遷移で消えるため。送り込みは状態の読み取りと
-'     同じ 1 往復に相乗りするので、往復は増えない。
-'     ★広すぎる除外は「早すぎる静穏」を生む★ 参考プロダクトも警告している。
-'     遮断 (要求そのものを止める) はやらない。ページの挙動を変えるため。
-'
-'   ■ ★プローブを置く前に始まった通信は数えられない★ (D-4a の仕様)
-'     待ちの直前に操作する運用 (D-4c の arm-then-act) なら実害が無い。
-'     ページを開いた直後の読み込み完了を待ちたいときは、既存の
-'     NavigationCompleted / DOMContentLoaded を使うこと。
+'   # *Lifetime management only "shows". It does not discard on its own (issue 4)*
+'     QuerySelectorAll can stack 200 at once, so the registry grows faster
+'     than D-2 assumed. But if old ones are discarded on our own, *the Wv2Element in hand silently
+'     becomes stale* (the judgement of design principle 91 / D-2 issue 3 applies as is).
+'     So:
+'       *show the current count with ElementCount
+'       *notify with LogW once it exceeds a certain number
+'       *discard only when ClearElementRegistry is called (present since D-2)
 '
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  D-4a 段階 (ページ内 SPA プローブと健康診断) ---
+' --- Wv2Pane.cls  Stage D-4b (waiting for quiescence) ---
 '
-'   D-4 の目的は★静穏待ち★ (通信と DOM の変化が落ち着くまで待つ)。
-'   D-3 の WaitFor / WaitGone は「何を待つか」を書ける場合の手段で、
-'   **待つ対象が特定できないとき**には使えない。そこを埋めるのが D-4。
+'   Use the probe placed in D-4a to *wait until things settle*.
 '
-'   D-4a はその土台。★観測する仕掛け (プローブ) をページ内に置くところまで★で、
-'   待ちの本体 (WaitSettled) と明示シグナル (Arm 系) は D-4b / D-4c。
+'   # Added Public members
+'     WaitSettled(timeoutSec, stableMs) As Boolean  wait until quiescent
+'     AutoWaitAfterAction  As Boolean  *default False* wait automatically after an action (opt-in)
+'     AddIgnoreNetwork(pattern)        substring pattern of URLs to exclude from the quiescence check
+'     ClearIgnoreNetwork()             empty the above
+'     IgnoreSelectors  As String       selectors of DOM changes to exclude from the quiescence check
+'     LastSettleInfo   As String       breakdown of the previous wait (for diagnosis)
 '
-'   ■ 追加した Public メンバ
-'     SpaProbeState()  As String   プローブを整えてから状態 JSON を返す
-'     SpaProbeReset()  As Boolean  プローブを捨てて作り直す (診断用)
-'     SpaProbeHealthy() As Boolean 状態 JSON の h を読むだけの薄い口
+'   # Quiescence formula (issue 4)
+'     Quiet when running fetch + XHR is 0 and at least stableMs has passed since the last DOM change.
+'     *However the quiet window is measured from "the moment WaitSettled is called"* even if it was quiet
+'     before the call, it does not succeed immediately. Hence *it waits at least stableMs*.
+'     Defaults are stableMs = 500 / limit 10 s / polling 100 ms (following a reference product).
 '
-'   ■ プローブが数えているもの (window.__wv2p)
-'     fetchN / xhrN … ★実行中★ の fetch / XHR の数 (in-flight)
-'     lastMut       … 最後に数えた DOM 変化の時刻。静穏窓はここから測る
-'     netN / mutN   … 数えた総数 (診断用)
-'     skipNet / skipMut … 除外した数 (ノイズ除外が効いているかの確認用)
+'   *** Even if WaitSettled returns True, it is not proof that "the app has finished processing" ***
+'     It is merely quiet. **It cannot tell whether the app is quiet because it ignored the request
+'     or because it finished.** For important operations, combine it with D-4c's explicit signal (arm).
+'     *This is why the name is WaitSettled and not WaitIdle* (issue 8)
+'     If "idle = nothing is happening" can be read into it, it is mistaken for a guarantee.
 '
-'   ■ ★設計原則92 の拡張: 「無ければ作る」から「壊れていたら作り直す」へ★
-'     fetch と XMLHttpRequest.prototype.open/send をラップして数えるが、
-'     ★ページ側のフレームワークが後からこれらを差し替えることがある★
-'     (参考プロダクト WebDriver BiDi for SeleniumVBA が健康診断を実装している
-'      = 実際に壊れるということ)。そこで毎回
-'       ・版番号が一致するか
-'       ・window.fetch が今もこちらのラッパーか
-'       ・XHR の open/send が今もこちらのラッパーか
-'       ・MutationObserver が生きているか
-'     を確かめ、1 つでも欠けたら★作り直す★。作り直した回数は repairs で読める。
+'   # Return value (follows the D-2 / D-3 convention, design principle 93)
+'     True                     ... reached quiescence
+'     False + LastEvalOk=True  ... did not quiet down in time (*a normal result*)
+'     False + LastEvalOk=False ... failure (in-callback / already Closed, etc.)
+'     In either case the breakdown goes into LastSettleInfo (slack / traffic in flight / elapsed).
 '
-'     ★作り直すときは「現在の window.fetch」を包む★
-'     フレームワークが被せたラッパーごと包むので、向こうの機能を壊さない。
-'     自分のラッパーを二重に包まない判定も入れてある (数え漏れ / 二重計上の防止)。
+'   # Noise exclusion (issue 5)
+'     *The exclusion list is held on the VBA side and pushed to the page on every round trip*
+'     because holding it on the page side would lose it on navigation. The push rides on the same
+'     single round trip as reading the state, so round trips do not increase.
+'     *An exclusion that is too broad produces "too-early quiescence"* the reference product warns about this too.
+'     Blocking (stopping the request itself) is not done, because it would change the page's behaviour.
 '
-'   ■ ★いつ仕掛けるか (論点2 案A: 自己生成プロローグの拡張)★
-'     AddScriptToExecuteOnDocumentCreated は使わない。D-2 と同じく
-'     「使う式が自分で用意する」形にする。したがって
-'     ★プローブを置いた時点より前に始まった通信は数えられない★
-'     これは仕様。D-4c の「操作の直前に arm する」運用と組み合わせれば実害が無い
-'     (arm した時点でプローブが立つので、必ず操作より前になる)。
-'
-'   ■ プローブが作られる場所
-'     ★これらのメンバを呼んだ Pane にしか作られない★ タブバー / ナビバー /
-'     設定タブの Pane は呼ばないので無傷 (D-2 で注入を避けた理由と同じ)。
-'
-''''''''''''''''''''''''''''''''''' --- Wv2Pane.cls  D-3 段階 (要素への書き込みと操作) ---
-'
-'   D-3 で Wv2Pane に増えたのは ★Elem_Exec (Friend) 1 本だけ★。
-'   書き込み・操作の入口は Wv2Element 側 (Value = / Click / SetAttribute) にあり、
-'   Wv2Pane は D-2 の Elem_Read と対になる「撃つ側」の経路を提供する。
-'
-'     Elem_Read (D-2) … 値を 1 個★読む★   変数 e を使う JS ★式★ を受け取る
-'     Elem_Exec (D-3) … 操作を 1 回★撃つ★ 変数 e を使う JS ★文★ を受け取る
-'
-'   ■ Elem_Exec の JS 側の返し方 (Elem_Read と同じ形に揃えた)
-'     {s:'gen', g:...}            世代違い = stale
-'     {s:'nil', g:...}            添字に要素が無い = stale 扱い
-'     {s:'ok',  g:..., v:'<rv>'}  成功。v は★操作が選んだ経路の名前★
-'
-'     ★JS 例外は try-catch しない★ View_ExecuteScriptSafe が既に包んでいるので、
-'     例外は EvalSync の LastEvalError ("TypeError: ..." 等) として上がってくる。
-'     二重に包むと理由が潰れる。
-'
-'   ■ 経路の名前 (v) を返す理由
-'     .Value = の書き込みが★ネイティブ setter 経由 ('setter') か素の代入
-'     ('direct') か★は、SPA に効いたかどうかの唯一の手掛かりになる。
-'     Wv2Element.LastInfo で読める (D-3 の事後報告)。
-'
-'   ■ DOM 条件待ち (D-3b、論点2 案C: ★明示待ちを第一級に、暗黙待ちは opt-in★)
-'
-'     WaitFor(selector, timeoutSec)  As Wv2Element  現れるまで待つ
-'     WaitGone(selector, timeoutSec) As Boolean     消えるまで待つ
-'     ImplicitWaitSec                As Single      ★既定 0 = 無効★
-'
-'     ★未知1 は実測で決着した (2026-08-22)★
-'       raw ExecuteScript に★決して解決しない Promise★ を渡しても、完了通知が
-'       即座に resultJson={} で返ってきた。つまり ExecuteScript は Promise を待たない。
-'       したがって待ちは JS 側では書けず、★VBA 側でポーリングする★ (論点3 の骨格)。
-'       (そもそも EvalSync は JSON.stringify(式) を撃つので、待てたとしても
-'        Promise はその場で {} に潰れる。JS 側で待つなら D-1 の包み方から作り直しになる)
-'
-'     ★ポーリング中はブレーク/ステップ実行しないこと★ (仕様事実20)
-'       EvalSync の DoEvents 区間が待ち時間ぶん伸びる。10 秒待てば 10 秒間ずっと危険域。
-'
-'     ★Nothing / False の意味は LastEvalOk で分ける (設計原則93)★
-'       WaitFor  → Nothing + LastEvalOk=True  … 時間内に現れなかった (正常)
-'                  Nothing + LastEvalOk=False … 失敗 (セレクタ不正 / in-callback 等)
-'       WaitGone → False   + LastEvalOk=True  … 時間内に消えなかった (正常)
-'                  False   + LastEvalOk=False … 失敗
-'       ★失敗と判った時点で待たずに抜ける★ in-callback で 10 秒固まるのを防ぐため。
-'
-'     ImplicitWaitSec は QuerySelector / GetElementById に暗黙のリトライを掛ける
-'     (SeleniumVBA と同じ流儀)。★既定は 0 で、明示的に設定した人だけが影響を受ける★
-'     理由: 既定で待つと「本当に無い」の確認が毎回タイムアウト待ちになり、
-'     D-2 で決めた「Nothing + LastEvalOk=True = 本当に存在しない」の意味が濁る。
+'   # *Traffic that started before the probe was placed cannot be counted* (a D-4a specification)
+'     This does no harm in the operation of acting right before the wait (D-4c's arm-then-act).
+'     To wait for load completion right after opening a page, use the existing
+'     NavigationCompleted / DOMContentLoaded.
 '
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  K-1 段階 (デバッグログのファイル出力への移行) ---
+' --- Wv2Pane.cls  Stage D-4a (in-page SPA probe and health check) ---
 '
-'   K-1 の変更は ★ログの出し先だけ★ で、ロジックは 1 行も変えていない。
-'     EvalSync (9 本) と ClearElementRegistry (2 本) の Debug.Print を
-'     Wv2Log.LogE / LogW / LogD に置き換えた。
+'   The purpose of D-4 is *waiting for quiescence* (wait until traffic and DOM changes settle).
+'   D-3's WaitFor / WaitGone are the means when you can write "what to wait for", and
+'   **cannot be used when the target of the wait cannot be identified**. D-4 fills that gap.
 '
-'   Wv2Log は内部で Debug.Print も撃つので、イミディエイトの見え方は変わらない
-'   (Wv2Log.LogEcho = False で切れる)。ログは %APPDATA%\Wv2Browser\logs\ に
-'   起動ごとの 1 ファイルとして残る。パスは ?Wv2Log.LogPath で分かる。
+'   D-4a is its foundation. *It goes only as far as placing the observing mechanism (probe) in the page*, and
+'   the body of the wait (WaitSettled) and the explicit signal (Arm family) are D-4b / D-4c.
 '
-'   ★他のプロシージャの Debug.Print はまだ手つかず★ 段階的に移行する
-'   (既存の全 Debug.Print を一度に書き換えない、が K-1 の合意)。
+'   # Added Public members
+'     SpaProbeState()  As String   returns the state JSON after getting the probe into shape
+'     SpaProbeReset()  As Boolean  discards the probe and rebuilds it (for diagnosis)
+'     SpaProbeHealthy() As Boolean a thin entry that only reads h from the state JSON
+'
+'   # What the probe counts (window.__wv2p)
+'     fetchN / xhrN ... the number of fetch / XHR calls *currently running* (in-flight)
+'     lastMut       ... time of the last DOM change counted. The quiet window is measured from here
+'     netN / mutN   ... total counts (for diagnosis)
+'     skipNet / skipMut ... number excluded (to confirm the noise exclusion is working)
+'
+'   # *Extension of design principle 92: from "create if missing" to "rebuild if broken"*
+'     We wrap fetch and XMLHttpRequest.prototype.open/send in order to count them, but
+'     *the page's framework may replace these later*
+'     (the reference product WebDriver BiDi for SeleniumVBA implements a health check
+'      = it really does break). So every time we check
+'       *whether the version number matches
+'       *whether window.fetch is still our wrapper
+'       *whether XHR open/send are still our wrappers
+'       *whether the MutationObserver is alive
+'     and if even one is missing we *rebuild*. The number of rebuilds can be read from repairs.
+'
+'     *When rebuilding, we wrap "the current window.fetch"*
+'     Since it wraps the wrapper the framework layered on, the framework's features are not broken.
+'     There is also a check so that our own wrapper is not wrapped twice (preventing missed / double counting).
+'
+'   # *When to set it up (issue 2, option A: extending the self-generating prologue)*
+'     AddScriptToExecuteOnDocumentCreated is not used. As in D-2, we use the form
+'     "the expression that uses it prepares it itself". Therefore
+'     *traffic that started before the probe was placed cannot be counted*
+'     This is by specification. Combined with D-4c's practice of "arm right before acting" it does no harm
+'     (the probe is set up at the moment of arming, so it always precedes the action).
+'
+'   # Where the probe is created
+'     *It is created only in a Pane that called these members* The Panes of the tab bar / nav bar /
+'     settings tab do not call them, so they are untouched (same reason injection was avoided in D-2).
+'
+''''''''''''''''''''''''''''''''''' --- Wv2Pane.cls  Stage D-3 (writing to and operating on elements) ---
+'
+'   What D-3 added to Wv2Pane is *just one member, Elem_Exec (Friend)*.
+'   The entry points for writing and operating are on the Wv2Element side (Value = / Click / SetAttribute), and
+'   Wv2Pane provides the "firing side" path that pairs with D-2's Elem_Read.
+'
+'     Elem_Read (D-2) ... *reads* one value   takes a JS *expression* that uses variable e
+'     Elem_Exec (D-3) ... *fires* one operation   takes a JS *statement* that uses variable e
+'
+'   # How Elem_Exec returns from the JS side (aligned with the same shape as Elem_Read)
+'     {s:'gen', g:...}            generation mismatch = stale
+'     {s:'nil', g:...}            no element at the index = treated as stale
+'     {s:'ok',  g:..., v:'<rv>'}  success. v is *the name of the path the operation chose*
+'
+'     *JS exceptions are not caught with try-catch* View_ExecuteScriptSafe already wraps it, so
+'     the exception comes up as EvalSync's LastEvalError ("TypeError: ..." etc.).
+'     Wrapping it twice would bury the reason.
+'
+'   # Why the path name (v) is returned
+'     Whether the .Value = write went *through the native setter ('setter') or a plain assignment
+'     ('direct')* is the only clue to whether it took effect on an SPA.
+'     It can be read via Wv2Element.LastInfo (D-3's post-hoc report).
+'
+'   # DOM condition waits (D-3b, issue 2, option C: *explicit waits first-class, implicit waits opt-in*)
+'
+'     WaitFor(selector, timeoutSec)  As Wv2Element  wait until it appears
+'     WaitGone(selector, timeoutSec) As Boolean     wait until it disappears
+'     ImplicitWaitSec                As Single      *default 0 = disabled*
+'
+'     *Unknown 1 was settled by measurement (2026-08-22)*
+'       Even when passing raw ExecuteScript a *Promise that never resolves*, the completion notification
+'       came back immediately with resultJson={}. So ExecuteScript does not wait for a Promise.
+'       Therefore the wait cannot be written on the JS side and *is polled on the VBA side* (the backbone of issue 3).
+'       (In the first place EvalSync fires JSON.stringify(expression), so even if it could wait,
+'        a Promise would be flattened to {} on the spot. Waiting on the JS side would mean redoing D-1's wrapping)
+'
+'     *Do not break / step through while polling* (spec fact 20)
+'       EvalSync's DoEvents section stretches by the wait time. Wait 10 seconds and it is a danger zone for the full 10 seconds.
+'
+'     *The meaning of Nothing / False is split by LastEvalOk (design principle 93)*
+'       WaitFor  -> Nothing + LastEvalOk=True  ... did not appear in time (normal)
+'                   Nothing + LastEvalOk=False ... failure (bad selector / in-callback, etc.)
+'       WaitGone -> False   + LastEvalOk=True  ... did not disappear in time (normal)
+'                   False   + LastEvalOk=False ... failure
+'       *As soon as it is known to be a failure, it exits without waiting* to avoid freezing for 10 seconds in-callback.
+'
+'     ImplicitWaitSec applies an implicit retry to QuerySelector / GetElementById
+'     (same style as SeleniumVBA). *The default is 0, and only those who set it explicitly are affected*
+'     Reason: if it waited by default, confirming "it really is not there" would mean waiting for the timeout every time, and
+'     the meaning fixed in D-2, "Nothing + LastEvalOk=True = really does not exist", would be blurred.
+'
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  D-2 段階 (要素レジストリ + Wv2Element の読み取り) ---
+' --- Wv2Pane.cls  Stage K-1 (moving the debug log to file output) ---
 '
-'   D-2 のスコープ (JS 側の要素レジストリと、要素ハンドルの読み取り):
-'     GetElementById / QuerySelector … 要素を 1 個探して Wv2Element を返す。
-'     ClearElementRegistry           … JS 側レジストリを手動で作り直す。
-'     CurrentDomGen                  … レジストリ世代のキャッシュ (高速パス用)。
-'     Elem_Read / Elem_CheckStale    … Wv2Element 専用の Friend 経路。
-'     ★やらないこと★ 書き込み (Value =) / Click / SetAttribute は D-3。
-'                     QuerySelectorAll (複数返し) は D-3 以降 (論点7 案a)。
+'   The K-1 change is *only where the log goes*; not a single line of logic was changed.
+'     The Debug.Print calls in EvalSync (9) and ClearElementRegistry (2) were
+'     replaced with Wv2Log.LogE / LogW / LogD.
 '
-'   ■ 追加した Public メンバ
+'   Wv2Log also fires Debug.Print internally, so how things look in the Immediate window does not change
+'   (it can be turned off with Wv2Log.LogEcho = False). The log is kept in %APPDATA%\Wv2Browser\logs\
+'   as one file per launch. The path can be found with ?Wv2Log.LogPath.
+'
+'   *The Debug.Print calls in other procedures are still untouched* We migrate in stages
+'   (not rewriting every existing Debug.Print at once was the K-1 agreement).
+''''''''''''''''''''''''''''''''''
+' --- Wv2Pane.cls  Stage D-2 (element registry + Wv2Element reads) ---
+'
+'   Scope of D-2 (the JS-side element registry, and reading element handles):
+'     GetElementById / QuerySelector ... find one element and return a Wv2Element.
+'     ClearElementRegistry           ... manually rebuild the JS-side registry.
+'     CurrentDomGen                  ... cache of the registry generation (for the fast path).
+'     Elem_Read / Elem_CheckStale    ... Friend paths dedicated to Wv2Element.
+'     *Not done* writing (Value =) / Click / SetAttribute are D-3.
+'                     QuerySelectorAll (returning multiple) is D-3 or later (issue 7, option a).
+'
+'   # Added Public members
 '     GetElementById(elementId) As Wv2Element
 '     QuerySelector(selector)   As Wv2Element
-'         見つかれば Wv2Element、見つからなければ ★Nothing★ を返す。
-'         ★Nothing の意味は 2 通りあるので LastEvalOk で分ける (論点4)★
-'           Nothing + LastEvalOk = True  … 本当に存在しない (正常)
-'           Nothing + LastEvalOk = False … 失敗。理由は LastEvalError
-'                                           (in-callback / timeout / セレクタの構文エラー等)
+'         Returns a Wv2Element if found, *Nothing* if not.
+'         *Nothing has two meanings, so they are split by LastEvalOk (issue 4)*
+'           Nothing + LastEvalOk = True  ... really does not exist (normal)
+'           Nothing + LastEvalOk = False ... failure. The reason is in LastEvalError
+'                                           (in-callback / timeout / selector syntax error, etc.)
 '     ClearElementRegistry() As Boolean
-'         JS 側のレジストリを捨てて新しい世代で作り直す。既存の Wv2Element は
-'         すべて stale になる。同一ページで大量に検索して配列が伸びたときの掃除用。
+'         Discards the JS-side registry and rebuilds it with a new generation. All existing Wv2Element objects
+'         become stale. For cleanup when the array has grown from many searches on the same page.
 '     CurrentDomGen As String
-'         最後に JS から受け取ったレジストリ世代。まだ一度も触っていなければ空文字。
+'         The registry generation last received from JS. An empty string if never touched yet.
 '
-'   ■ JS 側レジストリの形 (論点1 案c: ★注入しない★)
-'     window.__wv2 = { gen: 'g<時刻>-<乱数>', els: [要素, 要素, ...] }
+'   # Shape of the JS-side registry (issue 1, option c: *no injection*)
+'     window.__wv2 = { gen: 'g<time>-<random>', els: [element, element, ...] }
 '
-'     ★AddScriptToExecuteOnDocumentCreated も DOMContentLoaded での注入も使わない。★
-'     代わりに★検索式そのものが「無ければ自分で作る」★形にした:
+'     *Neither AddScriptToExecuteOnDocumentCreated nor injection at DOMContentLoaded is used.*
+'     Instead we made *the search expression itself "create it itself if missing"*:
 '
 '       (function(){ if(typeof window.__wv2==='undefined'||!window.__wv2){
 '                      window.__wv2={gen:'g'+Date.now()+'-'+Math.random(),els:[]}; }
 '                    var R=window.__wv2; ... })()
 '
-'     利点:
-'       ・新しい COM 機構が要らない (前者は完了ハンドラ用の HandlerKind と vtable が要る)
-'       ・往復が増えない (判定・生成・検索が 1 つの式に入る)
-'       ・ページ遷移 / SPA の書き換え / about:blank のどれで消えても、
-'         次のアクセスで自動的に作り直される (設計原則74 と同じ自己修復性)
-'       ・タブバー / ナビバー / 設定タブの Pane に無駄な注入をしない
-'     欠点:
-'       ・ページ読み込み★前★にフックを仕込む用途には使えない。
-'         それが要るときは AddScriptToExecuteOnDocumentCreated を独立段階で実装する。
+'     Advantages:
+'       *No new COM mechanism is needed (the former needs a HandlerKind and vtable for the completion handler)
+'       *No extra round trips (check, create and search fit into one expression)
+'       *Whether it vanishes by page navigation / SPA rewrite / about:blank,
+'         it is rebuilt automatically at the next access (same self-healing as design principle 74)
+'       *No wasted injection into the tab bar / nav bar / settings tab Panes
+'     Disadvantages:
+'       *Cannot be used to plant a hook *before* the page loads.
+'         When that is needed, implement AddScriptToExecuteOnDocumentCreated as a separate stage.
 '
-'   ■ 世代番号 (論点2 案b: ★JS が発行する★)
-'     世代は JS 側が 'g' + Date.now() + '-' + Math.random() で作る文字列。
-'     ★VBA 側でナビゲーションを数える方式 (案a) は採らない。★
-'       SPA の pushState では DOM が残るのにイベントは飛び、逆にページ内 JS が
-'       要素を差し替えてもイベントは飛ばないので、実態とズレるため。
-'     レジストリが消える = 世代も消える = 作り直しで必ず別値、という対応が保証され、
-'     ★判定の権威は常に JS 側★になる。
+'   # Generation number (issue 2, option b: *issued by JS*)
+'     The generation is a string the JS side builds as 'g' + Date.now() + '-' + Math.random().
+'     *The approach of counting navigations on the VBA side (option a) is not adopted.*
+'       With an SPA's pushState the DOM stays while the event fires, and conversely even if in-page JS
+'       swaps elements the event does not fire, so it drifts from reality.
+'     The correspondence "registry vanishes = generation vanishes = a rebuild always gives a different value" is guaranteed, and
+'     *the authority for the verdict is always the JS side*.
 '
-'     m_domGen は「JS から最後に聞いた世代」のキャッシュで、高速パスにしか使わない:
-'       手元の世代 <> m_domGen なら★往復せずに stale と確定できる★ (安全)
-'       手元の世代 =  m_domGen でも JS が作り直しているかもしれないので必ず問い合わせる
-'     キャッシュが古いときは必ず「問い合わせる」側に倒れるので誤判定は起きない。
+'     m_domGen is a cache of "the generation last heard from JS" and is used only for the fast path:
+'       if the generation in hand <> m_domGen, *stale can be determined without a round trip* (safe)
+'       if the generation in hand =  m_domGen, JS may still have rebuilt it, so always ask
+'     When the cache is stale it always falls to the "ask" side, so no misjudgement occurs.
 '
-'     ★Math.random() を混ぜる理由★ Date.now() はミリ秒精度なので、同一ミリ秒内に
-'       レジストリが 2 回作り直されると衝突しうる。比較にしか使わない値なので
-'       文字列にして衝突の心配ごと消す (論点2 の追加合意)。
+'     *Why Math.random() is mixed in* Date.now() has millisecond precision, so if the
+'       registry is rebuilt twice within the same millisecond it could collide. Since the value is only used for comparison,
+'       we make it a string and remove the collision worry altogether (an additional agreement on issue 2).
 '
-'   ■ ハンドルの解放 (論点3 案a: ★解放しない★)
-'     Wv2Element.Class_Terminate では JS 側スロットを消さない。Terminate が
-'     いつ・どの文脈で走るかを制御できず、そこから EvalSync を撃つと D-1 の
-'     in-callback ガードや Ctrl_Close 済みの Pane を踏みやすいため。
-'     レジストリはページ遷移でまるごと消えるので実害は小さい。手動掃除は
-'     ClearElementRegistry。本格的な寿命管理は D-4。
+'   # Releasing handles (issue 3, option a: *do not release*)
+'     Wv2Element.Class_Terminate does not delete the JS-side slot. We cannot control
+'     when or in what context Terminate runs, and firing EvalSync from there easily runs into D-1's
+'     in-callback guard or a Pane that has already been Ctrl_Close'd.
+'     The registry vanishes wholesale on page navigation, so actual harm is small. Manual cleanup is
+'     ClearElementRegistry. Proper lifetime management is D-4.
 '
-'   ■ JS 文字列の作り方 (★VBA 文字列内にバックスラッシュ + 二重引用符を書かない★)
-'     セレクタや属性名はページ由来でなくユーザー由来なので、引用符や
-'     バックスラッシュが入りうる。JsQuote が Wv2Json.JsonEscape を通して
-'     Chr$(34) で括るので、VBA のソース上にその並びが現れない。
-'     例: QuerySelector("input[name='q']") も QuerySelector("a[title=""x""]") も通る。
+'   # How to build JS strings (*do not write backslash + double quote inside VBA strings*)
+'     Selectors and attribute names come from the user, not the page, so quotes and
+'     backslashes may appear. JsQuote passes them through Wv2Json.JsonEscape and wraps them with
+'     Chr$(34), so that sequence never appears in the VBA source.
+'     Example: both QuerySelector("input[name='q']") and QuerySelector("a[title=""x""]") work.
 '
-'   ■ 事後報告 (設計原則79)
-'     (a) ★JsonPickStr を Wv2Json.bas へ移設した★ (Private → Public)
-'         論点6 は「JsonUnescape を新設し JsonPickStr もそれを呼ぶ形に書き換える」
-'         だったが、Wv2Element も同じ復号を要るため、Wv2Pane に Private で
-'         残すと 2 実装になる。移設が論点6 の趣旨に最も忠実な形と判断した。
-'         EvalSync 内の 3 箇所の呼び出しを Wv2Json.JsonPickStr に変更した以外、
-'         ロジックは 1 文字も変えていない (走査部は Wv2Json.JsonUnescapeAt に同一移植)。
-'     (b) ★Wv2Element に LastOk / LastError を足した (論点5 の 8 メンバ + 2)★
-'         読み取り系は失敗時も空文字を返すため、「本当に空」と「stale / timeout」を
-'         区別する手段が無いと使えない。Pane 側の LastEvalOk は JS 実行自体の成否
-'         なので、stale のとき True になってしまい代用できない。
-'     (c) ★Elem_Read / Elem_CheckStale の戻り値は Enum でなく Boolean + 文字列にした★
-'         クラスモジュールの Public Enum が他モジュールから無修飾で見えるかは
-'         この設計で未検証で、コンパイルエラーになると 1 往復無駄になる。
-'         D-1 の LastEvalOk / LastEvalError と同じ流儀に揃える方が一貫もする。
+'   # Post-hoc report (design principle 79)
+'     (a) *JsonPickStr was moved to Wv2Json.bas* (Private -> Public)
+'         Issue 6 said "add JsonUnescape and rewrite JsonPickStr so that it calls it", but
+'         since Wv2Element needs the same decoding, leaving it Private in Wv2Pane
+'         would make two implementations. We judged the move to be the form most faithful to the intent of issue 6.
+'         Apart from changing the 3 call sites in EvalSync to Wv2Json.JsonPickStr,
+'         not one character of logic was changed (the scanning part was ported identically to Wv2Json.JsonUnescapeAt).
+'     (b) *LastOk / LastError were added to Wv2Element (issue 5's 8 members + 2)*
+'         Since the read family returns an empty string on failure too, it is unusable unless there is a way to
+'         tell "truly empty" from "stale / timeout". The Pane-side LastEvalOk is the success of the JS execution itself,
+'         so it would be True when stale and cannot substitute.
+'     (c) *The return values of Elem_Read / Elem_CheckStale are Boolean + string, not an Enum*
+'         Whether a class module's Public Enum is visible unqualified from other modules is
+'         unverified in this design, and a compile error would waste a round trip.
+'         Aligning with the same style as D-1's LastEvalOk / LastEvalError is also more consistent.
 '
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  D-1 段階 (ExecuteScript の同期取得プリミティブ) ---
+' --- Wv2Pane.cls  Stage D-1 (synchronous-fetch primitive for ExecuteScript) ---
 '
-'   ★段階番号の体系が変わりました★
-'     第9.32b までの「9.xx」は「WebView2 をブラウザとして仕立てる」という一本の軸の
-'     里程標で、第9.32b で一区切りとした。D-1 からは軸ごとに記号を割り当てる:
-'       (無印 9.xx) … ブラウザとしての機能整備 (完了・凍結)
-'       D          … DOM / ページ自動制御 (MSHTML 相当)  ← 本段階はここ
-'       C          … フォームコントロール (TreeView / ListView 相当)
-'       K          … 基盤・借金返済 (Sentinel 等)
+'   *The stage numbering scheme has changed*
+'     The "9.xx" up to stage 9.32b were milestones on a single axis, "turning WebView2 into a browser",
+'     and stage 9.32b closed it off. From D-1 on, a symbol is assigned per axis:
+'       (plain 9.xx) ... browser feature work (finished, frozen)
+'       D          ... DOM / page automation (MSHTML equivalent)  <- this stage is here
+'       C          ... form controls (TreeView / ListView equivalent)
+'       K          ... foundation / paying down debt (Sentinel etc.)
 '
-'   D-1 のスコープ (JS 式を投げて戻り値を VBA で同期的に受け取る):
-'     EvalSync … 本段階の成果物。JS 式 1 本を撃ち、完了まで DoEvents で待って
-'                戻り値の JSON 表現を String で返す。
-'     ★やらないこと★ 要素レジストリ (__wv2els[])、Wv2Element、DOM API。D-2 以降。
+'   Scope of D-1 (throw a JS expression and receive its return value synchronously in VBA):
+'     EvalSync ... the deliverable of this stage. Fires one JS expression, waits with DoEvents until completion, and
+'                returns the JSON representation of the return value as a String.
+'     *Not done* the element registry (__wv2els[]), Wv2Element, the DOM API. D-2 and later.
 '
-'   ■ 追加した Public メンバ
+'   # Added Public members
 '     EvalSync(jsExpr, [timeoutSec=5]) As String
-'         成功: JS の戻り値を JSON.stringify した文字列を返す。
-'               1+2       → 3
-'               'abc'     → 引用符ごと abc (★文字列は引用符付きで返る★)
-'               undefined → undefined   (JSON.stringify が undefined を返すため)
-'               null      → null
-'               ({a:1})   → {a:1} の JSON 表現
-'         失敗: 空文字を返す。理由は LastEvalError を見る。
-'     LastEvalOk    As Boolean … 直前の EvalSync が成功したか
-'     LastEvalError As String  … 直前の失敗理由
+'         Success: returns the string obtained by JSON.stringify of the JS return value.
+'               1+2       -> 3
+'               'abc'     -> abc including the quotes (*strings come back with quotes*)
+'               undefined -> undefined   (because JSON.stringify returns undefined)
+'               null      -> null
+'               ({a:1})   -> the JSON representation of {a:1}
+'         Failure: returns an empty string. See LastEvalError for the reason.
+'     LastEvalOk    As Boolean ... whether the previous EvalSync succeeded
+'     LastEvalError As String  ... the reason for the previous failure
 '                                 closed / no-view / in-callback /
 '                                 execute-failed(n) / timeout(n s) /
 '                                 hresult(&Hxxxx) / ReferenceError: xxx /
 '                                 syntax-error-or-null (...)
-'     ResetCallbackGuard()     … in-callback ガードのカウンタを 0 に戻す (緊急用)
-'     InCallbackDepth As Long  … ガードカウンタの現在値 (検証用)
-'     Debug_SetInCallback(n)   … ガード発火を検証するための注入口 (検証専用)
+'     ResetCallbackGuard()     ... reset the in-callback guard counter to 0 (emergency use)
+'     InCallbackDepth As Long  ... current value of the guard counter (for verification)
+'     Debug_SetInCallback(n)   ... injection port for verifying that the guard fires (verification only)
 '
-'   ■ 論点と決定 (たーぼーさん合意済み)
-'     論点1 メソッド名     : 接頭辞なしの EvalSync。View_ / Ctrl_ は「COM の
-'                            インターフェースメソッドを 1 対 1 で叩く」意味なので
-'                            待ちループ内蔵の高レベル API には付けない。
-'     論点2 結果の受け口   : callbackId をキーにした保留テーブル (m_evalPending)。
-'                            単一変数で受けると並行呼び出しで取り違える。
-'                            UserForm1.OnExecuteScriptResult 直呼びは残す (ログのみ)。
-'     論点3 戻り値の形     : String (= value の JSON 表現)。成否は LastEvalOk /
-'                            LastEvalError で取る。型変換は D-2 以降で行う。
-'     論点4 Safe 経由      : 常に View_ExecuteScriptSafe を通す。生の ExecuteScript は
-'                            JS 例外が S_OK + null で返り、正常な null と区別できない。
-'     論点5 タイムアウト   : 既定 5 秒。超過したら保留エントリを★破棄済みで残し★、
-'                            遅れて来た完了通知はそれを見て捨てる (ログには残す)。
-'     論点6 並行・ネスト   : 許容する。callbackId で分離されているので取り違えない。
-'                            ネストは深さをログに出すだけ。
-'     論点7 in-callback ガード:
-'                            ★本段階で最も価値のある部分★ WebView2 のイベント
-'                            ハンドラ内から EvalSync を呼ぶと、ランタイムはハンドラの
-'                            復帰を待ち、こちらは JS の完了を待つのでタイムアウトまで
-'                            固まる (仕様事実 14)。しかも仕様事実 20 でデバッガが
-'                            使えない領域なので原因究明が苦しい。そこで
-'                            m_inCallback > 0 なら JS を撃たずに即失敗させる。
+'   # Issues and decisions (agreed with tarboh)
+'     Issue 1 method name     : EvalSync, with no prefix. View_ / Ctrl_ mean "hit a COM
+'                            interface method one-to-one", so they are not
+'                            attached to a high-level API with a built-in wait loop.
+'     Issue 2 result receiver : a pending table keyed by callbackId (m_evalPending).
+'                            Receiving into a single variable would mix up concurrent calls.
+'                            The direct call to UserForm1.OnExecuteScriptResult stays (log only).
+'     Issue 3 return shape    : String (= the JSON representation of value). Success is obtained with LastEvalOk /
+'                            LastEvalError. Type conversion is done in D-2 and later.
+'     Issue 4 via Safe        : always go through View_ExecuteScriptSafe. Raw ExecuteScript returns
+'                            a JS exception as S_OK + null, indistinguishable from a normal null.
+'     Issue 5 timeout         : default 5 seconds. When exceeded, the pending entry is *left behind marked discarded*,
+'                            and a completion notice arriving late sees that and discards it (it is kept in the log).
+'     Issue 6 concurrency/nesting: allowed. They are separated by callbackId, so no mix-up.
+'                            For nesting, only the depth is written to the log.
+'     Issue 7 in-callback guard:
+'                            *The most valuable part of this stage* If EvalSync is called from inside a WebView2 event
+'                            handler, the runtime waits for the handler to return while we wait for the JS to complete, so
+'                            it hangs until the timeout (spec fact 14). Moreover, spec fact 20 makes this an area where the debugger
+'                            cannot be used, so finding the cause is painful. So
+'                            if m_inCallback > 0, fail immediately without firing the JS.
 '
-'   ■ 実装上の事後報告 (設計原則 79)
-'     (a) ★ハンドラを Core に分離した★ 合意時は「各 View_On* の入口で +1、出口で -1」
-'         と説明したが、実際のコードを読むと View_OnNewWindowRequested は途中に
-'         Exit Sub が 5 箇所あり (他も 1 箇所ずつ)、素直に 2 行足すとデクリメントを
-'         飛ばす経路ができてしまう。そこで本体を Private ... _Core にリネームし、
-'         同名の Public 薄いラッパーが +1 → Core 呼び出し → -1 を行う形にした。
-'         対象は 7 個 (NavigationStarting / NavigationCompleted / DocumentTitleChanged /
-'         WebMessageReceived / NewWindowRequested / HistoryChanged / DOMContentLoaded)。
-'     (b) ★エラー時もカウンタを戻す。ただし握り潰さない★ ラッパーは
-'         On Error GoTo GuardExit でカウンタを戻したあと、Err.Raise で★同じエラーを
-'         投げ直す★。ComCallbackHandler 側にエラー処理は無く、従来はそのまま
-'         伝播していたので、挙動を変えないためにこうした (握り潰すと不具合が
-'         見えなくなる)。それでもカウンタが残る事故に備えて ResetCallbackGuard を用意。
-'     (c) ★OnExecuteScriptCompleted にはガードを付けていない★ これは結果の受け口で
-'         あり、中でユーザーコードが走らないため。付けると EvalSync の DoEvents 中に
-'         カウンタが立ち、無害だが紛らわしい。
-'     (d) ★JSON の取り出しは Wv2Pane 内の Private 関数にした★ Wv2Json.JsonGetStr は
-'         設計原則 64 により★エスケープを解かない★実装で、次の閉じ引用符までを
-'         そのまま返す。EvalSync の戻り値は JSON.stringify を二重に通るため
-'         「バックスラッシュ + 引用符」や「バックスラッシュ + uXXXX」が必ず入る。
-'         そこで JsonPickStr (エスケープを解く限定パーサ) を Private で用意した。
-'         他所から要るようになったら Wv2Json へ昇格させる。
-'     (e) ★JSON.stringify で包む形にした★ EvalSync は
-'         View_ExecuteScriptSafe("JSON.stringify(" & jsExpr & ")") を撃つ。こうすると
-'         Safe が返す構造化 JSON の value が★必ず文字列★になり、(d) の限定パーサ
-'         だけで型を問わず取り出せる。undefined のときは value キーごと消えるので
-'         それを検出して undefined を返している。
 '
-'   ■ 利用上の注意 (D-2 以降で緩和予定)
-'     ・jsExpr は「文」ではなく「式」でなければならない (View_ExecuteScriptSafe の
-'       制約をそのまま継承)。複数文を書きたいときは即時関数で包む。
-'     ・文字列を返す式の結果は引用符付きで返る。D-2 で Wv2Element のプロパティごとに
-'       型を決めて剥がす。
-'     ・★DoEvents ループ中にブレーク/ステップ実行しないこと★ (仕様事実 20)
+'   # Post-hoc report on the implementation (design principle 79)
+'     (a) *The handlers were split into a Core* At agreement time it was described as "+1 at the entry of each View_On*, -1 at the exit",
+'         but reading the actual code, View_OnNewWindowRequested has 5 Exit Sub points in the middle
+'         (the others one each), and simply adding 2 lines would create paths that skip the decrement.
+'         So the body was renamed to Private ... _Core, and a Public thin wrapper of the same name
+'         does +1 -> call Core -> -1.
+'         There are 7 targets (NavigationStarting / NavigationCompleted / DocumentTitleChanged /
+'         WebMessageReceived / NewWindowRequested / HistoryChanged / DOMContentLoaded).
+'     (b) *The counter is restored on error too. But the error is not swallowed* The wrapper
+'         restores the counter with On Error GoTo GuardExit and then *re-raises the same error* with Err.Raise.
+'         ComCallbackHandler has no error handling, and previously the error
+'         propagated as is, so this was done to leave behaviour unchanged (swallowing it would hide
+'         defects). Still, ResetCallbackGuard is provided against accidents where the counter is left behind.
+'     (c) *No guard was attached to OnExecuteScriptCompleted* This is the receiver of results and
+'         no user code runs inside it.
+'         Attaching one would raise the counter during EvalSync's DoEvents, which is harmless but confusing.
+'     (d) *JSON extraction was made a Private function inside Wv2Pane* Per design principle 64, Wv2Json.JsonGetStr is an implementation that
+'         *does not unescape* and returns everything up to the next closing quote
+'         as is. EvalSync's return value passes through JSON.stringify twice, so
+'         "backslash + quote" and "backslash + uXXXX" are always present.
+'         So JsonPickStr (a limited parser that unescapes) was provided as Private.
+'         When it is needed elsewhere, promote it to Wv2Json.
+'     (e) *It was made to wrap with JSON.stringify* EvalSync fires
+'         View_ExecuteScriptSafe("JSON.stringify(" & jsExpr & ")"). That way the value of the structured JSON
+'         that Safe returns is *always a string*, and the limited parser of (d) alone
+'         can extract it regardless of type. For undefined the value key vanishes entirely, so
+'         we detect that and return undefined.
+'
+'   # Usage notes (to be relaxed in D-2 and later)
+'     *jsExpr must be an "expression", not a "statement" (inherits View_ExecuteScriptSafe's
+'       constraint as is). To write multiple statements, wrap them in an immediately-invoked function.
+'     *The result of an expression that returns a string comes back with quotes. In D-2 the type is decided
+'       per Wv2Element property and the quotes are stripped.
+'     **Do not break / step through during the DoEvents loop* (spec fact 20)
 ''''''''''''''''''''''''''''''''''
 
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Pane.cls  第9.27 段階 (本丸: put_NewWindow で予備タブに遷移を載せる) ---
+' --- Wv2Pane.cls  Stage 9.27 (the main target: put_NewWindow loads the navigation into a spare tab) ---
 '
-'   第9.27 のスコープ (POST リンクの新タブ展開を「自前のタブ」で正しく開く):
-'     View_OnNewWindowRequested のモード分岐を 2 値 → 3 値に拡張した。
-'       0 = NWM_LEGACY  : 現行動作 (put_Handled + RequestNewTabAsync)。Navigate は
-'                         ★常に GET★ なので POST リンクは 405 になる。
-'       1 = NWM_POPUP   : 9.26 のプローブ。put_Handled を立てず素通りし、ランタイムに
-'                         ポップアップを開かせる。POST は保たれる (仕様事実 23)。
-'       2 = NWM_PREWARM : ★9.27 の本命★ Browser が温めてある予備タブの CoreWebView2 を
-'                         args.put_NewWindow (vtable index 4) に渡す。ランタイムが
-'                         その WebView に元のリクエストを載せるので POST が保たれ、
-'                         しかも自前のタブに収まる。
+'   Scope of 9.27 (open the new-tab expansion of POST links correctly in "our own tab"):
+'     Extended the mode branching in View_OnNewWindowRequested from 2 values to 3.
+'       0 = NWM_LEGACY  : current behaviour (put_Handled + RequestNewTabAsync). Navigate is
+'                         *always GET*, so a POST link gets a 405.
+'       1 = NWM_POPUP   : the 9.26 probe. Does not set put_Handled and passes through, letting the runtime
+'                         open a popup. POST is preserved (spec fact 23).
+'       2 = NWM_PREWARM : *the real aim of 9.27* Passes the CoreWebView2 of the spare tab that Browser has warmed up
+'                         to args.put_NewWindow (vtable index 4). The runtime
+'                         loads the original request into that WebView, so POST is preserved and,
+'                         moreover, it lands in our own tab.
 '
-'   ★イベント内で何も待たない★ ここでやるのは
-'       (1) m_browser.ClaimPrewarmViewPtr で予備の ViewPtr をもらう
+'   *Nothing is waited for inside the event* All that is done here is
+'       (1) get the spare ViewPtr with m_browser.ClaimPrewarmViewPtr
 '       (2) dcf(pArgs, 4, put_NewWindow, pNew)
-'       (3) dcf(pArgs, 6, put_Handled, 1&)   ※ SetHandledWithNewWindow が True のとき
-'       (4) m_browser.RequestAdoptPrewarmedAsync で採用を Timer に依頼
-'     の 4 つだけ。Controller 生成も Deferral も無いので、仕様事実 14 (SafeTimer
-'     デッドロック) にも 20 (EBMode の窓) にも触れない。★これがプリウォーム方式の要点★
+'       (3) dcf(pArgs, 6, put_Handled, 1&)   * when SetHandledWithNewWindow is True
+'       (4) ask the Timer to adopt it with m_browser.RequestAdoptPrewarmedAsync
+'     these 4 only. There is no Controller creation and no Deferral, so neither spec fact 14 (SafeTimer
+'     deadlock) nor 20 (the EBMode window) is touched. *This is the key point of the pre-warm approach*
 '
-'   ★フォールバック★ 予備が無い / 未 Ready / 既に Claim 済み / put_NewWindow 失敗 の
-'     いずれでも、下の現行動作 (put_Handled + RequestNewTabAsync) にそのまま落ちる。
-'     POST リンクなら 405 に戻るが壊れはしない。落ちた事実は必ず ★印つきでログに出す。
+'   *Fallback* If the spare is absent / not yet Ready / already Claimed / put_NewWindow fails,
+'     in any case it falls straight to the current behaviour below (put_Handled + RequestNewTabAsync).
+'     For a POST link it returns to a 405 but does not break. The fact that it fell back is always logged *with a mark.
 '
-'   ★vtable index の根拠 (WebView2.h の ICoreWebView2NewWindowRequestedEventArgsVtbl)★
+'   *Basis of the vtable index (ICoreWebView2NewWindowRequestedEventArgsVtbl in WebView2.h)*
 '       3 = get_Uri / 4 = put_NewWindow / 5 = get_NewWindow /
 '       6 = put_Handled / 7 = get_Handled / 8 = get_IsUserInitiated / 9 = GetDeferral
-'     put_Handled = 6 は 9.6b から使っている実績値で、この並びと一致する。
+'     put_Handled = 6 is a proven value in use since 9.6b and matches this layout.
 '
-'   ★触らないもの★ get_Uri の取得とログ / 空 URL ガード / RequestNewTabAsync (案β
-'     Timer、仕様事実 14 の回避) / 他のイベントハンドラ一切。
+'   *Untouched* the get_Uri retrieval and log / the empty-URL guard / RequestNewTabAsync (option beta
+'     Timer, the workaround for spec fact 14) / all other event handlers.
 '
-' --- Wv2Pane.cls  第9.26 段階 (NewWindowRequested 委譲プローブ) ---
+' --- Wv2Pane.cls  Stage 9.26 (NewWindowRequested delegation probe) ---
 '
-'   第9.26 のスコープ (POST リンクが 405 になる件の切り分け。観測だけを行う回):
-'     View_OnNewWindowRequested の冒頭に分岐を 1 個足しただけ。
-'     m_browser.PopupDelegateMode が True のときは
-'       ・args.put_Handled を立てない
-'       ・m_browser.RequestNewTabAsync を呼ばない
-'     で素通りし、WebView2 ランタイム自身にポップアップウィンドウを開かせる
-'     (第9.6a で確認済みの挙動: Excel プロセス内に Chrome_WidgetWin_1 が生える)。
-'     ランタイムが遷移そのものを担当するので、元のリクエストが POST ならボディごと
-'     継続される。これで「ランタイムに委譲すれば POST は保たれるのか」を実測する。
+'   Scope of 9.26 (isolating why POST links get a 405. A round that only observes):
+'     Just added one branch at the top of View_OnNewWindowRequested.
+'     When m_browser.PopupDelegateMode is True,
+'       *do not set args.put_Handled
+'       *do not call m_browser.RequestNewTabAsync
+'     and pass through, letting the WebView2 runtime itself open the popup window
+'     (behaviour confirmed in 9.6a: a Chrome_WidgetWin_1 appears inside the Excel process).
+'     Since the runtime takes care of the navigation itself, if the original request was POST it continues
+'     including the body. This measures "does delegating to the runtime preserve POST?".
 '
-'     ★なぜ『同一 View で View_Navigate する』案を採らないか★
-'       9.6b にあったその形は ICoreWebView2::Navigate を呼ぶので★常に GET★。
-'       新タブに流すか同一タブに流すかは関係なく、Navigate を通した時点で 405 のまま。
-'       POST を保つ道は「ランタイムに遷移を渡す」しかない (今回の委譲か、次段の
-'       put_NewWindow か) というのが切り分けの出発点。
+'     *Why the option 'View_Navigate on the same View' is not adopted*
+'       That form, which existed in 9.6b, calls ICoreWebView2::Navigate, so *always GET*.
+'       Whether it flows to a new tab or the same tab does not matter; once it goes through Navigate it stays a 405.
+'       The starting point of the isolation is that the only way to preserve POST is "hand the navigation to the runtime" (either this delegation or the next stage's
+'       put_NewWindow).
 '
-'     ★m_browser が Nothing のとき★ 単体 Pane 運用 (SetBrowser 未実行) ではフラグの
-'       置き場そのものが無いので、従来どおり同一 View の View_Navigate にフォールバック
-'       する。挙動は 9.10e から変更なし。
+'     *When m_browser is Nothing* In standalone Pane operation (SetBrowser not run) there is no place for the flag
+'       at all, so it falls back to View_Navigate on the same View as before.
+'       The behaviour is unchanged since 9.10e.
 '
-'   ★触らないもの★ get_Uri の取得とログ / 空 URL ガード / put_Handled の失敗時の扱い /
-'     RequestNewTabAsync (案β Timer、仕様事実 14 の回避) / 他のイベントハンドラ一切。
-'     設計原則・仕様事実の追加は無し。
+'   *Untouched* the get_Uri retrieval and log / the empty-URL guard / handling when put_Handled fails /
+'     RequestNewTabAsync (option beta Timer, the workaround for spec fact 14) / all other event handlers.
+'     No design principles or spec facts were added.
 '
-' --- Wv2Pane.cls 第9.19段階 ---
+' --- Wv2Pane.cls Stage 9.19 ---
 '
-'   第9.19 の追加事項 (設定タブの重複防止フラグ):
-'     ★m_isSettings フラグ (設定タブ識別) を新設★
-'       この Pane が「設定タブ」かどうかを保持する真偽フラグ。Wv2Browser の
-'       OpenSettingsTab が、設定タブ生成時にこの Pane に IsSettings = True を
-'       立てる。[歯車] が再び押されたとき Browser は m_tabs を頭から走査し、
-'       IsSettings = True の Pane があればそれを ActivateTab するだけで新規
-'       生成しない ([歯車] 連打で設定タブが増えるのを防ぐ)。
+'   Additions in 9.19 (duplicate-prevention flag for the settings tab):
+'     *Added the m_isSettings flag (identifies the settings tab)*
+'       A boolean flag that holds whether this Pane is the "settings tab". Wv2Browser's
+'       OpenSettingsTab sets IsSettings = True on this Pane when it creates the settings tab.
+'       When [gear] is pressed again, Browser scans m_tabs from the top and, if there is a Pane with
+'       IsSettings = True, just does ActivateTab on it and does not create a new one
+'       (preventing the settings tab from multiplying when [gear] is mashed).
 '
-'     ★なぜ Pane のフラグで識別するか (案A)★
-'       設定タブは NavigateToString で data:text/html;base64,... を表示して
-'       いるため URL/内容での判定は脆く高コスト。Pane に印を付けておけば、
-'       毎回 m_tabs を走査して探すだけで「生存確認」も兼ねられる (閉じられた
-'       設定タブは m_tabs から外れるので自然に見つからなくなる)。Browser 側に
-'       Pane 参照を持たせて生存を自前で見張る案 (ダングリング検知が要る) より
-'       綻びが少ない。
+'     *Why identify by a Pane flag (option A)*
+'       The settings tab displays data:text/html;base64,... via NavigateToString,
+'       so judging by URL/content is fragile and costly. If the Pane is marked,
+'       just scanning m_tabs each time also serves as a "liveness check" (a closed
+'       settings tab drops out of m_tabs and so naturally is not found). It has fewer
+'       weak points than the option of Browser holding a Pane reference and watching liveness itself
+'       (which would need dangling detection).
 '
-' --- Wv2Pane.cls 第9.18段階 ---
+' --- Wv2Pane.cls Stage 9.18 ---
 '
-'   第9.18 の追加事項 (AddHostObjectToScript による JS への VBA オブジェクト公開):
-'     ★View_AddHostObjectToScript(objName, instance) を新設★ (部品1)
-'       ICoreWebView2.AddHostObjectToScript (View 上の vtable index 49) を叩き、
-'       VBA のクラスインスタンスを JS 側に window.chrome.webview.hostObjects.<name>
-'       として公開する。JS からそのメソッド/プロパティを直接呼べるようになる
-'       (postMessage の文字列コマンドを介さない直接 RPC 経路)。
+'   Additions in 9.18 (exposing a VBA object to JS via AddHostObjectToScript):
+'     *Added View_AddHostObjectToScript(objName, instance)* (part 1)
+'       Calls ICoreWebView2.AddHostObjectToScript (vtable index 49 on View) and exposes
+'       the VBA class instance on the JS side as window.chrome.webview.hostObjects.<name>.
+'       JS can then call its methods/properties directly
+'       (a direct RPC path that does not go through postMessage string commands).
 '
-'     ★実装は旧 WebView2.cls (実機検証済み) の忠実な移植★
-'       渡し方は既存メソッドと同じ dcf 作法:
-'         Set vObj = instance      (オブジェクトを Variant に詰める)
+'     *The implementation is a faithful port of the old WebView2.cls (verified on a real machine)*
+'       Passing is the same dcf convention as the existing methods:
+'         Set vObj = instance      (put the object into a Variant)
 '         dcf(m_pView, 49, ..., StrPtr(objName), VarPtr(vObj))
-'       第1引数はホストオブジェクト名 (LPCWSTR)、第2引数は VARIANT* (詰めた
-'       オブジェクトへのポインタ)。戻り値は HRESULT。Instancing は 1 - Private の
-'       ままで機能する (旧実装で確認済み。VBA が生成する IDispatch を OS に
-'       公開できれば足りる)。
+'       The first argument is the host object name (LPCWSTR), the second is a VARIANT* (a pointer to the
+'       packed object). The return value is an HRESULT. It works with Instancing left at 1 - Private
+'       (confirmed in the old implementation. It suffices that the IDispatch VBA generates can be
+'       exposed to the OS).
 '
-'     ★用途 (第9.18 時点)★
-'       Wv2Browser が設定タブを開くとき、この Pane に Wv2SettingsBridge を
-'       attach し、設定画面の JS から hostObjects.sync.Settings.SetEngine("bing")
-'       のように検索エンジンを直接操作させる。attach は NavigateToString の前に
-'       行う (順序A: 登録してから Navigate すれば、読み込まれた JS が最初から
-'       hostObjects を使える、という仮説を実機検証する。ダメなら ready
-'       ハンドシェイク方式=順序B にフォールバックする)。
+'     *Use (as of 9.18)*
+'       When Wv2Browser opens the settings tab, it attaches Wv2SettingsBridge to this Pane and lets
+'       the settings screen's JS operate the search engine directly, e.g. hostObjects.sync.Settings.SetEngine("bing").
+'       The attach is done before NavigateToString (order A: the hypothesis that if you register and then Navigate,
+'       the loaded JS can use hostObjects from the start, to be verified on a real machine. If it fails, fall back
+'       to the ready handshake approach = order B).
 '
-'     ★RemoveHostObjectFromScript (vtable 50) は足さない★ (YAGNI)
-'       設定タブは閉じれば WebView2 ごと解放されるため、明示的な取り外しは
-'       第9.18 では不要。必要になったステージで足す。
 '
-' --- Wv2Pane.cls 第9.12a段階 (旧称: Class9) ---
+'     *RemoveHostObjectFromScript (vtable 50) is not added* (YAGNI)
+'       The settings tab is released together with its WebView2 when closed, so explicit detaching
+'       is unnecessary in 9.18. Add it in the stage where it becomes needed.
 '
-'   第9.12a の追加事項 (アドレスバー/ナビボタンの土台: URL 変化の通知):
-'     ★構造は 9.11a の NotifyTitleChanged と全く同じ★ Pane が「自分の URL 状態が
-'       変わった」ことを所属 Browser に伝え、Browser が index を逆引きして
-'       RaiseEvent TabUrlChanged する。Pane はナビバーの存在を知らない (疎結合)。
-'     - 新規 Private Sub: NotifyUrlState(pSender)
-'         sender 経由で get_Source(4) / get_CanGoBack(38) / get_CanGoForward(39) を
-'         取り、m_browser.NotifyUrlChanged Me, url, canBack, canFwd を呼ぶ。
-'     - View_OnNavigationCompleted: 末尾で NotifyUrlState を呼ぶ (通常のページ遷移)。
-'         ★pArgs=0 の早期 Exit Sub 経路でも呼ぶこと★ (両方の経路を通す)
-'     - View_OnHistoryChanged: 既に url/canBack/canFwd を取得済みなので、その値で
-'         m_browser.NotifyUrlChanged を呼ぶ (SPA の pushState、戻る/進むを捕捉)。
-'     ★多重発火は無害★ NavigationCompleted と HistoryChanged が両方撃っても、
-'       全体同期方式 (設計原則 60) なので同じ状態を 2 回送るだけで整合する。
+' --- Wv2Pane.cls Stage 9.12a (formerly: Class9) ---
 '
-'   第9.11c の追加事項 (VBA->JS タブ一覧描画の土台: タイトルキャッシュ + WebMessage シンク):
-'     ★タイトルキャッシュ (選択肢3)★ タイトルを Pane オブジェクトに紐づけて
-'       保持する。タブ index がずれてもタイトルが正しいペインに追従し、
-'       全体同期の真実源を一元化できる。TabBar は Browser.PaneAt(i).DocumentTitle
-'       で読む。
-'       - 新規フィールド: m_title As String
-'       - 新規 Public Property Get DocumentTitle() As String
-'       - View_OnDocumentTitleChanged でタイトル取得後 m_title = title を保存
-'         (9.11a の NotifyTitleChanged 通知ブロックの直前に 1 行足すだけ)。
-'     ★汎用 WebMessage シンク (案P)★ JS から postMessage されたメッセージを
-'       登録された「シンク」(TabBar 等) へ転送する仕組み。m_browser 後方参照
-'       (NewWindowRequested 用) とは別系統の 1 本。
-'       - 新規フィールド: m_webMsgSink As Object (受け側は OnPaneWebMessage を実装)
-'       - 新規 Public Sub: SetWebMsgSink / ClearWebMsgSink
-'       - View_OnWebMessageReceived: シンクがあれば OnPaneWebMessage(Me, source, msg)
-'         を呼ぶブロックを追加。
-'       - View_AddWebMessageReceived は既存 (9.4c) をそのまま使い、TabBar 側で
-'         受信を有効化する。
-'     ★解放時のシンク切断★ ClearBrowserRef で m_webMsgSink も Nothing にする
-'       (設計原則 58。後方参照系の切断は Shutdown 経路に集約)。
+'   Additions in 9.12a (foundation for the address bar / nav buttons: notification of URL changes):
+'     *The structure is exactly the same as 9.11a's NotifyTitleChanged* The Pane tells its owning Browser that
+'       "my URL state has changed", and Browser looks up the index in reverse and
+'       does RaiseEvent TabUrlChanged. The Pane does not know the nav bar exists (loose coupling).
+'     - New Private Sub: NotifyUrlState(pSender)
+'         Takes get_Source(4) / get_CanGoBack(38) / get_CanGoForward(39) via sender
+'         and calls m_browser.NotifyUrlChanged Me, url, canBack, canFwd.
+'     - View_OnNavigationCompleted: calls NotifyUrlState at the end (normal page navigation).
+'         *Also call it on the early Exit Sub path where pArgs=0* (route both paths through it)
+'     - View_OnHistoryChanged: since url/canBack/canFwd have already been obtained, calls
+'         m_browser.NotifyUrlChanged with those values (catches SPA pushState, back/forward).
+'     *Multiple firing is harmless* Even if NavigationCompleted and HistoryChanged both fire,
+'       it is the whole-sync approach (design principle 60), so sending the same state twice stays consistent.
 '
-'   第9.11a の追加事項 (疎結合タブバー用のタイトル通知):
-'     - View_OnDocumentTitleChanged に 1 ブロック追加。タイトル取得後、
-'       m_browser があれば m_browser.NotifyTitleChanged Me, title を呼ぶ。
-'       後方参照 m_browser (9.10e で NewWindowRequested 用に導入) をそのまま
-'       流用する。m_browser 未設定時 (後方参照なしの使い方) は Debug.Print の
-'       みでフォールバックし、疎結合を壊さない。Pane 側の新規フィールド/
-'       メソッドはなし (既存の m_browser を使うだけ)。
+'   Additions in 9.11c (foundation for drawing the VBA->JS tab list: title cache + WebMessage sink):
+'     *Title cache (option 3)* Holds the title tied to the Pane object.
+'       Even if the tab index shifts, the title follows the correct pane,
+'       and the source of truth for whole-sync can be unified. TabBar reads it with Browser.PaneAt(i).DocumentTitle.
 '
-'   第9.10e の追加事項 (NewWindowRequested の新タブ化、案A + 案Y + 案β Timer):
-'     ★デッドロック回避 (案β)★ NewWindowRequested ハンドラ内で AddTabWithUrl を
-'       直接呼ぶと、AddTab の WaitPaneReady が ControllerCompleted を待つが、本
-'       ハンドラが return するまで WebView2 はそれを配送しないためデッドロック
-'       (タイムアウト) する (仕様事実 14)。そこで m_browser.RequestNewTabAsync に
-'       依頼し、SafeTimer (ワンショット) 経由でハンドラ完了後に AddTabWithUrl を
-'       実行させる。
-'     - 新規フィールド: m_browser As Wv2Browser (所属 Browser への後方参照)
-'     - 新規メソッド: SetBrowser / ClearBrowserRef (後方参照の設定・切断)
-'     - View_OnNewWindowRequested を「同一 View Navigate」(9.6b) から
-'       「m_browser.AddTabWithUrl で新タブを開く」に変更。m_browser 未設定時は
-'       同一 View Navigate にフォールバック。window.open の戻り値は null になる
-'       (put_NewWindow で新 View を渡さない簡易方式 = 案A。正攻法は将来の別段階)
-'     ★循環参照注意 (設計原則 58)★ Browser.m_tabs ? Pane.m_browser の相互参照に
-'       なる。Wv2Browser.Shutdown が各 Pane の ClearBrowserRef を呼んで断つ
-'       (UserForm_Terminate 経由)。Class_Terminate では m_browser に触らない
-'       (循環時は Class_Terminate 自体が呼ばれないため、Shutdown が唯一の経路)
+'       - New field: m_title As String
+'       - New Public Property Get DocumentTitle() As String
+'       - In View_OnDocumentTitleChanged, save m_title = title after getting the title
+'         (just add one line right before the NotifyTitleChanged notification block of 9.11a).
+'     *Generic WebMessage sink (option P)* A mechanism that forwards messages posted by JS with postMessage to a
+'       registered "sink" (TabBar etc.). It is a separate line from the m_browser back reference
+'       (for NewWindowRequested).
+'       - New field: m_webMsgSink As Object (the receiving side implements OnPaneWebMessage)
+'       - New Public Sub: SetWebMsgSink / ClearWebMsgSink
+'       - View_OnWebMessageReceived: added a block that, if there is a sink, calls OnPaneWebMessage(Me, source, msg).
 '
-'   第9.10d-2a の追加事項 (本セッション、SPA 用 https origin 基盤):
-'     - 新規モジュール変数:
-'         m_pView3 As LongPtr (ICoreWebView2_3 派生 IF のキャッシュ)
-'     - Class_Initialize に m_pView3 = 0 を追加
-'     - Class_Terminate / Ctrl_Close の Release 順序を拡張:
-'         m_pView3 → m_pView2 → m_pView → m_pCtrl (最派生から先、設計原則 51)
-'     - 新規 Private Function:
+'       - View_AddWebMessageReceived uses the existing one (9.4c) as is, and the TabBar side
+'         enables reception.
+'     *Disconnecting the sink on release* ClearBrowserRef also sets m_webMsgSink to Nothing
+'       (design principle 58. Disconnection of back-reference systems is centralized in the Shutdown path).
+'
+'   Additions in 9.11a (title notification for the loosely coupled tab bar):
+'     - Added one block to View_OnDocumentTitleChanged. After getting the title,
+'       if m_browser exists, calls m_browser.NotifyTitleChanged Me, title.
+'       It reuses the back reference m_browser (introduced in 9.10e for NewWindowRequested) as is.
+'       When m_browser is not set (usage without a back reference) it falls back to
+'       Debug.Print only, so loose coupling is not broken. There are no new fields/
+'       methods on the Pane side (it only uses the existing m_browser).
+'
+'   Additions in 9.10e (making NewWindowRequested open a new tab, option A + option Y + option beta Timer):
+'     *Deadlock avoidance (option beta)* If AddTabWithUrl is called directly inside the NewWindowRequested handler,
+'       AddTab's WaitPaneReady waits for ControllerCompleted, but WebView2 does not deliver it until this
+'       handler returns, so it deadlocks
+'       (timeout) (spec fact 14). So the request is made to m_browser.RequestNewTabAsync, and
+'       via SafeTimer (one-shot) AddTabWithUrl is run after the handler completes.
+'
+'     - New field: m_browser As Wv2Browser (back reference to the owning Browser)
+'     - New methods: SetBrowser / ClearBrowserRef (set and disconnect the back reference)
+'     - Changed View_OnNewWindowRequested from "Navigate the same View" (9.6b) to
+'       "open a new tab with m_browser.AddTabWithUrl". When m_browser is not set it falls back to
+'       Navigate on the same View. The return value of window.open becomes null
+'       (a simple approach that does not pass a new View via put_NewWindow = option A. The proper way is a separate future stage)
+'     *Circular reference caution (design principle 58)* Browser.m_tabs ? Pane.m_browser form a
+'       mutual reference. Wv2Browser.Shutdown breaks it by calling each Pane's ClearBrowserRef
+'       (via UserForm_Terminate). Class_Terminate does not touch m_browser
+'       (in a cycle Class_Terminate itself is not called, so Shutdown is the only path)
+'
+'   Additions in 9.10d-2a (this session, https origin foundation for SPAs):
+'     - New module variable:
+'         m_pView3 As LongPtr (cache of the ICoreWebView2_3-derived IF)
+'     - Added m_pView3 = 0 to Class_Initialize
+'     - Extended the Release order in Class_Terminate / Ctrl_Close:
+'         m_pView3 -> m_pView2 -> m_pView -> m_pCtrl (most derived first, design principle 51)
+'     - New Private Function:
 '         EnsureView3() As Boolean
-'         (QueryInterface(IID_ICoreWebView2_3) で遅延取得、EnsureView2 と同形)
-'     - 新規 Public Function:
-'         View3_Ensure() As Boolean (検証用ラッパ、View2_Ensure と同形)
+'         (lazily acquired with QueryInterface(IID_ICoreWebView2_3), same form as EnsureView2)
+'     - New Public Function:
+'         View3_Ensure() As Boolean (verification wrapper, same form as View2_Ensure)
 '         View3_SetVirtualHostNameToFolderMapping(hostName, folderPath, accessKind)
 '           As Long
-'           (ICoreWebView2_3 vtable index 71。ローカルフォルダを
-'            https://<hostName>/ にマッピングし、about:blank origin の
-'            pushState/replaceState 制約 (仕様事実 6) を回避する基盤。
-'            単純引数系なので View_Navigate を見本にし、設計原則 45 は不要)
+'           (ICoreWebView2_3 vtable index 71. The foundation that maps a local folder to
+'            https://<hostName>/ and avoids the about:blank origin's
+'            pushState/replaceState restriction (spec fact 6).
+'            It is a simple-argument type, so View_Navigate is the model and design principle 45 is not needed)
 '     - IID_ICoreWebView2_3 = {A0D6DF20-3B92-416D-AA0C-437A9C727857}
-'       (EnsureView3 のローカル変数で都度作る、9.9a 案 a を踏襲)
+'       (built each time as a local variable in EnsureView3, following option a of 9.9a)
 '
-'   第9.10c-1 の追加事項 (可視制御):
-'     - 新規 Public Function:
+'   Additions in 9.10c-1 (visibility control):
+'     - New Public Function:
 '         Ctrl_PutIsVisible(visible As Boolean) As Long
-'         (ICoreWebView2Controller::put_IsVisible、vtable index 4)
-'         Wv2Browser の ActivateTab がタブ可視制御 (アクティブタブだけ可視) に使う。
-'         Win32 BOOL (True=1/False=0) なので dcf 前に 1/0 へ正規化する (仕様事実 11)。
-'         単純引数系なので Ctrl_PutBounds を見本にする。
+'         (ICoreWebView2Controller::put_IsVisible, vtable index 4)
+'         Used by Wv2Browser's ActivateTab for tab visibility control (only the active tab is visible).
+'         It is a Win32 BOOL (True=1/False=0), so normalize to 1/0 before dcf (spec fact 11).
+'         It is a simple-argument type, so Ctrl_PutBounds is the model.
 '
-'   第9.9c の追加事項 (補完群一括処理):
-'     - 新規 Public 関数: View_ExecuteScriptSafe(userCode) As Long
-'         ユーザーコードを try-catch で包んで構造化 JSON を返す ExecuteScript ラッパ。
-'         resultJson が必ず {ok:true,value:...} or {ok:false,errorName:...,...}
-'         の形式になる (案 F: a + X + ★)。
-'     - OnExecuteScriptCompleted から UserForm1.OnExecuteScriptResult を直接呼ぶ
-'         (案 α 第二実装、案 E1-a-i = Wv2Pane は UserForm1 参照を保持しない。
-'          VBA のグローバル UserForm 参照を活用、循環参照なし)。
-'         Wv2Pane 内の Debug.Print も併存 (案 E2-X、リグレッション切り分け容易)。
-'     - View_OnHistoryChanged のログ改善:
-'         (α) about:blank なら「NavigateToString 環境では正常」と注記。
-'         (β) pArgs=0 が仕様であることをコメント・ログで明示。
-'     - 設計上ロジックの本質変更はなし (拡張のみ)。
+'   Additions in 9.9c (batch handling of the completion group):
+'     - New Public function: View_ExecuteScriptSafe(userCode) As Long
+'         An ExecuteScript wrapper that wraps user code in try-catch and returns structured JSON.
+'         resultJson is always of the form {ok:true,value:...} or {ok:false,errorName:...,...}
+'         (option F: a + X + *).
+'     - OnExecuteScriptCompleted calls UserForm1.OnExecuteScriptResult directly
+'         (option alpha second implementation, option E1-a-i = Wv2Pane holds no UserForm1 reference.
+'          Uses VBA's global UserForm reference, no circular reference).
+'         The Debug.Print inside Wv2Pane also coexists (option E2-X, easy to isolate regressions).
+'     - Log improvements in View_OnHistoryChanged:
+'         (alpha) if about:blank, annotate "normal in a NavigateToString environment".
+'         (beta) state in comments and log that pArgs=0 is by specification.
+'     - No essential change to logic in the design (extension only).
 '
-'   第9.9b の追加事項 (継続、SPA 対応):
-'     - 永続ハンドラ配列の上限を HK_NewWindowRequested(7) → HK_DOMContentLoaded(10)
-'       に拡張
-'     - 新規ヘルパー RemoveInterfaceFor(kind) As LongPtr
-'     - HistoryChanged 系 (基底 ICoreWebView2、vtable 13/14):
+'   Additions in 9.9b (continued, SPA support):
+'     - Raised the upper limit of the persistent handler array from HK_NewWindowRequested(7) to HK_DOMContentLoaded(10)
+'
+'     - New helper RemoveInterfaceFor(kind) As LongPtr
+'     - HistoryChanged family (base ICoreWebView2, vtable 13/14):
 '         View_AddHistoryChanged / View_RemoveHistoryChanged / View_OnHistoryChanged
-'     - DOMContentLoaded 系 (ICoreWebView2_2、vtable 64/65):
+'     - DOMContentLoaded family (ICoreWebView2_2, vtable 64/65):
 '         View2_AddDOMContentLoaded / View2_RemoveDOMContentLoaded /
 '         View2_OnDOMContentLoaded
 '
-'   ★ 第9.9b の設計原則 45 への警戒 ★
-'     永続ハンドラを 2 個追加 = COM オブジェクトを WebView2 に渡す場面が 2 回。
-'     9.8c で h.Slot を直接渡してクラッシュした教訓に基づき、
-'     View_AddHistoryChanged / View2_AddDOMContentLoaded は両方とも
-'     View_AddNavigationStarting を逐語的に見本にして実装し、
-'     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET を必ず通す。
-'     View_PostWebMessageAsString のような単純引数系は見本にしない。
+'   * Caution about design principle 45 in 9.9b *
+'     Adding 2 persistent handlers = 2 occasions of passing a COM object to WebView2.
+'     Based on the lesson of passing h.Slot directly and crashing in 9.8c,
+'     View_AddHistoryChanged / View2_AddDOMContentLoaded were both implemented using
+'     View_AddNavigationStarting verbatim as the model,
+'     always going through pVTableObj = h.Slot + VTABLE_OBJ_OFFSET.
+'     Simple-argument types like View_PostWebMessageAsString are not used as the model.
 '
-'   第9.9a の追加事項 (継続):
-'     - 新規モジュール変数:
-'         m_pView2 As LongPtr (ICoreWebView2_2 派生 IF のキャッシュ)
-'     - Class_Initialize に m_pView2 = 0 を追加
-'     - Class_Terminate の Release 順序を拡張:
-'         (Settings → View2 → View → Ctrl、子から親へ厳格、設計原則 43)
-'     - Ctrl_Close にも同じ Release 順序を適用 (m_pView2 を View より先に Release)
-'     - 新規 Private Function:
+'   Additions in 9.9a (continued):
+'     - New module variable:
+'         m_pView2 As LongPtr (cache of the ICoreWebView2_2-derived IF)
+'     - Added m_pView2 = 0 to Class_Initialize
+'     - Extended the Release order in Class_Terminate:
+'         (Settings -> View2 -> View -> Ctrl, strictly child to parent, design principle 43)
+'     - Applied the same Release order to Ctrl_Close too (Release m_pView2 before View)
+'     - New Private Function:
 '         EnsureView2() As Boolean
-'         (m_pView2 が未取得なら QueryInterface(IID_ICoreWebView2_2) で取得、
-'          EnsureSettings と同形パターン)
-'     - 新規 Public Function:
+'         (if m_pView2 has not been acquired, get it with QueryInterface(IID_ICoreWebView2_2),
+'          same pattern as EnsureSettings)
+'     - New Public Function:
 '         View2_Ensure() As Boolean
-'         (検証用ラッパ、Immediate ウィンドウから叩いて取得成功確認)
+'         (verification wrapper, call it from the Immediate window to confirm acquisition succeeded)
 '
-'   第9.9a の設計判断 (たーぼーさん合意済み):
-'     ・案 1: m_pView2 フィールド + EnsureView2 遅延取得 (Settings 流儀を踏襲)
-'     ・案 a: IID_ICoreWebView2_2 は EnsureView2 のローカル変数で都度作る
-'             (Wv2Thunks に IID テーブル追加せず、9.9a を Wv2Thunks 最小変更に)
-'     ・案 X: EnsureView2 / View2_Ensure とも As Boolean (EnsureSettings と同形)
-'     ・案 i: 検証は Immediate で View2_Ensure 叩く + Test_AllEvents_Real で
-'             リグレッションゼロ確認 (テスト関数は新設しない)
-'     ・案 R1: Release 順序は Settings → View2 → View → Ctrl (子から親へ厳格)
+'   Design decisions of 9.9a (agreed with tarboh):
+'     *Option 1: m_pView2 field + EnsureView2 lazy acquisition (following the Settings style)
+'     *Option a: IID_ICoreWebView2_2 is built each time as a local variable in EnsureView2
+'             (no IID table added to Wv2Thunks, keeping 9.9a to a minimal Wv2Thunks change)
+'     *Option X: both EnsureView2 / View2_Ensure are As Boolean (same form as EnsureSettings)
+'     *Option i: verification is calling View2_Ensure from Immediate + confirming
+'             zero regressions with Test_AllEvents_Real (no new test function)
+'     *Option R1: Release order is Settings -> View2 -> View -> Ctrl (strictly child to parent)
 '
-'   ★ 第9.9a の意義 ★
-'     ICoreWebView2_2 を取り出すこと自体が目的ではなく、第9.9b 以降の
-'     SPA 対応 (DOMContentLoaded など、vtable 64/65 にあるメソッド) を
-'     呼び出すための基盤を整える段階。HistoryChanged は基底 IF (vtable 13/14)
-'     にあるので _2 が無くても 9.9b で実装可能だが、DOMContentLoaded は
-'     _2 IF が必須。第 9.6a で確立した命名規約 (View2_xxx) を初めて
-'     実地で適用する段階でもある。
+'   * Significance of 9.9a *
+'     Fetching ICoreWebView2_2 is not the goal in itself; this is the stage that prepares the foundation for
+'     calling the SPA-support methods of 9.9b and later (DOMContentLoaded etc., methods at vtable 64/65).
+'     HistoryChanged is on the base IF (vtable 13/14),
+'     so 9.9b could implement it without _2, but DOMContentLoaded
+'     requires the _2 IF. It is also the first stage to apply, in practice,
+'     the naming convention established in 9.6a (View2_xxx).
 '
-'   第9.9a で踏襲する設計原則 (関連する主要なもの):
-'     ・設計原則 31: 出自接頭辞による命名規約 (View2_xxx)
-'     ・設計原則 42: 派生 IF の遅延取得・キャッシュ方式 (EnsureSettings の流儀)
-'     ・設計原則 43: Release 順序は子から親へ
-'     ・設計原則 45: COM オブジェクトとして渡すときは VTABLE_OBJ_OFFSET を足す
-'                    (9.9a では「WebView2 から COM オブジェクトを受け取る」場面
-'                     なので VTABLE_OBJ_OFFSET は登場しないが、9.9b で
-'                     DOMContentLoaded ハンドラを登録するときに再警戒する)
-'     ・設計原則 48: Close 後の安全性は「メンバクリア + フラグ」ハイブリッド
+'   Design principles followed in 9.9a (the main related ones):
+'     *Design principle 31: naming convention by origin prefix (View2_xxx)
+'     *Design principle 42: lazy acquisition / caching of derived IFs (the EnsureSettings style)
+'     *Design principle 43: Release order is child to parent
+'     *Design principle 45: add VTABLE_OBJ_OFFSET when passing as a COM object
+'                    (9.9a is a case of "receiving a COM object from WebView2",
+'                     so VTABLE_OBJ_OFFSET does not appear, but we will be
+'                     wary again when registering the DOMContentLoaded handler in 9.9b)
+'     *Design principle 48: safety after Close is a "member clear + flag" hybrid
 '
-'   第9.8c の追加事項 (継続):
-'     - 新規モジュール変数:
-'         m_executeScriptCounter As Long (View_ExecuteScript の callback ID 採番)
-'         m_closed As Boolean (Ctrl_Close 済みフラグ)
-'     - Class_Initialize に上記 2 個の初期化追加
-'     - 新規 Public 関数 (View_ 系):
-'         View_ExecuteScript (jsCode As String) As Long  ' callback ID 返却
-'     - 新規 Public Sub (動的バインディング受け取り口):
+'   Additions in 9.8c (continued):
+'     - New module variables:
+'         m_executeScriptCounter As Long (callback ID numbering for View_ExecuteScript)
+'         m_closed As Boolean (flag for Ctrl_Close done)
+'     - Added initialization of the above 2 to Class_Initialize
+'     - New Public function (View_ family):
+'         View_ExecuteScript (jsCode As String) As Long  ' returns callback ID
+'     - New Public Sub (receiver for dynamic binding):
 '         OnExecuteScriptCompleted (callbackId, errorCode, resultJson)
-'     - Ctrl_Close の拡張 (案 E 1+3 ハイブリッド):
-'         Controller::Close を撃つ + m_pSettings/m_pView/m_pCtrl の Release +
-'         m_persistentTokens / m_persistentHandlers のクリア +
+'     - Extension of Ctrl_Close (option E 1+3 hybrid):
+'         Fires Controller::Close + Release of m_pSettings/m_pView/m_pCtrl +
+'         clearing of m_persistentTokens / m_persistentHandlers +
 '         m_closed = True + m_state = Cs_Failed
-'         これにより Close 後の Class_Terminate での二重処理が綺麗にスキップされる
+'         This makes the double processing in Class_Terminate after Close skip cleanly
 '
-'   ★ 第9.8c での初回バグ + 修正履歴 ★
-'     View_ExecuteScript の初版では h.Slot を直接 dcf に渡してクラッシュ
-'     (Excel プロセス即落ち)。実際は他の登録系 (View_AddNavigationStarting 等)
-'     と同じく h.Slot + VTABLE_OBJ_OFFSET を渡す必要がある。
-'     → 「サンクスロットを WebView2 に COM オブジェクトとして渡すとき、
-'        必ず VTABLE_OBJ_OFFSET (= 176 byte) を足してから渡す」
-'        という設計原則を改めて確認 (設計原則 45 として新設)。
+'   * Initial bug in 9.8c + fix history *
+'     In the first version of View_ExecuteScript, passing h.Slot directly to dcf crashed
+'     (the Excel process died instantly). In fact, as with the other registration families (View_AddNavigationStarting etc.),
+'     h.Slot + VTABLE_OBJ_OFFSET must be passed.
+'     -> "When passing a thunk slot to WebView2 as a COM object,
+'        always add VTABLE_OBJ_OFFSET (= 176 bytes) before passing"
+'        This design principle was reaffirmed (newly established as design principle 45).
 '
-'   第9.8c の設計判断 (たーぼーさん合意済み):
-'     ・案 a: 同時並行 OK、スロット自身が完了管理
-'     ・案 α: イベントコールバック方式、第一実装は OnExecuteScriptCompleted で
-'             ログ出力のみ (将来 UserForm 通知に拡張可)
-'     ・案 X: 連番 callback ID 返却
-'     ・案 E 1+3: メンバクリア + m_closed フラグ
+'   Design decisions of 9.8c (agreed with tarboh):
+'     *Option a: concurrency OK, the slot itself manages completion
+'     *Option alpha: event callback approach, the first implementation only logs in OnExecuteScriptCompleted
+'             (can be extended to UserForm notification in the future)
+'     *Option X: returns a sequential callback ID
+'     *Option E 1+3: member clear + m_closed flag
 '
-'   第9.8b の事項 (継続):
-'     - m_pSettings + EnsureSettings + Settings_PutXxx 系 (3 個)
+'   Items of 9.8b (continued):
+'     - m_pSettings + EnsureSettings + Settings_PutXxx family (3)
 '     - View_Reload / View_Stop / View_GetCanGoBack / View_GetCanGoForward /
 '       View_GetBrowserProcessId
 '
-'   第9.8a の事項 (継続、改名):
-'     - クラス名 Class9 → Wv2Pane に正式固定
-'     - Class7 → ComCallbackHandler / Class8 → Wv2Environment への参照置換
-'     - 詳細は開発メモ.md の各段階セクションを参照
+'   Items of 9.8a (continued, rename):
+'     - Class name Class9 -> formally fixed as Wv2Pane
+'     - Reference replacement Class7 -> ComCallbackHandler / Class8 -> Wv2Environment
+'     - For details see each stage section of the dev notes (dev-notes-*.md under docs)
 
-'   役割:
-'     ICoreWebView2Controller と ICoreWebView2 の合体クラス (合体方針 = 案 a)。
-'     SDK の階層構造との 1 対 1 対応は諦めるが、VBA ユーザ視点で
-'     「1 つの WebView2 表示 = 1 クラス」という素直な対応が得られる。
-'     UserForm の Frame コントロール領域に貼り付ける「1 枚の表示パネル」と
-'     して捉えるのが直観に近い (= 「Pane」と命名した理由)。
+'   Role:
+'     A combined class of ICoreWebView2Controller and ICoreWebView2 (combining policy = option a).
+'     We give up one-to-one correspondence with the SDK's hierarchy, but from the VBA user's viewpoint
+'     we get the straightforward correspondence "one WebView2 display = one class".
+'     It is intuitively closest to think of it as "one display panel" pasted into the Frame control area
+'     of a UserForm (= the reason it was named "Pane").
 '
-'   実装済み永続ハンドラ:
+'   Implemented persistent handlers:
 '     HK_NavigationStarting      (View_AddNavigationStarting   / View_OnNavigationStarting)
 '     HK_NavigationCompleted     (View_AddNavigationCompleted  / View_OnNavigationCompleted)
 '     HK_WebMessageReceived      (View_AddWebMessageReceived   / View_OnWebMessageReceived)
 '     HK_DocumentTitleChanged    (View_AddDocumentTitleChanged / View_OnDocumentTitleChanged)
 '     HK_NewWindowRequested      (View_AddNewWindowRequested   / View_OnNewWindowRequested)
-'     HK_HistoryChanged          (View_AddHistoryChanged       / View_OnHistoryChanged)        ' 第9.9b
-'     HK_DOMContentLoaded        (View2_AddDOMContentLoaded    / View2_OnDOMContentLoaded)     ' 第9.9b
+'     HK_HistoryChanged          (View_AddHistoryChanged       / View_OnHistoryChanged)        ' Stage 9.9b
+'     HK_DOMContentLoaded        (View2_AddDOMContentLoaded    / View2_OnDOMContentLoaded)     ' Stage 9.9b
 '
-'   命名規約 (設計原則 31):
-'     ・ICoreWebView2Controller のメソッド: Ctrl_xxx (基底) / Ctrl2_xxx (拡張、将来)
-'     ・ICoreWebView2 のメソッド:           View_xxx (基底) / View2_xxx (拡張、第9.9a で初導入)
-'     ・ICoreWebView2 のイベントレシーバー: View_OnXxx (基底) / View2_OnXxx (拡張、9.9b で初導入予定)
-'     ・ICoreWebView2Environment のメソッド: Env_xxx 等 (将来必要時に追加)
-'     ・1 ショット系コールバック (OnEnvironmentCompleted / OnControllerCompleted):
-'       接頭辞なしで据え置き (派生インターフェース版が直接取れる関数がないため
-'       バージョン識別の必要がない)
+'   Naming convention (design principle 31):
+'     *ICoreWebView2Controller methods: Ctrl_xxx (base) / Ctrl2_xxx (extension, future)
+'     *ICoreWebView2 methods:           View_xxx (base) / View2_xxx (extension, first introduced in 9.9a)
+'     *ICoreWebView2 event receivers: View_OnXxx (base) / View2_OnXxx (extension, planned to be introduced in 9.9b)
+'     *ICoreWebView2Environment methods: Env_xxx etc. (to be added when needed in the future)
+'     *One-shot callbacks (OnEnvironmentCompleted / OnControllerCompleted):
+'       left without a prefix (there is no function that directly fetches a derived-interface version, so
+'       there is no need to identify a version)
 '
-'   双方向通信フロー (第9.4c で確立、参照名のみ新名に更新):
-'     [VBA → JS]
+'   Two-way communication flow (established in 9.4c, only the reference names updated to the new names):
+'     [VBA -> JS]
 '       VBA: m_pane.View_PostWebMessageAsString("hello")
-'         → dcf(m_pView, 33, ..., StrPtr("hello"))
-'         → WebView2 ランタイムが JS に届ける
-'         → JS: window.chrome.webview.addEventListener('message', ...) で受信
-'     [JS → VBA]
+'         -> dcf(m_pView, 33, ..., StrPtr("hello"))
+'         -> the WebView2 runtime delivers it to JS
+'         -> JS: receives with window.chrome.webview.addEventListener('message', ...)
+'     [JS -> VBA]
 '       JS: window.chrome.webview.postMessage("hello")
-'         → WebView2 ランタイムが HK_WebMessageReceived 経由でハンドラ呼び出し
-'         → ComCallbackHandler.Invoke[HK_WebMessageReceived]
-'         → Wv2Pane.View_OnWebMessageReceived(pSender, pArgs)
-'         → args.get_Source / args.TryGetWebMessageAsString でログ
+'         -> the WebView2 runtime invokes the handler via HK_WebMessageReceived
+'         -> ComCallbackHandler.Invoke[HK_WebMessageReceived]
+'         -> Wv2Pane.View_OnWebMessageReceived(pSender, pArgs)
+'         -> logs with args.get_Source / args.TryGetWebMessageAsString
 ''''''''''''''''''''''''''''''''''
 Option Explicit
 
 #If Win64 Then
     ' OK
 #Else
-    #Error "このクラスは 64 ビット VBA (x64) が必要です"
+    #Error "This class requires 64-bit VBA (x64)"
 #End If
 
-' --- N-1: 経過ミリ秒の時刻源 ---
-'   ★Timer は使わない★ Timer は Single の「午前 0 時からの秒」なので、
-'   午後の値 (5 万秒台) では Single の有効桁が足りず ms の分解能が消える。
-'   さらに日付を跨ぐと巻き戻る。GetTickCount は起動からの ms で単調増加。
-'   戻り値は Long なので約 49.7 日で一周する。差は Double に上げてから計算し、
-'   負になったら 2^32 を足して戻す (NetElapsedMs)。
+' --- N-1: time source for elapsed milliseconds ---
+'   *Timer is not used* Timer is a Single of "seconds since midnight", so
+'   for an afternoon value (in the 50,000s) a Single lacks the significant digits and the ms resolution disappears.
+'   It also wraps back when crossing a date. GetTickCount is ms since boot and increases monotonically.
+'   The return value is a Long, so it wraps around in about 49.7 days. The difference is computed after raising it to Double,
+'   and if it goes negative, 2^32 is added to restore it (NetElapsedMs).
 Private Declare PtrSafe Function GetTickCount Lib "kernel32" () As Long
 
 
@@ -868,211 +868,211 @@ Public Enum ControllerState
 End Enum
 
 
-' --- 内部状態 ---
-' m_handler:     HK_ControllerCompleted ハンドラへの強参照 (1 ショット)
-'                (OnControllerCompleted 後に Nothing にする)
-' m_pCtrl:       WebView2 から受け取った ICoreWebView2Controller
-'                (Class_Terminate で Release する責任を持つ)
-' m_pView:       Ctrl_GetCoreWebView2 で取得した ICoreWebView2
-'                (Class_Terminate で Release する責任を持つ)
+' --- Internal state ---
+' m_handler:     strong reference to the HK_ControllerCompleted handler (one-shot)
+'                (set to Nothing after OnControllerCompleted)
+' m_pCtrl:       the ICoreWebView2Controller received from WebView2
+'                (responsible for Release in Class_Terminate)
+' m_pView:       the ICoreWebView2 obtained with Ctrl_GetCoreWebView2
+'                (responsible for Release in Class_Terminate)
 Private m_handler As ComCallbackHandler
 Private m_pCtrl   As LongPtr
 Private m_pView   As LongPtr
-'   第9.8b 段階で追加: ICoreWebView2Settings のキャッシュ
-'     Wv2Pane が初めて Settings 系メソッドを叩かれたときに
-'     View vtable 3 (get_Settings) で取得し、ここに保持する。
-'     m_pView の寿命と一致するので Class_Terminate で Release する。
+'   Added in stage 9.8b: cache of ICoreWebView2Settings
+'     When Wv2Pane first has a Settings-family method hit,
+'     it is obtained with View vtable 3 (get_Settings) and held here.
+'     Its lifetime matches m_pView, so it is Released in Class_Terminate.
 Private m_pSettings As LongPtr
-'   第9.9a 段階で追加: ICoreWebView2_2 派生 IF のキャッシュ
-'     Wv2Pane が初めて View2_xxx 系メソッドを叩かれたときに
-'     QueryInterface(IID_ICoreWebView2_2) で取得し、ここに保持する。
-'     EnsureView2 経由で遅延取得 (= EnsureSettings と同じ流儀、設計原則 42)。
+'   Added in stage 9.9a: cache of the ICoreWebView2_2 derived IF
+'     When Wv2Pane first has a View2_xxx-family method hit,
+'     it is obtained with QueryInterface(IID_ICoreWebView2_2) and held here.
+'     Lazily acquired via EnsureView2 (= same style as EnsureSettings, design principle 42).
 '
-'     m_pView と m_pView2 は同一 COM オブジェクトを別 IF で見たもの。
-'     QueryInterface は別途 AddRef を撃つので、m_pView2 は m_pView とは
-'     独立した参照カウントを持つ。Class_Terminate / Ctrl_Close では
-'     m_pView より先に m_pView2 を Release する (子から親へ、設計原則 43)。
+'     m_pView and m_pView2 are the same COM object seen through different IFs.
+'     QueryInterface fires a separate AddRef, so m_pView2 has a reference count
+'     independent of m_pView. In Class_Terminate / Ctrl_Close,
+'     m_pView2 is Released before m_pView (child to parent, design principle 43).
 Private m_pView2 As LongPtr
-'   第9.10d-2a 段階で追加: ICoreWebView2_3 派生 IF のキャッシュ
-'     SetVirtualHostNameToFolderMapping (vtable 71) を叩くために必要。
-'     EnsureView3 経由で遅延取得 (EnsureView2 と同形、設計原則 42/50)。
-'     ICoreWebView2_3 : ICoreWebView2_2 : ICoreWebView2 の単一継承なので、
-'     Release 順序では m_pView3 → m_pView2 → m_pView (最派生から先、設計原則 51)。
+'   Added in stage 9.10d-2a: cache of the ICoreWebView2_3 derived IF
+'     Needed to call SetVirtualHostNameToFolderMapping (vtable 71).
+'     Lazily acquired via EnsureView3 (same form as EnsureView2, design principles 42/50).
+'     ICoreWebView2_3 : ICoreWebView2_2 : ICoreWebView2 is single inheritance, so
+'     the Release order is m_pView3 -> m_pView2 -> m_pView (most derived first, design principle 51).
 Private m_pView3 As LongPtr
-'   第9.10e 段階で追加: 所属する Wv2Browser への後方参照
-'     View_OnNewWindowRequested が新タブを開くために Wv2Browser.AddTabWithUrl を
-'     呼べるようにする。Wv2Browser.AddTab が SetBrowser で自分をセットする。
-'     ★循環参照 (Browser.m_tabs ? Pane.m_browser) になるので、解放は
-'      Wv2Browser.Shutdown → ClearBrowserRef 経由で明示的に断つ (設計原則 58)。
+'   Added in stage 9.10e: back reference to the owning Wv2Browser
+'     Lets View_OnNewWindowRequested call Wv2Browser.AddTabWithUrl to open a new tab.
+'     Wv2Browser.AddTab sets itself with SetBrowser.
+'     *This forms a circular reference (Browser.m_tabs ? Pane.m_browser), so release is
+'      explicitly cut via Wv2Browser.Shutdown -> ClearBrowserRef (design principle 58).
 Private m_browser As Wv2Browser
 Private m_state   As ControllerState
 Private m_lastError As Long
 
-' --- 永続イベントハンドラの保持 (第9.4a 段階で追加、第9.6a/9.9b で上限拡張) ---
-' m_persistentHandlers: HandlerKind の値域を index とした ComCallbackHandler 配列
-' m_persistentTokens:   同 index の EventRegistrationToken (LongLong, 8 bytes)
+' --- Holding persistent event handlers (added in stage 9.4a, upper limit extended in 9.6a/9.9b) ---
+' m_persistentHandlers: ComCallbackHandler array indexed by the value range of HandlerKind
+' m_persistentTokens:   EventRegistrationToken (LongLong, 8 bytes) at the same index
 '
-' 第9.6a 段階で上限を HK_DocumentTitleChanged → HK_NewWindowRequested に拡張。
-' 第9.9b 段階で上限を HK_NewWindowRequested(7) → HK_DOMContentLoaded(10) に拡張。
-' N-1 段階で上限を HK_DOMContentLoaded(10) → HK_WebResourceRequested(11) に拡張。
-' N-3 段階で上限を HK_WebResourceRequested(11) → HK_WebResourceResponseReceived(12) に拡張。
-'   これにより HK_HistoryChanged(9) / HK_DOMContentLoaded(10) も永続配列で
-'   管理できる。
+' In stage 9.6a the upper limit was extended from HK_DocumentTitleChanged to HK_NewWindowRequested.
+' In stage 9.9b the upper limit was extended from HK_NewWindowRequested(7) to HK_DOMContentLoaded(10).
+' In stage N-1 the upper limit was extended from HK_DOMContentLoaded(10) to HK_WebResourceRequested(11).
+' In stage N-3 the upper limit was extended from HK_WebResourceRequested(11) to HK_WebResourceResponseReceived(12).
+'   This allows HK_HistoryChanged(9) / HK_DOMContentLoaded(10) to be
+'   managed in the persistent array too.
 '
-' 注意: 範囲 3?10 の中に HK_ExecuteScriptCompleted(8) が含まれるが、
-'   ExecuteScript は 1 ショット系で同時並行のため永続配列には保持しない
-'   (= index 8 は常に Nothing / 0 のまま未使用)。CleanupAllPersistentHandlers の
-'   「If Not (m_persistentHandlers(k) Is Nothing)」判定で自然にスキップされる
-'   ので実害はない。
+' Note: HK_ExecuteScriptCompleted(8) is included in the range 3?10, but
+'   ExecuteScript is a one-shot family running concurrently, so it is not held in the persistent array
+'   (= index 8 always stays Nothing / 0, unused). It is naturally skipped by the
+'   "If Not (m_persistentHandlers(k) Is Nothing)" check in CleanupAllPersistentHandlers,
+'   so there is no actual harm.
 '
-' Class_Terminate ですべての非 Nothing なハンドラについて remove_ を呼ぶ
-' (CleanupAllPersistentHandlers の LBound/UBound ループは変更不要、
-'  これが「HandlerKind 連動配列で横展開を自動化」の本領発揮)。
+' Class_Terminate calls remove_ for every non-Nothing handler
+' (the LBound/UBound loop of CleanupAllPersistentHandlers needs no change;
+'  this is where "automating horizontal rollout with the HandlerKind-linked array" shows its true value).
 Private m_persistentHandlers(HK_NavigationStarting To HK_WebResourceResponseReceived) As ComCallbackHandler
 Private m_persistentTokens(HK_NavigationStarting To HK_WebResourceResponseReceived) As LongLong
 
-' --- ページ読み込み完了フラグ (第9.4c 段階で追加、暫定実装) ---
+' --- Page load complete flag (added in stage 9.4c, provisional implementation) ---
 '
-'   View_OnNavigationCompleted で True にセットされる。
-'   外部 (UserForm 等) が「ページ読み込み完了を待ってから PostMessage を撃つ」
-'   のような同期に使う。
+'   Set to True in View_OnNavigationCompleted.
+'   Used by external code (UserForm etc.) for synchronization such as
+'   "wait for the page load to complete, then fire PostMessage".
 '
-'   注意 (暫定実装):
-'     これは「初回ナビゲーションの完了」しか意味しない。SPA のように
-'     history.pushState や fetch でページ内容が更新される場合は捕捉できない。
-'     SPA 対応 (DOMContentLoaded、HistoryChanged 等) は包括クラス導入時に
-'     まとめて再設計予定。
+'   Note (provisional implementation):
+'     This only means "completion of the first navigation". It cannot catch the case where, as in an SPA, the page content
+'     is updated via history.pushState or fetch.
+'     SPA support (DOMContentLoaded, HistoryChanged, etc.) is planned to be redesigned
+'     all together when the comprehensive class is introduced.
 Private m_pageLoaded As Boolean
 
 
-' 第9.8c で追加:
-'   m_executeScriptCounter: View_ExecuteScript の呼び出しごとに採番する
-'     連番カウンタ (案 X 採用)。各 ComCallbackHandler.m_callbackId に格納される。
-'     初期値 0、最初の呼び出しで 1 になる。
-'   m_closed: Ctrl_Close が呼ばれたか、または Class_Terminate が走った後を示す。
-'     True の間は View_xxx / Ctrl_xxx / Settings_xxx の冒頭で早期 return。
-'     これにより Close 後に誤って各種メソッドを叩いても安全に弾く。
-'     (案 E 1+3 ハイブリッド: メンバクリア + m_closed フラグ)
+' Added in 9.8c:
+'   m_executeScriptCounter: a sequence counter numbered on each call of
+'     View_ExecuteScript (option X adopted). Stored in each ComCallbackHandler.m_callbackId.
+'     Initial value 0, becomes 1 on the first call.
+'   m_closed: indicates that Ctrl_Close was called, or after Class_Terminate has run.
+'     While True, View_xxx / Ctrl_xxx / Settings_xxx return early at their top.
+'     This safely rejects calls to the various methods made by mistake after Close.
+'     (option E 1+3 hybrid: member clear + m_closed flag)
 Private m_executeScriptCounter As Long
 Private m_closed As Boolean
 
-' --- 第9.11c 段階で追加 ---
-'   m_title: このペインが表示しているドキュメントのタイトルキャッシュ
-'     (選択肢3)。View_OnDocumentTitleChanged で更新される。タイトルを Pane
-'     オブジェクトに紐づけることで、タブ index がずれてもタイトルが正しい
-'     ペインに追従する (全体同期の真実源を一元化)。TabBar は
-'     Browser.PaneAt(i).DocumentTitle で読む。
-'   m_webMsgSink: JS から postMessage されたメッセージの転送先 (案P)。
-'     TabBar が自分をシンクに登録する。受け側は OnPaneWebMessage を実装する
-'     こと (遅延バインドなので As Object)。m_browser (NewWindowRequested 用の
-'     後方参照) とは別系統。解放は ClearBrowserRef で断つ (設計原則 58)。
+' --- Added in stage 9.11c ---
+'   m_title: title cache of the document this pane is displaying
+'     (option 3). Updated in View_OnDocumentTitleChanged. By tying the title to the Pane
+'     object, the title follows the correct pane even if the tab index shifts
+'     (unifying the source of truth for whole-sync). TabBar reads it with
+'     Browser.PaneAt(i).DocumentTitle.
+'   m_webMsgSink: forwarding destination of messages posted by JS with postMessage (option P).
+'     TabBar registers itself as the sink. The receiving side must implement OnPaneWebMessage
+'     (As Object because of late binding). It is a separate line from m_browser (the
+'     back reference for NewWindowRequested). Release is cut with ClearBrowserRef (design principle 58).
 Private m_title As String
 Private m_webMsgSink As Object
-Private m_isSettings As Boolean   ' 第9.19 (この Pane が設定タブかどうか)
+Private m_isSettings As Boolean   ' Stage 9.19 (whether this Pane is the settings tab)
 
-' --- 第9.27: NewWindowRequested の捌き方 (Wv2Browser.NewWindowMode と対応) ---
-'   クラスモジュールでは Public Const が書けないので、Browser 側と同じ値を
-'   Private Const で持つ。値の意味はヘッダーのコメントを参照。
+' --- Stage 9.27: how NewWindowRequested is handled (corresponds to Wv2Browser.NewWindowMode) ---
+'   A class module cannot have Public Const, so the same values as on the Browser side are held
+'   as Private Const. For the meaning of the values, see the comment in the header.
 Private Const NWM_LEGACY  As Long = 0
 Private Const NWM_POPUP   As Long = 1
 Private Const NWM_PREWARM As Long = 2
 
 
-' --- D-1: EvalSync (同期取得プリミティブ) 用のモジュール変数と定数 ---
-'   m_evalPending : callbackId をキーにした保留テーブル (論点2)。
-'                   キーは cb & callbackId、値は Array(状態, errorCode, resultJson)。
-'                   ★Collection の項目は書き換えられないので、更新は Remove → Add★
-'   m_lastEvalOk / m_lastEvalError : 直前の EvalSync の成否と理由 (論点3)。
-'   m_inCallback  : WebView2 のイベントハンドラ内にいる深さ (論点7 のガード)。
-'                   Public ラッパーが +1 / -1 する。0 でなければ EvalSync は撃たない。
-'   m_evalDepth   : EvalSync のネスト深さ。ログに出すだけで抑止はしない (論点6)。
+' --- D-1: module variables and constants for EvalSync (synchronous-fetch primitive) ---
+'   m_evalPending : pending table keyed by callbackId (issue 2).
+'                   The key is cb & callbackId, the value is Array(state, errorCode, resultJson).
+'                   *Items of a Collection cannot be rewritten, so update with Remove -> Add*
+'   m_lastEvalOk / m_lastEvalError : success and reason of the previous EvalSync (issue 3).
+'   m_inCallback  : depth of being inside a WebView2 event handler (guard of issue 7).
+'                   The Public wrapper does +1 / -1. If not 0, EvalSync does not fire.
+'   m_evalDepth   : nesting depth of EvalSync. Only written to the log, not used to suppress (issue 6).
 Private m_evalPending   As Collection
 Private m_lastEvalOk    As Boolean
 Private m_lastEvalError As String
 Private m_inCallback    As Long
 Private m_evalDepth     As Long
 
-' 保留テーブルの状態値
+' State values of the pending table
 Private Const EVAL_WAITING   As Long = 0
 Private Const EVAL_DONE      As Long = 1
 Private Const EVAL_DISCARDED As Long = 2
 
-' タイムアウトの既定値 (秒)。READY_TIMEOUT (Controller 生成待ち 10 秒) より短くする。
-' JS 式 1 本の実行は本来ミリ秒オーダーなので、5 秒待つ時点で異常とみなす。
+' Default timeout (seconds). Make it shorter than READY_TIMEOUT (10 seconds waiting for Controller creation).
+' Running one JS expression is originally on the order of milliseconds, so at 5 seconds of waiting it is considered abnormal.
 Private Const EVAL_TIMEOUT_DEFAULT As Single = 5
 
-' --- D-3: DOM 条件待ちの設定 (論点2 案C / 論点4 案A) ---
-'   m_implicitWaitSec : QuerySelector / GetElementById に掛ける暗黙待ち (秒)。
-'                       ★既定 0 = 無効★ ImplicitWaitSec プロパティで設定する。
-'   POLL_INTERVAL_SEC : ポーリング間隔 (論点4 案A の固定 100ms)。
-'                       ★EvalSync 1 往復が実測 38ms なので、実際の判定間隔は
-'                       約 140ms になる★ (2026-08-22 の実機ログから)。
-'   WAIT_TIMEOUT_DEFAULT : WaitFor / WaitGone の既定の上限 (秒)。
+' --- D-3: settings for DOM condition waits (issue 2 option C / issue 4 option A) ---
+'   m_implicitWaitSec : implicit wait (seconds) applied to QuerySelector / GetElementById.
+'                       *Default 0 = disabled* Set with the ImplicitWaitSec property.
+'   POLL_INTERVAL_SEC : polling interval (the fixed 100 ms of issue 4 option A).
+'                       *One EvalSync round trip measures 38 ms, so the actual check interval is
+'                       about 140 ms* (from the real-machine log of 2026-08-22).
+'   WAIT_TIMEOUT_DEFAULT : default upper limit (seconds) of WaitFor / WaitGone.
 Private m_implicitWaitSec As Single
 Private Const POLL_INTERVAL_SEC    As Single = 0.1
 Private Const WAIT_TIMEOUT_DEFAULT As Single = 10
 
 
-' --- D-4a: ページ内 SPA プローブの版番号 ---
-'   プローブの中身を変えたら★必ず上げる★。ページに古い版が残っていても、
-'   版が違えば健康診断が落ちて作り直される (参考プロダクトと同じ契約)。
+' --- D-4a: version number of the in-page SPA probe ---
+'   When the probe's contents change, *always raise it*. Even if an old version remains on the page,
+'   a different version fails the health check and it is rebuilt (same contract as the reference product).
 Private Const SPA_PROBE_VER As Long = 3
 
 
 ' --- D-6: QuerySelectorAll ---
-'   ALL_MAX_DEFAULT    : 1 回に返す既定の上限。★黙って切らない★ (LastAllTruncated)
-'   ELEMENT_WARN_COUNT : レジストリがこれを超えたら警告する (捨てはしない)
+'   ALL_MAX_DEFAULT    : default upper limit returned at once. *Not cut silently* (LastAllTruncated)
+'   ELEMENT_WARN_COUNT : warn when the registry exceeds this (does not discard)
 Private Const ALL_MAX_DEFAULT    As Long = 200
 Private Const ELEMENT_WARN_COUNT As Long = 5000
 Private m_allTruncated As Boolean
 
 
-' --- D-4b: 静穏待ちの設定 ---
-'   m_ignoreNet / m_ignoreSel : ★VBA 側が持つ★ 除外リスト (ページ側は遷移で消えるため)。
-'   m_autoWait   : 操作の後に自動で WaitSettled するか。★既定 False★
-'   m_lastSettle : 直前の待ちの内訳 (診断用)。
+' --- D-4b: settings for quiescence waits ---
+'   m_ignoreNet / m_ignoreSel : exclusion lists *held on the VBA side* (the page side vanishes on navigation).
+'   m_autoWait   : whether to WaitSettled automatically after an action. *Default False*
+'   m_lastSettle : breakdown of the previous wait (for diagnosis).
 Private m_ignoreNet  As Collection
 Private m_ignoreSel  As String
 Private m_autoWait   As Boolean
 Private m_lastSettle As String
 
-' 静穏窓の既定 (ms)。参考プロダクト (WebDriver BiDi for SeleniumVBA) と同じ値。
+' Default quiet window (ms). Same value as the reference product (WebDriver BiDi for SeleniumVBA).
 Private Const SETTLE_STABLE_MS_DEFAULT As Long = 500
 
-' 居座り判定の既定 (ms)。★10 秒を超えて飛んでいる要求は数えない★
+' Default for the lingering check (ms). *Requests in flight for more than 10 seconds are not counted*
 Private Const STALE_INFLIGHT_MS_DEFAULT As Long = 10000
 
 
-' --- D-4c: 明示シグナル (arm) ---
-'   ★VBA 側も arm 済みかを覚える★ ページ側だけに持たせると、遷移でプローブごと
-'   消えたときに「arm したのに消えた」ことに気づけない (黙って条件なしの待ちに
-'   化けてしまう)。両方で持ち、食い違ったら signal-lost として失敗させる。
+' --- D-4c: explicit signal (arm) ---
+'   *The VBA side also remembers whether it is armed* If only the page side holds it, when the probe vanishes
+'   on navigation we cannot notice "it was armed but vanished" (it would silently
+'   turn into a wait with no condition). Hold it on both, and if they disagree fail with signal-lost.
 Private m_sigDom As Boolean
 Private m_sigNet As Boolean
 Private m_sigUrl As Boolean
 
-' --- D-4f: 居座る要求を静穏判定から外す ---
-'   ★ロングポーリングやストリーミングはどのサイトにもある★
-'   Google Maps の検索は /search?tbm=map を開きっぱなしにして結果を流すので、
-'   これを数えていると永久に静穏が来ない (D-4d で実測)。
-'   一定時間を超えて飛んでいる要求は「流れっぱなしのもの」とみなして数えない。
-'   0 にすると無効 (すべて数える)。
+' --- D-4f: exclude lingering requests from the quiescence check ---
+'   *Long polling and streaming exist on every site*
+'   Google Maps search keeps /search?tbm=map open and streams results,
+'   so counting it means quiescence never comes (measured in D-4d).
+'   Requests in flight beyond a certain time are regarded as "things that just keep streaming" and not counted.
+'   Setting 0 disables it (count everything).
 Private m_staleMs As Long
 
 
-' --- N-2: リクエストの詳細 (ヘッダとボディ) ---
-'   ★一覧とは別のリング★ (論点5 案S)。一覧は「順番と全体像」、
-'   詳細は「これを再現したい 1 本」で用途が違う。
+' --- N-2: request detail (headers and body) ---
+'   *A ring separate from the list* (issue 5, option S). The list is for "order and the overall picture",
+'   the detail is for "the one request I want to reproduce"; the uses differ.
 '
-'   m_detOn        : 詳細を取るか。★既定 False★ (論点8 案κ)
-'   m_detCap       : 詳細リングの容量 (既定 50)
-'   m_detHead      : 次に書く位置 (0 起点)
-'   m_detCount     : 今リングに入っている件数
-'   m_detDropped   : ★溢れて捨てた件数★ 一覧と同じく黙って切らない
-'   m_detBodyMax   : ボディを読む上限 (バイト。既定 65536)
-'   m_detRedact    : 秘密のヘッダを伏せるか。★既定 True★ (論点3 案M)
-'   m_detRedactList: 伏せる対象の名前を |小文字| で並べたもの
-'   m_detUriFilter : 詳細を取る URL の部分一致 (空なら全部)
+'   m_detOn        : whether to take the detail. *Default False* (issue 8, option kappa)
+'   m_detCap       : capacity of the detail ring (default 50)
+'   m_detHead      : next write position (0-based)
+'   m_detCount     : number of entries currently in the ring
+'   m_detDropped   : *number dropped on overflow* not cut silently, same as the list
+'   m_detBodyMax   : upper limit for reading the body (bytes. Default 65536)
+'   m_detRedact    : whether to hide secret headers. *Default True* (issue 3, option M)
+'   m_detRedactList: names to hide, lined up as |lowercase|
+'   m_detUriFilter : substring match of URLs to take detail for (all if empty)
 Private m_detOn         As Boolean
 Private m_detCap        As Long
 Private m_detHead       As Long
@@ -1092,50 +1092,50 @@ Private m_detTrunc()   As Boolean
 Private m_detIsText()  As Boolean
 Private m_detBody()    As String
 Private m_detHex()     As String
-Private m_detRespHeaders() As String   ' N-3: 応答ヘッダ
-Private m_detStatus()      As Long     ' N-3: ステータス (0 = 未着)
-Private m_detReason()      As String   ' N-3: 理由句
-Private m_detRespBody()    As String   ' N-4: レスポンス本文 (テキストのみ)
-Private m_detRespBytes()   As Long     ' N-4: 本文のバイト数
-Private m_detRespTrunc()   As Boolean  ' N-4: 上限で切ったか
-Private m_detRespIsText()  As Boolean  ' N-4: テキストと判定したか
-Private m_detRespEnc()     As String   ' N-4: content-encoding (★決めつけない★)
-Private m_detRespHex()     As String   ' N-4: ★先頭 32 バイトの hex (常に残す)★
-Private m_detRespGot()     As Boolean  ' N-4: ★本文が届いたか★ (0 バイトと未着は違う)
+Private m_detRespHeaders() As String   ' N-3: response headers
+Private m_detStatus()      As Long     ' N-3: status (0 = not arrived)
+Private m_detReason()      As String   ' N-3: reason phrase
+Private m_detRespBody()    As String   ' N-4: response body (text only)
+Private m_detRespBytes()   As Long     ' N-4: number of body bytes
+Private m_detRespTrunc()   As Boolean  ' N-4: whether it was cut at the limit
+Private m_detRespIsText()  As Boolean  ' N-4: whether it was judged to be text
+Private m_detRespEnc()     As String   ' N-4: content-encoding (*not assumed*)
+Private m_detRespHex()     As String   ' N-4: *hex of the first 32 bytes (always kept)*
+Private m_detRespGot()     As Boolean  ' N-4: *whether the body arrived* (0 bytes differs from not arrived)
 
-' 詳細リングの既定容量と上限。★一覧より桁で小さい★ 1 件あたりの重さが違う。
+' Default capacity and upper limit of the detail ring. *An order of magnitude smaller than the list* The weight per entry differs.
 Private Const NET_DET_CAP_DEFAULT As Long = 50
 Private Const NET_DET_CAP_MAX     As Long = 2000
 
-' ボディの上限 (既定 64KB) と、その上限自体の上限 (8MB)。
-'   ★ハンドラの中で同期的に読む★ ので青天井にしない。
+' Upper limit of the body (default 64KB) and the upper limit of that limit (8MB).
+'   *It is read synchronously inside the handler* so it is not left unbounded.
 Private Const NET_BODY_MAX_DEFAULT As Long = 65536
 Private Const NET_BODY_MAX_LIMIT   As Long = 8388608
 Private Const NET_BODY_CHUNK       As Long = 16384
 
-' ヘッダを読む個数の上限。1 要求で COM 呼び出しが 3 回 x 個数ぶん走る。
+' Upper limit on the number of headers read. For one request, COM calls run 3 times x the count.
 Private Const NET_HDR_MAX As Long = 40
 
-' バイナリのボディを見せるときの先頭バイト数。
+' Number of leading bytes shown when presenting a binary body.
 Private Const NET_HEX_HEAD As Long = 32
 
-' IStream::Seek の dwOrigin (Windows SDK objidl.h の STREAM_SEEK_SET)。
+' dwOrigin of IStream::Seek (STREAM_SEEK_SET in Windows SDK objidl.h).
 Private Const STREAM_SEEK_SET As Long = 0
 
 
-' --- N-1: ネットワーク要求のキャプチャ (WebResourceRequested) ---
-'   m_netOn      : 捕捉中か (add_WebResourceRequested 済みか)
-'   m_netCap     : リングの容量 (件)。NetLogCapacity で変えられる。
-'   m_netHead    : 次に書く位置 (0 起点)
-'   m_netCount   : 今リングに入っている件数 (0 ～ m_netCap)
-'   m_netTotal   : 捕捉開始からの★総発火数★ (溢れた分も数える)
-'   m_netDropped : ★溢れて捨てた件数★ 黙って切らない
-'   m_netT0      : 捕捉開始時の GetTickCount 値。各件の経過 ms の基準。
-'   m_netFilters : 登録済みフィルタ (uri & vbTab & ctx)。Stop で外すために覚える。
-'   m_netStatus  : その行のステータス (N-3)。★0 = まだ応答が来ていない★
-'   m_netReason  : 理由句 (N-3)
-'   m_netRespOn  : 応答イベントを拾えているか (N-3)
-'   m_netUnmatched : ★一覧に対応が無かった応答の数★ (N-3。大半は正常)
+' --- N-1: capturing network requests (WebResourceRequested) ---
+'   m_netOn      : whether capturing (whether add_WebResourceRequested is done)
+'   m_netCap     : capacity of the ring (entries). Can be changed with NetLogCapacity.
+'   m_netHead    : next write position (0-based)
+'   m_netCount   : number of entries currently in the ring (0 to m_netCap)
+'   m_netTotal   : *total fired count* since capture started (overflowed ones are counted too)
+'   m_netDropped : *number dropped on overflow* not cut silently
+'   m_netT0      : GetTickCount value at capture start. The baseline for each entry's elapsed ms.
+'   m_netFilters : registered filters (uri & vbTab & ctx). Remembered so they can be removed on Stop.
+'   m_netStatus  : status of that row (N-3). *0 = no response has arrived yet*
+'   m_netReason  : reason phrase (N-3)
+'   m_netRespOn  : whether response events are being picked up (N-3)
+'   m_netUnmatched : *number of responses that had no counterpart in the list* (N-3. Mostly normal)
 Private m_netOn      As Boolean
 Private m_netCap     As Long
 Private m_netHead    As Long
@@ -1146,24 +1146,24 @@ Private m_netT0      As Long
 Private m_netRespOn    As Boolean
 Private m_netUnmatched As Long
 
-' --- N-4: レスポンス本文 ---
-'   m_respBodyOn     : 本文を取るか。★既定 False★ (論点1 案A)
-'   m_respBodyMax    : 本文の上限 (バイト。既定 65536)
-'   m_respPending    : ★完了まで保持している ResponseView★ (論点5 案β)
-'                      キーは "r" & 通し番号。値は AddRef 済みのポインタ。
-'   m_respBodyOrphan : 置き場が無かった本文の数 (黙って捨てない)
+' --- N-4: response body ---
+'   m_respBodyOn     : whether to take the body. *Default False* (issue 1, option A)
+'   m_respBodyMax    : upper limit of the body (bytes. Default 65536)
+'   m_respPending    : *ResponseView held until completion* (issue 5, option beta)
+'                      The key is "r" & a serial number. The value is an AddRef'd pointer.
+'   m_respBodyOrphan : number of bodies that had no place to go (not silently discarded)
 Private m_respBodyOn     As Boolean
 Private m_respBodyMax    As Long
 Private m_respPending    As Collection
 Private m_respBodyOrphan As Long
 
-' レスポンス本文の上限の既定 (64KB)。上限自体の上限は NET_BODY_MAX_LIMIT を共用。
+' Default upper limit of the response body (64KB). The limit on the limit shares NET_BODY_MAX_LIMIT.
 Private Const NET_RESP_BODY_MAX_DEFAULT As Long = 65536
 
-' ★204 No Content では GetContent の完了がこの HRESULT で来る★ (N-4 で実測)。
-'   0x800700E8 = HRESULT_FROM_WIN32(ERROR_NO_DATA)。★これは失敗ではなく
-'   「本文が無い」の意味★ なので、取得失敗と同じ扱いにしてはいけない
-'   (設計原則111: それらしい値を書き残さない)。
+' *For 204 No Content, the completion of GetContent arrives with this HRESULT* (measured in N-4).
+'   0x800700E8 = HRESULT_FROM_WIN32(ERROR_NO_DATA). *This is not a failure but means
+'   "there is no body"*, so it must not be treated the same as a fetch failure
+'   (design principle 111: do not leave behind a plausible-looking value).
 Private Const E_NO_DATA As Long = &H800700E8
 Private m_netFilters As Collection
 Private m_netStatus()  As Long
@@ -1174,19 +1174,19 @@ Private m_netCtx()    As Long
 Private m_netMethod() As String
 Private m_netUri()    As String
 
-' リングの既定容量と上限。既定 500 件は「1 ページ分の操作」を丸ごと収める目安。
+' Default capacity and upper limit of the ring. The default of 500 is a guide to hold "one page's worth of operations" entirely.
 Private Const NET_CAP_DEFAULT As Long = 500
 Private Const NET_CAP_MAX     As Long = 50000
 
-' 既定で捕まえる種別 (論点4)。画像・CSS・フォント・スクリプトは除外する。
-'   1 = DOCUMENT (フォーム POST / ページ遷移) / 7 = XML_HTTP_REQUEST / 8 = FETCH
+' Kinds captured by default (issue 4). Images, CSS, fonts and scripts are excluded.
+'   1 = DOCUMENT (form POST / page navigation) / 7 = XML_HTTP_REQUEST / 8 = FETCH
 Private Const NET_CTX_DEFAULT As String = "DOCUMENT,XHR,FETCH"
 
 
-' --- D-2: 要素レジストリの世代キャッシュ ---
-'   m_domGen : JS から最後に受け取った window.__wv2.gen。高速パス専用。
-'              まだ一度も要素検索をしていなければ空文字。
-'              ★判定の権威ではない★ (権威は常に JS 側。上のヘッダー参照)
+' --- D-2: generation cache of the element registry ---
+'   m_domGen : window.__wv2.gen last received from JS. For the fast path only.
+'              An empty string if no element search has been done yet.
+'              *Not the authority for the verdict* (the authority is always the JS side. See the header above)
 Private m_domGen As String
 
 
@@ -1198,163 +1198,163 @@ Private Sub Class_Initialize()
     m_state = Cs_Created
     m_pCtrl = 0
     m_pView = 0
-    m_pView2 = 0    ' 第9.9a で追加 (派生 IF のキャッシュ、未取得状態)
-    m_pView3 = 0    ' 第9.10d-2a で追加 (ICoreWebView2_3 派生 IF、未取得状態)
-    Set m_browser = Nothing   ' 第9.10e (後方参照、AddTab 時に SetBrowser でセット)
+    m_pView2 = 0    ' Added in 9.9a (cache of the derived IF, not-yet-acquired state)
+    m_pView3 = 0    ' Added in 9.10d-2a (ICoreWebView2_3 derived IF, not-yet-acquired state)
+    Set m_browser = Nothing   ' 9.10e (back reference, set by SetBrowser at AddTab time)
     m_lastError = 0
     m_pageLoaded = False
     m_executeScriptCounter = 0
     m_closed = False
-    m_title = ""                  ' 第9.11c (タイトルキャッシュ)
-    Set m_webMsgSink = Nothing    ' 第9.11c (WebMessage シンク、未登録)
-    m_isSettings = False          ' 第9.19 (既定は通常タブ)
+    m_title = ""                  ' 9.11c (title cache)
+    Set m_webMsgSink = Nothing    ' 9.11c (WebMessage sink, not registered)
+    m_isSettings = False          ' 9.19 (default is a normal tab)
 
-    ' --- D-1: EvalSync 関連の初期化 ---
+    ' --- D-1: initialization related to EvalSync ---
     Set m_evalPending = New Collection
     m_lastEvalOk = False
     m_lastEvalError = ""
     m_inCallback = 0
     m_evalDepth = 0
 
-    ' --- D-2: 要素レジストリの世代キャッシュ ---
+    ' --- D-2: generation cache of the element registry ---
     m_domGen = ""
 
-    ' --- N-1: ネットワーク要求のリングバッファ ---
+    ' --- N-1: ring buffer of network requests ---
     m_netOn = False
     m_netCap = NET_CAP_DEFAULT
     Set m_netFilters = New Collection
     NetRingAlloc
 
-    ' --- N-2: 詳細 (ヘッダとボディ) ---
-    m_detOn = False                       ' ★既定 OFF★ (論点8 案κ)
+    ' --- N-2: detail (headers and body) ---
+    m_detOn = False                       ' *Default OFF* (issue 8, option kappa)
     m_detCap = NET_DET_CAP_DEFAULT
     m_detBodyMax = NET_BODY_MAX_DEFAULT
-    m_detRedact = True                    ' ★既定は伏せる★ (論点3 案M)
+    m_detRedact = True                    ' *Default is to hide* (issue 3, option M)
     m_detRedactList = NetRedactDefaults()
     m_detUriFilter = ""
     NetDetailRingAlloc
 
-    ' --- N-4: レスポンス本文 ---
-    m_respBodyOn = False                  ' ★既定 OFF★ (論点1 案A)
+    ' --- N-4: response body ---
+    m_respBodyOn = False                  ' *Default OFF* (issue 1, option A)
     m_respBodyMax = NET_RESP_BODY_MAX_DEFAULT
     Set m_respPending = New Collection
     m_respBodyOrphan = 0
 End Sub
 
 Private Sub Class_Terminate()
-    ' COM 所有権規約: 受け取ったポインタは ComAddRef で VBA 側の所有権分を
-    ' 確保しているので、ここで Release する。
+    ' COM ownership convention: the received pointer had its VBA-side share of ownership
+    ' secured with ComAddRef, so Release it here.
     '
-    ' 順序 (第9.8b で m_pSettings を追加、第9.9a で m_pView2 を追加):
-    '   1. 永続イベントハンドラの解除 (m_pView がまだ生きている必要がある)
-    '   2. m_pSettings の Release (Settings は View の子オブジェクト)
-    '   3. m_pView2 の Release  ← 第9.9a で追加
-    '                            (View2 は View から QI で取り出した派生 IF、
-    '                             独立した参照カウントを持つので View より先)
-    '   4. m_pView の Release
-    '   5. m_pCtrl の Release
+    ' Order (m_pSettings added in 9.8b, m_pView2 added in 9.9a):
+    '   1. Unregister persistent event handlers (m_pView must still be alive)
+    '   2. Release m_pSettings (Settings is a child object of View)
+    '   3. Release m_pView2  <- added in 9.9a
+    '                            (View2 is a derived IF obtained from View by QI,
+    '                             and has an independent reference count, so before View)
+    '   4. Release m_pView
+    '   5. Release m_pCtrl
     '
-    ' なぜこの順序か:
-    '   - remove_*Event は m_pView (= ICoreWebView2) のメソッドなので
-    '     m_pView が生きている間に撃つ必要がある
-    '   - Settings は View が生成した子オブジェクト。View より先に Release する
-    '   - View2 は View を QueryInterface で取り出した派生 IF。同一 COM
-    '     オブジェクトを別 IF で見ているだけだが、QI は独立した AddRef を
-    '     撃つため、View2 と View はそれぞれ独立した参照カウントを持つ。
-    '     設計原則 43 (子から親へ) に従い View2 を先に Release する
-    '   - View は Ctrl が生成した子オブジェクト。Controller 側を先に
-    '     Release しても WebView2 内部の参照カウント管理は破綻しないが、
-    '     寿命の依存関係 (Ctrl が親、View が子、Settings が孫) を
-    '     VBA レベルでも明示するため、子から先に解放する。
+    ' Why this order:
+    '   - remove_*Event is a method of m_pView (= ICoreWebView2), so
+    '     it must be fired while m_pView is alive
+    '   - Settings is a child object that View created. Release it before View
+    '   - View2 is a derived IF obtained from View by QueryInterface. It is merely the same COM
+    '     object seen through a different IF, but QI fires an independent AddRef,
+    '     so View2 and View each have an independent reference count.
+    '     Following design principle 43 (child to parent), release View2 first
+    '   - View is a child object that Ctrl created. Releasing the Controller side first
+    '     would not break WebView2's internal reference-count management, but
+    '     to make the lifetime dependencies (Ctrl is the parent, View the child, Settings the grandchild)
+    '     explicit at the VBA level too, children are released first.
 
-    ' --- K-4a: ★所要時間を測るための入口★ ---
-    '   ここから次の行 (Cleanup の 1 本目) までが remove_*Event の所要になる。
-    Wv2Log.LogD "Wv2Pane.Terminate: ★開始★ (pCtrl=" & m_pCtrl & _
+    ' --- K-4a: *entry point for measuring elapsed time* ---
+    '   From here to the next line (the first Cleanup) is the elapsed time of remove_*Event.
+    Wv2Log.LogD "Wv2Pane.Terminate: *start* (pCtrl=" & m_pCtrl & _
                 " pView=" & m_pView & ")"
 
-    ' --- 1. 永続イベントハンドラを一括解除 (第9.4a 段階で追加) ---
+    ' --- 1. Unregister all persistent event handlers at once (added in stage 9.4a) ---
     CleanupAllPersistentHandlers
-    Wv2Log.LogD "Wv2Pane.Terminate: 永続ハンドラの解除おわり"
+    Wv2Log.LogD "Wv2Pane.Terminate: finished unregistering persistent handlers"
 
-    ' --- 2. m_pSettings の Release (第9.8b 段階で追加) ---
+    ' --- 2. Release m_pSettings (added in stage 9.8b) ---
     If m_pSettings <> 0 Then
         Wv2Log.LogD "Wv2Pane.Terminate: Releasing m_pSettings = " & m_pSettings
         ComRelease m_pSettings
         m_pSettings = 0
     End If
 
-    ' --- 3-pre. m_pView3 の Release (第9.10d-2a 段階で追加) ---
-    '   View3 は View を QI で取り出した最派生 IF (ICoreWebView2_3)。
-    '   派生から順に解放するため、m_pView2 より先に Release (設計原則 51)。
+    ' --- 3-pre. Release m_pView3 (added in stage 9.10d-2a) ---
+    '   View3 is the most derived IF (ICoreWebView2_3) obtained from View by QI.
+    '   To release from the derived side, Release it before m_pView2 (design principle 51).
     If m_pView3 <> 0 Then
         Wv2Log.LogD "Wv2Pane.Terminate: Releasing m_pView3 = " & m_pView3
         ComRelease m_pView3
         m_pView3 = 0
     End If
 
-    ' --- 3. m_pView2 の Release (第9.9a 段階で追加) ---
-    '   View2 は View を QueryInterface で取り出した派生 IF。View より先に Release。
+    ' --- 3. Release m_pView2 (added in stage 9.9a) ---
+    '   View2 is a derived IF obtained from View by QueryInterface. Release it before View.
     If m_pView2 <> 0 Then
         Wv2Log.LogD "Wv2Pane.Terminate: Releasing m_pView2 = " & m_pView2
         ComRelease m_pView2
         m_pView2 = 0
     End If
 
-    ' --- 4. m_pView の Release ---
+    ' --- 4. Release m_pView ---
     If m_pView <> 0 Then
         Wv2Log.LogD "Wv2Pane.Terminate: Releasing m_pView = " & m_pView
         ComRelease m_pView
         m_pView = 0
     End If
 
-    ' --- 5. m_pCtrl の Release ---
+    ' --- 5. Release m_pCtrl ---
     If m_pCtrl <> 0 Then
         Wv2Log.LogD "Wv2Pane.Terminate: Releasing m_pCtrl = " & m_pCtrl
         ComRelease m_pCtrl
         m_pCtrl = 0
     End If
 
-    ' m_handler は通常 OnControllerCompleted で Nothing になっているはずだが、
-    ' 万一 Init で例外が起きた等で残っている場合はここで切る。
+    ' m_handler should normally already be Nothing by OnControllerCompleted,
+    ' but if it remains, e.g. because an exception occurred in Init, cut it here.
     If Not (m_handler Is Nothing) Then
-        Wv2Log.LogD "Wv2Pane.Terminate: m_handler が残っているので切る (異常終了パス)"
+        Wv2Log.LogD "Wv2Pane.Terminate: m_handler remains, so cutting it (abnormal-termination path)"
         Set m_handler = Nothing
     End If
 
-    Wv2Log.LogD "Wv2Pane.Terminate: ★完了★"   ' K-4a
+    Wv2Log.LogD "Wv2Pane.Terminate: *done*"   ' K-4a
 End Sub
 
 
 ' ============================================================
-' CleanupAllPersistentHandlers (第9.4a 段階で追加、内部ヘルパー)
+' CleanupAllPersistentHandlers (added in stage 9.4a, internal helper)
 '
-'   m_persistentHandlers に登録されているすべての永続ハンドラについて、
-'   WebView2 側に解除依頼を出す。Class_Terminate から呼ばれる。
+'   For every persistent handler registered in m_persistentHandlers,
+'   issue an unregister request to the WebView2 side. Called from Class_Terminate.
 '
-'   各 HandlerKind について、対応する remove_ vtable index を使い分ける。
-'   解除に成功すれば WebView2 が ComCallbackHandler を Release → refcount=0 →
-'   自動解放経路で ComCallbackHandler.ClearOwner → m_persistentHandlers(k) は
-'   ClearOwner が走った時点で Nothing にしておくのが綺麗。
+'   For each HandlerKind, the corresponding remove_ vtable index is used.
+'   If unregistering succeeds, WebView2 Releases the ComCallbackHandler -> refcount=0 ->
+'   on the auto-release path ComCallbackHandler.ClearOwner; it is cleanest to make m_persistentHandlers(k)
+'   Nothing at the point ClearOwner has run.
 '
-'   ただし「m_persistentHandlers(k) を先に Nothing にすると、
-'   ClearOwner が触る m_owner が既に Nothing になっている」という
-'   問題はない (ClearOwner は ComCallbackHandler.m_owner を Nothing にするだけで、
-'   Wv2Pane 側の m_persistentHandlers には触らない)。
+'   However, there is no problem of "if m_persistentHandlers(k) is made Nothing first,
+'   the m_owner that ClearOwner touches is already Nothing"
+'   (ClearOwner only sets ComCallbackHandler.m_owner to Nothing, and does not touch
+'   m_persistentHandlers on the Wv2Pane side).
 '
-'   順序の整理:
-'     1. View_RemoveEvent (remove_*Event) を WebView2 に依頼
-'     2. WebView2 が ComCallbackHandler を Release → 基盤側の自動解放経路 →
-'        ComCallbackHandler.ClearOwner で ComCallbackHandler.m_owner = Nothing
-'     3. ここで Wv2Pane 側の m_persistentHandlers(k) = Nothing にする
+'   Summary of the order:
+'     1. Ask WebView2 for View_RemoveEvent (remove_*Event)
+'     2. WebView2 Releases the ComCallbackHandler -> the foundation's auto-release path ->
+'        ComCallbackHandler.ClearOwner makes ComCallbackHandler.m_owner = Nothing
+'     3. Here, make m_persistentHandlers(k) = Nothing on the Wv2Pane side
 '
-'   第9.6a で配列上限が HK_NewWindowRequested に拡張されたが、
-'   ループ自体は LBound/UBound を使っているのでコード変更不要
-'   (= 設計原則 15 「HandlerKind 連動ループで横展開を自動化」の本領発揮)。
+'   In 9.6a the array upper limit was extended to HK_NewWindowRequested, but
+'   the loop itself uses LBound/UBound, so no code change is needed
+'   (= the true value of design principle 15 "automate horizontal rollout with a HandlerKind-linked loop").
 ' ============================================================
 Private Sub CleanupAllPersistentHandlers()
     If m_pView = 0 Then
-        ' View が既に解放されている場合、remove_ を撃つ手段がない。
-        ' 永続ハンドラはまだ生きているかもしれないが、何もできない (リーク容認)。
+        ' If View has already been released, there is no means to fire remove_.
+        ' The persistent handlers may still be alive, but nothing can be done (leak accepted).
         Dim k1 As Long
         For k1 = LBound(m_persistentHandlers) To UBound(m_persistentHandlers)
             Set m_persistentHandlers(k1) = Nothing
@@ -1369,9 +1369,9 @@ Private Sub CleanupAllPersistentHandlers()
             Dim removeIndex As Long
             removeIndex = RemoveVtableIndexFor(CLng(k))
             If removeIndex > 0 Then
-                ' 第9.9b: remove を撃つべきインターフェースを kind から決める。
-                '   DOMContentLoaded(_2 IF) は m_pView2、それ以外は m_pView。
-                '   設計原則 45 に忠実 (派生 IF のメソッドは派生 IF のポインタで叩く)。
+                ' 9.9b: decide from kind which interface to fire remove on.
+                '   DOMContentLoaded (_2 IF) uses m_pView2, everything else m_pView.
+                '   Faithful to design principle 45 (call a derived IF's method through the derived IF's pointer).
                 Dim pIfRemove As LongPtr
                 pIfRemove = RemoveInterfaceFor(CLng(k))
                 If pIfRemove <> 0 Then
@@ -1380,10 +1380,10 @@ Private Sub CleanupAllPersistentHandlers()
                                 " iface=" & pIfRemove
                     dcf pIfRemove, removeIndex, "View.remove_Event", m_persistentTokens(k)
                 Else
-                    ' 解除に必要なインターフェース (例: m_pView2) が未取得 / 解放済み。
-                    ' remove を撃つ手段がないので参照だけ切る (リーク容認)。
-                    Wv2Log.LogD "Wv2Pane.Cleanup: kind=" & k & " の remove 用 IF が 0、" & _
-                                "remove スキップ (参照のみ解放)"
+                    ' The interface needed for unregistering (e.g. m_pView2) is not acquired / already released.
+                    ' There is no means to fire remove, so only cut the reference (leak accepted).
+                    Wv2Log.LogD "Wv2Pane.Cleanup: kind=" & k & " has remove IF = 0, " & _
+                                "skipping remove (releasing the reference only)"
                 End If
             End If
             Set m_persistentHandlers(k) = Nothing
@@ -1394,51 +1394,51 @@ End Sub
 
 
 ' ============================================================
-' RemoveInterfaceFor (第9.9b 段階で追加、内部ヘルパー)
+' RemoveInterfaceFor (added in stage 9.9b, internal helper)
 '
-'   HandlerKind に対応する remove_*Event を撃つべきインターフェースの
-'   ポインタを返す。RemoveVtableIndexFor が「vtable index」を返すのに対し、
-'   こちらは「どのインターフェース (m_pView / m_pView2 / ...) で叩くか」を返す。
+'   Returns the pointer of the interface on which the remove_*Event corresponding to
+'   a HandlerKind should be fired. Whereas RemoveVtableIndexFor returns the "vtable index",
+'   this returns "through which interface (m_pView / m_pView2 / ...) to call".
 '
-'   設計原則 45 (派生 IF のメソッドは派生 IF のポインタで叩く):
-'     DOMContentLoaded は ICoreWebView2_2 のイベント (vtable 65) なので
-'     m_pView2 で remove する。それ以外は基底 ICoreWebView2 のイベントなので
-'     m_pView で remove する。
+'   Design principle 45 (call a derived IF's method through the derived IF's pointer):
+'     DOMContentLoaded is an event of ICoreWebView2_2 (vtable 65), so
+'     remove it through m_pView2. The others are events of the base ICoreWebView2, so
+'     remove through m_pView.
 '
-'     9.9a の観察で「m_pView2 == m_pView (同じ値)」と判明しているが、
-'     それに依拠して m_pView で vtable 65 を叩くのは「派生 IF のメソッドを
-'     基底ポインタで叩く」危険な近道 (= 9.8c でクラッシュを招いた思考と同根)。
-'     意味的に正しいポインタを使うことで、将来の SDK 変更にも耐える。
+'     The observation in 9.9a found that "m_pView2 == m_pView (the same value)",
+'     but relying on that to hit vtable 65 through m_pView is a dangerous shortcut of
+'     "calling a derived IF's method through a base pointer" (= rooted in the same thinking that caused the crash in 9.8c).
+'     Using the semantically correct pointer also withstands future SDK changes.
 '
-'   戻り値:
-'     対応するインターフェースのポインタ。
-'     0 を返した場合は「remove を撃つ手段がない」(例: DOMContentLoaded だが
-'     m_pView2 が未取得 / 既に解放済み) ので、呼び出し側は remove をスキップする。
+'   Return value:
+'     The pointer of the corresponding interface.
+'     If 0 is returned, it means "there is no means to fire remove" (e.g. DOMContentLoaded but
+'     m_pView2 not acquired / already released), so the caller skips remove.
 '
-'   将来の拡張:
-'     ICoreWebView2_3 以降のイベントが増えたら、ここに Case を 1 行足すだけで
-'     横展開できる (RemoveVtableIndexFor との対称性を保つ)。
+'   Future extension:
+'     When events of ICoreWebView2_3 and later increase, just add one Case line here
+'     to roll it out horizontally (keeping symmetry with RemoveVtableIndexFor).
 ' ============================================================
 Private Function RemoveInterfaceFor(ByVal kind As Long) As LongPtr
     Select Case kind
         Case HK_DOMContentLoaded, HK_WebResourceResponseReceived
-            ' _2 IF のイベント。m_pView2 で叩く (未取得なら 0 を返す)。
-            '   ★N-3 の WebResourceResponseReceived も _2 IF★ なので同じ扱い。
+            ' Events of the _2 IF. Call through m_pView2 (returns 0 if not acquired).
+            '   *N-3's WebResourceResponseReceived is also on the _2 IF* so same handling.
             RemoveInterfaceFor = m_pView2
         Case Else
-            ' 基底 ICoreWebView2 のイベント。m_pView で叩く。
+            ' Events of the base ICoreWebView2. Call through m_pView.
             RemoveInterfaceFor = m_pView
     End Select
 End Function
 
 
 ' ============================================================
-' RemoveVtableIndexFor (第9.4a 段階で追加、内部ヘルパー)
+' RemoveVtableIndexFor (added in stage 9.4a, internal helper)
 '
-'   HandlerKind に対応する remove_*Event の vtable index を返す。
-'   add_*Event とペアになっており、SDK で対応関係が決められている。
+'   Returns the vtable index of the remove_*Event corresponding to a HandlerKind.
+'   Paired with add_*Event; the correspondence is fixed by the SDK.
 '
-'   ICoreWebView2 vtable layout (基底):
+'   ICoreWebView2 vtable layout (base):
 '     0  QueryInterface
 '     1  AddRef
 '     2  Release
@@ -1448,23 +1448,23 @@ End Function
 '     ...
 '     7  add_NavigationStarting       8  remove_NavigationStarting
 '     ...
-'    13  add_HistoryChanged          14  remove_HistoryChanged       ← 第9.9b で追加
+'    13  add_HistoryChanged          14  remove_HistoryChanged       <- added in 9.9b
 '    15  add_NavigationCompleted     16  remove_NavigationCompleted
 '     ...
 '    34  add_WebMessageReceived      35  remove_WebMessageReceived
 '     ...
-'    44  add_NewWindowRequested      45  remove_NewWindowRequested  ← 第9.6a で追加
+'    44  add_NewWindowRequested      45  remove_NewWindowRequested  <- added in 9.6a
 '    46  add_DocumentTitleChanged    47  remove_DocumentTitleChanged
-'    55  add_WebResourceRequested    56  remove_WebResourceRequested  ← N-1 で追加
-'    (_2 IF) 61  add_WebResourceResponseReceived  62  remove_  ← N-3 で追加
+'    55  add_WebResourceRequested    56  remove_WebResourceRequested  <- added in N-1
+'    (_2 IF) 61  add_WebResourceResponseReceived  62  remove_  <- added in N-3
 '
-'   ICoreWebView2_2 vtable layout (基底の 61 個に続く派生 IF):
-'    64  add_DOMContentLoaded        65  remove_DOMContentLoaded     ← 第9.9b で追加
-'       ※ ただし add/remove の vtable index は m_pView2 (ICoreWebView2_2) 上の
-'         オフセット。RemoveInterfaceFor が DOMContentLoaded には m_pView2 を返す。
+'   ICoreWebView2_2 vtable layout (derived IF following the base's 61 entries):
+'    64  add_DOMContentLoaded        65  remove_DOMContentLoaded     <- added in 9.9b
+'       * However the vtable indexes of add/remove are offsets on m_pView2 (ICoreWebView2_2).
+'         RemoveInterfaceFor returns m_pView2 for DOMContentLoaded.
 '
-'   第9.6a で HK_NewWindowRequested = 45 を追加。
-'   第9.9b で HK_HistoryChanged = 14、HK_DOMContentLoaded = 65 を追加。
+'   In 9.6a, HK_NewWindowRequested = 45 was added.
+'   In 9.9b, HK_HistoryChanged = 14 and HK_DOMContentLoaded = 65 were added.
 ' ============================================================
 Private Function RemoveVtableIndexFor(ByVal kind As Long) As Long
     Select Case kind
@@ -1472,12 +1472,12 @@ Private Function RemoveVtableIndexFor(ByVal kind As Long) As Long
         Case HK_NavigationCompleted:  RemoveVtableIndexFor = 16
         Case HK_WebMessageReceived:   RemoveVtableIndexFor = 35
         Case HK_DocumentTitleChanged: RemoveVtableIndexFor = 47
-        Case HK_NewWindowRequested:   RemoveVtableIndexFor = 45   ' 第9.6a で追加
-        Case HK_HistoryChanged:       RemoveVtableIndexFor = 14   ' 第9.9b で追加 (基底 IF)
-        Case HK_DOMContentLoaded:     RemoveVtableIndexFor = 65   ' 第9.9b で追加 (_2 IF)
-        Case HK_WebResourceRequested: RemoveVtableIndexFor = 56   ' N-1 で追加 (基底 IF)
-        Case HK_WebResourceResponseReceived: RemoveVtableIndexFor = 62  ' N-3 で追加 (_2 IF)
-        Case Else:                    RemoveVtableIndexFor = 0   ' 未知 → 解除不可
+        Case HK_NewWindowRequested:   RemoveVtableIndexFor = 45   ' Added in 9.6a
+        Case HK_HistoryChanged:       RemoveVtableIndexFor = 14   ' Added in 9.9b (base IF)
+        Case HK_DOMContentLoaded:     RemoveVtableIndexFor = 65   ' Added in 9.9b (_2 IF)
+        Case HK_WebResourceRequested: RemoveVtableIndexFor = 56   ' Added in N-1 (base IF)
+        Case HK_WebResourceResponseReceived: RemoveVtableIndexFor = 62  ' Added in N-3 (_2 IF)
+        Case Else:                    RemoveVtableIndexFor = 0   ' unknown -> cannot unregister
     End Select
 End Function
 
@@ -1485,29 +1485,29 @@ End Function
 ' ============================================================
 ' Init
 '
-'   ICoreWebView2Controller の作成を開始する。
-'   このメソッドはコールバックを待たずに即座にリターンする (非同期)。
-'   完了通知は OnControllerCompleted で受ける。
+'   Starts creating the ICoreWebView2Controller.
+'   This method returns immediately without waiting for the callback (asynchronous).
+'   Completion is notified via OnControllerCompleted.
 '
-'   呼び出し側は ctrl.IsReady が True になるまで DoEvents で待つ。
-'   ただし WebView2Loader は同期コールバックする可能性があり、その場合は
-'   Init から戻った時点で既に Ready / Failed になっている。
+'   The caller waits with DoEvents until ctrl.IsReady becomes True.
+'   However WebView2Loader may call back synchronously, in which case
+'   it is already Ready / Failed at the point of returning from Init.
 ' ============================================================
 Public Sub Init(ByVal env As Wv2Environment, ByVal hwnd As LongPtr)
 
     If m_state <> Cs_Created Then
-        MsgBox "Wv2Pane.Init は二重呼び出し不可", vbCritical
+        MsgBox "Wv2Pane.Init cannot be called twice", vbCritical
         Exit Sub
     End If
 
     If env Is Nothing Then
-        MsgBox "Wv2Pane.Init: env が Nothing", vbCritical
+        MsgBox "Wv2Pane.Init: env is Nothing", vbCritical
         m_state = Cs_Failed
         Exit Sub
     End If
 
     If Not env.IsReady Then
-        MsgBox "Wv2Pane.Init: env がまだ Ready でない (state=" & env.state & ")", vbCritical
+        MsgBox "Wv2Pane.Init: env is not Ready yet (state=" & env.state & ")", vbCritical
         m_state = Cs_Failed
         Exit Sub
     End If
@@ -1515,39 +1515,39 @@ Public Sub Init(ByVal env As Wv2Environment, ByVal hwnd As LongPtr)
     Dim pEnv As LongPtr
     pEnv = env.EnvironmentPtr
     If pEnv = 0 Then
-        MsgBox "Wv2Pane.Init: env.EnvironmentPtr が 0", vbCritical
+        MsgBox "Wv2Pane.Init: env.EnvironmentPtr is 0", vbCritical
         m_state = Cs_Failed
         Exit Sub
     End If
 
-    ' --- 1. ハンドラ (ComCallbackHandler) を 1 個 Acquire ---
+    ' --- 1. Acquire one handler (ComCallbackHandler) ---
     Set m_handler = AcquireHandlerFor(HK_ControllerCompleted, Me)
     If m_handler Is Nothing Then
-        MsgBox "Wv2Pane.Init: ハンドラの Acquire に失敗", vbCritical
+        MsgBox "Wv2Pane.Init: failed to Acquire the handler", vbCritical
         m_state = Cs_Failed
         Exit Sub
     End If
 
-    ' --- 2. WebView2 が握る obj アドレスを計算 ---
+    ' --- 2. Compute the obj address that WebView2 holds ---
     Dim pVTableObj As LongPtr
     pVTableObj = m_handler.Slot + VTABLE_OBJ_OFFSET
 
-    ' --- 3. m_state = Cs_Waiting を API 呼び出しの「前」に立てる ---
-    '   (第9.3a で確立されたパターン: 同期コールバック対応)
+    ' --- 3. Set m_state = Cs_Waiting BEFORE the API call ---
+    '   (pattern established in 9.3a: supports synchronous callbacks)
     m_state = Cs_Waiting
 
-    ' --- 4. Environment->CreateCoreWebView2Controller(hwnd, handler) を呼ぶ ---
+    ' --- 4. Call Environment->CreateCoreWebView2Controller(hwnd, handler) ---
     '
-    '   ICoreWebView2Environment vtable レイアウト:
+    '   ICoreWebView2Environment vtable layout:
     '     0 : QueryInterface
     '     1 : AddRef
     '     2 : Release
     '     3 : CreateCoreWebView2Controller(parentWindow HWND, handler ICoreWebView2CreateCoreWebView2ControllerCompletedHandler*)
-    '     4 : ... (以降は SDK バージョンによる)
+    '     4 : ... (after this it depends on the SDK version)
     '
-    '   引数:
-    '     hwnd       : Frame コントロールの HWND
-    '     pVTableObj : ComCallbackHandler ハンドラの vtableObj アドレス
+    '   Arguments:
+    '     hwnd       : HWND of the Frame control
+    '     pVTableObj : vtableObj address of the ComCallbackHandler handler
     Debug.Print "Wv2Pane.Init: dcf(pEnv=" & pEnv & ", 3, ""Env.CreateController"", hwnd=" & _
                 hwnd & ", handler=" & pVTableObj & ")"
 
@@ -1556,10 +1556,12 @@ Public Sub Init(ByVal env As Wv2Environment, ByVal hwnd As LongPtr)
 
     If hr <> 0 Then
         MsgBox "CreateCoreWebView2Controller failed. HRESULT: &H" & Hex(hr), vbCritical
+        Wv2Thunks.Thunks_DiscardHandler m_handler   ' English fork: return the slot
+        Set m_handler = Nothing
         m_state = Cs_Failed
         m_lastError = hr
-        ' 失敗時のリーク対策は第9.3a / 9.3b では未実装 (Wv2Environment と同じ方針)。
-        ' Thunks_Shutdown で全スロット強制クリーンアップに頼る。
+        ' Leak countermeasures on failure are not implemented in 9.3a / 9.3b (same policy as Wv2Environment).
+        ' Relies on the forced cleanup of all slots in Thunks_Shutdown.
         Exit Sub
     End If
 End Sub
@@ -1568,21 +1570,21 @@ End Sub
 ' ============================================================
 ' OnControllerCompleted
 '
-'   ComCallbackHandler.Handler_Invoke の HK_ControllerCompleted 分岐から
-'   m_owner.OnControllerCompleted が動的バインディングで呼ばれる。
+'   From the HK_ControllerCompleted branch of ComCallbackHandler.Handler_Invoke,
+'   m_owner.OnControllerCompleted is called via dynamic binding.
 '
-'   Wv2Environment.OnEnvironmentCompleted と完全に同形。Public Sub であることが必須
-'   (Friend だと IDispatch に乗らない)。
+'   Exactly the same form as Wv2Environment.OnEnvironmentCompleted. It must be a Public Sub
+'   (a Friend does not ride on IDispatch).
 '
-'   注 (第9.6a 命名規約): 1 ショット系コールバックは出自接頭辞なしの命名を維持。
-'   派生 IF (ICoreWebView2Environment2 等) を直接受け取る関数が存在しない
-'   ためバージョン識別の必要がない (たーぼーさん確認済み、第9.6a 段階)。
+'   Note (9.6a naming convention): one-shot callbacks keep names without an origin prefix.
+'   There is no function that directly receives a derived IF (ICoreWebView2Environment2 etc.),
+'   so there is no need to identify a version (confirmed with tarboh, stage 9.6a).
 '
-'   引数:
-'     errorCode   : HRESULT (S_OK = 0 で成功)
-'     pController : ICoreWebView2Controller ポインタ
-'                   (WebView2 が一時的に AddRef した状態で渡される。
-'                    保持する場合は VBA 側で AddRef 必須。)
+'   Arguments:
+'     errorCode   : HRESULT (S_OK = 0 means success)
+'     pController : ICoreWebView2Controller pointer
+'                   (passed in a state where WebView2 has temporarily AddRef'd it.
+'                    If you keep it, you must AddRef on the VBA side.)
 ' ============================================================
 Public Sub OnControllerCompleted( _
     ByVal errorCode As Long, _
@@ -1594,7 +1596,7 @@ Public Sub OnControllerCompleted( _
     m_lastError = errorCode
 
     If errorCode = 0 And pController <> 0 Then
-        ' VBA 側で保持する分の参照を確保
+        ' Secure the reference for the share held on the VBA side
         m_pCtrl = pController
         ComAddRef m_pCtrl
         m_state = Cs_Ready
@@ -1603,13 +1605,13 @@ Public Sub OnControllerCompleted( _
         m_state = Cs_Failed
     End If
 
-    ' 1 ショットハンドラパターン (案 D1-α): ハンドラへの参照を切る
+    ' One-shot handler pattern (option D1-alpha): cut the reference to the handler
     Set m_handler = Nothing
 End Sub
 
 
 ' ============================================================
-' プロパティ群
+' Property group
 ' ============================================================
 Public Property Get state() As ControllerState
     state = m_state
@@ -1627,7 +1629,7 @@ Public Property Get LastError() As Long
     LastError = m_lastError
 End Property
 
-' --- 生ポインタの公開 (内部観察 / デバッグ用) ---
+' --- Exposing raw pointers (for internal observation / debugging) ---
 Public Property Get CtrlPtr() As LongPtr
     CtrlPtr = m_pCtrl
 End Property
@@ -1636,26 +1638,26 @@ Public Property Get ViewPtr() As LongPtr
     ViewPtr = m_pView
 End Property
 
-' --- IsPageLoaded (第9.4c で追加) ---
-'   View_OnNavigationCompleted で True にセットされる。
-'   外部 (UserForm 等) からのページ読み込み完了待ちの同期に使う。
-'   将来 SPA 対応する際は包括クラス側に移管予定。
+' --- IsPageLoaded (added in 9.4c) ---
+'   Set to True in View_OnNavigationCompleted.
+'   Used for synchronization by external code (UserForm etc.) waiting for page load completion.
+'   When SPA support is added in the future, it is planned to be moved to the comprehensive class side.
 Public Property Get IsPageLoaded() As Boolean
     IsPageLoaded = m_pageLoaded
 End Property
 
-' --- DocumentTitle (第9.11c で追加、タイトルキャッシュの読み取り口) ---
-'   View_OnDocumentTitleChanged が保存した最新タイトルを返す。
-'   TabBar の PushSyncToJs が Browser.PaneAt(i).DocumentTitle で読む。
-'   まだタイトル未取得のペインは空文字を返す。
+' --- DocumentTitle (added in 9.11c, read entry point of the title cache) ---
+'   Returns the latest title that View_OnDocumentTitleChanged saved.
+'   TabBar's PushSyncToJs reads it with Browser.PaneAt(i).DocumentTitle.
+'   A pane whose title has not been obtained yet returns an empty string.
 Public Property Get DocumentTitle() As String
     DocumentTitle = m_title
 End Property
 
 
-' --- IsSettings (第9.19 で追加、設定タブ識別フラグ) ---
-'   この Pane が設定タブとして開かれたものかどうか。Wv2Browser.OpenSettingsTab
-'   が生成時に True を立て、[歯車] 再クリック時の重複チェックで参照する。
+' --- IsSettings (added in 9.19, settings-tab identification flag) ---
+'   Whether this Pane was opened as the settings tab. Wv2Browser.OpenSettingsTab
+'   sets True at creation, and it is referenced by the duplicate check when [gear] is clicked again.
 Public Property Get IsSettings() As Boolean
     IsSettings = m_isSettings
 End Property
@@ -1666,19 +1668,19 @@ End Property
 
 
 ' ============================================================
-' Ctrl_PutBounds (ICoreWebView2Controller::put_Bounds、vtable index 6)
+' Ctrl_PutBounds (ICoreWebView2Controller::put_Bounds, vtable index 6)
 '
-'   Frame コントロール等の HWND クライアント領域に対応する RECT を渡して、
-'   WebView2 の表示矩形を設定する。
+'   Pass a RECT corresponding to the HWND client area of a Frame control etc.
+'   to set the display rectangle of WebView2.
 '
-'   引数の bounds は GetClientRect で取った RECT。座標系は親 HWND の
-'   クライアント領域内で (0, 0) 始まり。
+'   The bounds argument is a RECT obtained with GetClientRect. The coordinate system starts at (0, 0)
+'   inside the client area of the parent HWND.
 '
-'   x64 ABI 上は 16 bytes 構造体は値渡しだが、旧版から継承して
-'   VarPtr(rc) でポインタ渡しすると WebView2 が正しく解釈する
-'   (実機検証済み)。dcf には LongPtr として渡せばよい。
+'   Under the x64 ABI a 16-byte structure is passed by value, but as inherited from the old version,
+'   passing a pointer with VarPtr(rc) is interpreted correctly by WebView2
+'   (verified on a real machine). Pass it to dcf as a LongPtr.
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function Ctrl_PutBounds(ByRef bounds As RECT) As Long
     If m_pCtrl = 0 Then
@@ -1690,22 +1692,22 @@ End Function
 
 
 ' ============================================================
-' Ctrl_PutIsVisible (ICoreWebView2Controller::put_IsVisible、vtable index 4)
-'   第9.10c-1 段階で追加。
+' Ctrl_PutIsVisible (ICoreWebView2Controller::put_IsVisible, vtable index 4)
+'   Added in stage 9.10c-1.
 '
-'   Controller の可視/不可視を切り替える。Wv2Browser のタブ切替
-'   (ActivateTab) で「アクティブタブだけ可視、他は不可視」を実現するために使う。
+'   Switches the Controller between visible and invisible. Used by Wv2Browser's tab switching
+'   (ActivateTab) to realize "only the active tab is visible, the others invisible".
 '
-'   引数: visible (True = 可視 / False = 不可視)
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Argument: visible (True = visible / False = invisible)
+'   Return value: HRESULT (S_OK = 0 means success)
 '
-'   実装メモ:
-'     put_IsVisible は BOOL (整数) を 1 個受ける単純引数メソッド。
-'     COM オブジェクトを渡すハンドラ系ではないので、見本は Ctrl_PutBounds の
-'     ような単純引数系 (dcf で直接呼ぶ) で正しい。
-'     VARIANT_BOOL / Win32 BOOL の区別: ICoreWebView2Controller::put_IsVisible の
-'     引数は Win32 BOOL (= 4 byte int、True=1/False=0)。VBA の True は -1 なので、
-'     dcf に渡す前に 1 / 0 へ正規化する (仕様事実 11)。
+'   Implementation notes:
+'     put_IsVisible is a simple-argument method taking one BOOL (integer).
+'     It is not a handler family that passes a COM object, so a simple-argument model
+'     such as Ctrl_PutBounds (calling dcf directly) is the correct model.
+'     VARIANT_BOOL / Win32 BOOL distinction: the argument of ICoreWebView2Controller::put_IsVisible
+'     is a Win32 BOOL (= 4-byte int, True=1/False=0). VBA's True is -1, so
+'     normalize to 1 / 0 before passing to dcf (spec fact 11).
 ' ============================================================
 Public Function Ctrl_PutIsVisible(ByVal visible As Boolean) As Long
     If m_pCtrl = 0 Then
@@ -1719,20 +1721,20 @@ End Function
 
 
 ' ============================================================
-' Ctrl_GetCoreWebView2 (ICoreWebView2Controller::get_CoreWebView2、vtable index 25)
+' Ctrl_GetCoreWebView2 (ICoreWebView2Controller::get_CoreWebView2, vtable index 25)
 '
-'   ICoreWebView2 ポインタを out 引数で取得し、m_pView に格納する。
+'   Gets the ICoreWebView2 pointer as an out argument and stores it in m_pView.
 '
-'   COM 規約: get_xxx 系メソッドは取得したポインタを既に AddRef した
-'   状態で返す (= 受け取る側で再 AddRef は不要、Release のみ必要)。
-'   m_pView は Class_Terminate で Release される。
+'   COM convention: get_xxx-family methods return the obtained pointer already
+'   AddRef'd (= the receiver does not need to AddRef again, only Release).
+'   m_pView is Released in Class_Terminate.
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 '
-'   注意: このメソッドは Init チェーン内で 1 回だけ呼ばれる前提。
-'         m_pView が既に非ゼロの場合、二重取得を防ぐため
-'         先に既存ポインタを Release する (本来 Init 時にしか呼ばれない
-'         はずだが、安全のため)。
+'   Note: this method is assumed to be called only once in the Init chain.
+'         If m_pView is already non-zero, to prevent double acquisition
+'         the existing pointer is Released first (it should originally be called only
+'         at Init time, but for safety).
 ' ============================================================
 Public Function Ctrl_GetCoreWebView2() As Long
     If m_pCtrl = 0 Then
@@ -1740,7 +1742,7 @@ Public Function Ctrl_GetCoreWebView2() As Long
         Exit Function
     End If
 
-    ' 既存の m_pView があれば先に Release (二重取得防止)
+    ' If there is an existing m_pView, Release it first (prevents double acquisition)
     If m_pView <> 0 Then
         ComRelease m_pView
         m_pView = 0
@@ -1757,46 +1759,46 @@ End Function
 
 
 ' ============================================================
-' View_Navigate (ICoreWebView2::Navigate、vtable index 5)
+' View_Navigate (ICoreWebView2::Navigate, vtable index 5)
 '
-'   指定 URL へ遷移する。Navigate 自体は同期的に true を返すだけで、
-'   実際のページ読み込み完了は HK_NavigationCompleted で受ける。
+'   Navigates to the specified URL. Navigate itself only returns true synchronously, and
+'   the actual completion of the page load is received with HK_NavigationCompleted.
 '
-'   引数の URL は VBA String (= UTF-16 LE) で、StrPtr で LPCWSTR を取り出す。
+'   The URL argument is a VBA String (= UTF-16 LE), and StrPtr gives the LPCWSTR.
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View_Navigate(ByVal url As String) As Long
     If m_pView = 0 Then
         View_Navigate = &H80004003   ' E_POINTER
         Exit Function
     End If
-    ' 新しいナビゲーション開始でフラグをリセット
+    ' Reset the flag at the start of a new navigation
     m_pageLoaded = False
     View_Navigate = dcf(m_pView, 5, "View.Navigate", StrPtr(url))
 End Function
 
 
 ' ============================================================
-' View_AddNavigationStarting (第9.4a 段階で新規、第9.6a で View_ 接頭辞付きに改名)
+' View_AddNavigationStarting (new in stage 9.4a, renamed with the View_ prefix in 9.6a)
 '
-'   ICoreWebView2::add_NavigationStarting (vtable index 7) を呼んで
-'   永続イベントハンドラを登録する。
+'   Calls ICoreWebView2::add_NavigationStarting (vtable index 7) to
+'   register a persistent event handler.
 '
-'   流れ:
-'     1. ComCallbackHandler (HK_NavigationStarting) を Acquire (owner = Me)
-'     2. dcf(m_pView, 7, handler, &token) で WebView2 に登録依頼
-'     3. WebView2 が AddRef を撃つ (ComCallbackHandler の refcount が上がる)
-'     4. 取得した token を m_persistentTokens(HK_NavigationStarting) に保存
-'     5. ComCallbackHandler を m_persistentHandlers(HK_NavigationStarting) に保存
+'   Flow:
+'     1. Acquire a ComCallbackHandler (HK_NavigationStarting) (owner = Me)
+'     2. Ask WebView2 to register with dcf(m_pView, 7, handler, &token)
+'     3. WebView2 fires AddRef (the ComCallbackHandler's refcount goes up)
+'     4. Save the obtained token in m_persistentTokens(HK_NavigationStarting)
+'     5. Save the ComCallbackHandler in m_persistentHandlers(HK_NavigationStarting)
 '
-'   呼び出し後は Bing 上のリンククリック等で
-'   ComCallbackHandler.Invoke[HK_NavigationStarting] → Wv2Pane.View_OnNavigationStarting
-'   の経路でイベントを受け取れる。
+'   After the call, on link clicks on Bing etc.,
+'   ComCallbackHandler.Invoke[HK_NavigationStarting] -> Wv2Pane.View_OnNavigationStarting
+'   events can be received via this path.
 '
-'   既に登録済みなら何もしない (二重登録防止)。
+'   If already registered, do nothing (prevents double registration).
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View_AddNavigationStarting() As Long
     If m_pView = 0 Then
@@ -1804,23 +1806,23 @@ Public Function View_AddNavigationStarting() As Long
         Exit Function
     End If
 
-    ' 既に登録済みなら何もしない
+    ' If already registered, do nothing
     If Not (m_persistentHandlers(HK_NavigationStarting) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddNavigationStarting: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddNavigationStarting: already registered, skipping"
         View_AddNavigationStarting = 0
         Exit Function
     End If
 
-    ' ComCallbackHandler を Acquire (owner = Me で動的バインディング経由でイベント受信)
+    ' Acquire a ComCallbackHandler (owner = Me; receives events via dynamic binding)
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_NavigationStarting, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddNavigationStarting: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddNavigationStarting: failed to Acquire the handler"
         View_AddNavigationStarting = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
 
-    ' add_NavigationStarting を撃つ (vtable index 7)
+    ' Fire add_NavigationStarting (vtable index 7)
     Dim pVTableObj As LongPtr
     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET
 
@@ -1829,18 +1831,19 @@ Public Function View_AddNavigationStarting() As Long
     hr = dcf(m_pView, 7, "View.add_NavigationStarting", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddNavigationStarting: add_NavigationStarting 失敗 hr=&H" & Hex(hr)
-        ' ComCallbackHandler をリリースする (refcount=0 で自動解放経路)
-        ' h はローカル変数として参照しているので Set h = Nothing するだけでは
-        ' 基盤側の m_handlers(idx) からの参照が残る。
-        ' WebView2 が AddRef を撃てていない可能性があるため、ComCallbackHandler のスロットは
-        ' 第9.5 段階のセンチネル機構が対応するためここでは個別対処不要。
+        Debug.Print "Wv2Pane.View_AddNavigationStarting: add_NavigationStarting failed hr=&H" & Hex(hr)
+        ' Release the ComCallbackHandler (refcount=0 goes to the auto-release path)
+        ' h is referenced as a local variable, so just doing Set h = Nothing
+        ' leaves the reference from the foundation's m_handlers(idx).
+        ' WebView2 may not have been able to fire AddRef, but the ComCallbackHandler slot is handled by
+        ' the sentinel mechanism of stage 9.5, so no individual handling is needed here.
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddNavigationStarting = hr
         Exit Function
     End If
 
-    ' 成功: token と ComCallbackHandler を保存
+    ' Success: save the token and the ComCallbackHandler
     m_persistentTokens(HK_NavigationStarting) = token
     Set m_persistentHandlers(HK_NavigationStarting) = h
     Debug.Print "Wv2Pane.View_AddNavigationStarting OK: token=" & token & ", handler.slot=" & h.Slot
@@ -1850,19 +1853,19 @@ End Function
 
 
 ' ============================================================
-' View_RemoveNavigationStarting (第9.4a 段階で新規、第9.6a で改名)
+' View_RemoveNavigationStarting (new in stage 9.4a, renamed in 9.6a)
 '
-'   登録済みの NavigationStarting ハンドラを解除する。
-'   ユーザが明示的に解除したい場合に呼ぶ。Class_Terminate からは
-'   CleanupAllPersistentHandlers が一括で行うので、これを直接
-'   呼ぶ必要はない。
+'   Unregisters the registered NavigationStarting handler.
+'   Call it when the user wants to unregister explicitly. From Class_Terminate,
+'   CleanupAllPersistentHandlers does it all at once, so there is no need
+'   to call this directly.
 '
-'   流れ:
-'     1. View_RemoveEvent (vtable index 8) で WebView2 側から解除
-'     2. WebView2 が ComCallbackHandler を Release → 基盤の自動解放経路
-'     3. Wv2Pane 側の m_persistentHandlers(k) = Nothing, token = 0
+'   Flow:
+'     1. Unregister from the WebView2 side with View_RemoveEvent (vtable index 8)
+'     2. WebView2 Releases the ComCallbackHandler -> the foundation's auto-release path
+'     3. On the Wv2Pane side, m_persistentHandlers(k) = Nothing, token = 0
 '
-'   戻り値: HRESULT (S_OK = 0 で成功、未登録なら S_OK で何もしない)
+'   Return value: HRESULT (S_OK = 0 means success; if not registered, S_OK and nothing is done)
 ' ============================================================
 Public Function View_RemoveNavigationStarting() As Long
     If m_pView = 0 Then
@@ -1871,7 +1874,7 @@ Public Function View_RemoveNavigationStarting() As Long
     End If
 
     If m_persistentHandlers(HK_NavigationStarting) Is Nothing Then
-        View_RemoveNavigationStarting = 0   ' 未登録は no-op
+        View_RemoveNavigationStarting = 0   ' not registered is a no-op
         Exit Function
     End If
 
@@ -1880,12 +1883,12 @@ Public Function View_RemoveNavigationStarting() As Long
              m_persistentTokens(HK_NavigationStarting))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_RemoveNavigationStarting: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_RemoveNavigationStarting: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View_RemoveNavigationStarting OK"
     End If
 
-    ' 成功でも失敗でも Wv2Pane 側の参照は切る
+    ' Cut the Wv2Pane-side reference whether it succeeded or failed
     Set m_persistentHandlers(HK_NavigationStarting) = Nothing
     m_persistentTokens(HK_NavigationStarting) = 0^
 
@@ -1894,39 +1897,39 @@ End Function
 
 
 ' ============================================================
-' View_OnNavigationStarting (第9.4a 段階で新規、第9.6a で改名)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。
+' View_OnNavigationStarting (new in stage 9.4a, renamed in 9.6a)
+'   Called from ComCallbackHandler via dynamic binding.
 '
-'   ComCallbackHandler.Handler_Invoke の HK_NavigationStarting 分岐から
-'   m_owner.View_OnNavigationStarting が動的バインディングで呼ばれる。
+'   From the HK_NavigationStarting branch of ComCallbackHandler.Handler_Invoke,
+'   m_owner.View_OnNavigationStarting is called via dynamic binding.
 '
-'   Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 '
-'   引数:
-'     pSender : WebView2 視点の Invoke 第 1 引数 = ICoreWebView2 ポインタ
-'               (= m_pView と同じはずだが、念のため別変数で受ける)
-'     pArgs   : WebView2 視点の Invoke 第 2 引数 =
-'               ICoreWebView2NavigationStartingEventArgs ポインタ
+'   Arguments:
+'     pSender : Invoke's 1st argument from WebView2's viewpoint = ICoreWebView2 pointer
+'               (should be the same as m_pView, but received in a separate variable just in case)
+'     pArgs   : Invoke's 2nd argument from WebView2's viewpoint =
+'               ICoreWebView2NavigationStartingEventArgs pointer
 '
-'   動作:
-'     args.get_Uri (vtable index 3) を呼んで URL をログに出力する。
-'     get_Uri は LPWSTR* を out 引数で返すので、GetStringProperty が
-'     PtrToString + CoTaskMemFree までを一括で処理する。
+'   Behaviour:
+'     Calls args.get_Uri (vtable index 3) and writes the URL to the log.
+'     get_Uri returns an LPWSTR* as an out argument, so GetStringProperty handles
+'     everything through PtrToString + CoTaskMemFree.
 '
-'   args の参照カウント:
-'     WebView2 が args を一時的に AddRef した状態で Invoke を呼んでいる。
-'     コールバックから戻った後 WebView2 が Release するため、
-'     View_OnNavigationStarting 内で args を保持する必要がなければ AddRef 不要。
-'     URL を取得してログに出すだけなので、保持しない。
+'   Reference count of args:
+'     WebView2 calls Invoke with args temporarily AddRef'd.
+'     WebView2 Releases it after returning from the callback, so
+'     if args need not be kept inside View_OnNavigationStarting, no AddRef is needed.
+'     We only get the URL and write it to the log, so we do not keep it.
 ' ============================================================
 Public Sub View_OnNavigationStarting(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View_OnNavigationStarting_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View_OnNavigationStarting_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -1942,8 +1945,8 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View_OnNavigationStarting: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View_OnNavigationStarting: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
@@ -1952,33 +1955,48 @@ End Sub
 Private Sub View_OnNavigationStarting_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Debug.Print "Wv2Pane.View_OnNavigationStarting: pSender=" & pSender & ", pArgs=" & pArgs
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
     If pArgs = 0 Then
-        Debug.Print "  pArgs が 0 なので URL 取得をスキップ"
+        Debug.Print "  pArgs is 0, so skipping URL retrieval"
         Exit Sub
     End If
 
-    ' args.get_Uri を呼んで URL を取得
+    ' Call args.get_Uri to get the URL
     Dim url As String
     url = GetStringProperty(pArgs, 3, "NavStartingArgs.get_Uri")
-    Debug.Print "  → 遷移先 URL: " & url
+    Debug.Print "  -> destination URL: " & url
+
+    ' English fork (security): the settings tab carries the "Settings" host
+    ' object, which can change the saved search engine. If that tab leaves the
+    ' settings page for a real document, drop the host object and the flag so
+    ' the next site cannot call it. (NavigateToString of the settings page
+    ' itself arrives as a data:/about: URI and is left alone.)
+    If m_isSettings Then
+        Dim scheme As String
+        scheme = LCase$(Left$(url, 6))
+        If Left$(scheme, 5) = "http:" Or scheme = "https:" Or Left$(scheme, 5) = "file:" Then
+            View_RemoveHostObjectFromScript "Settings"
+            m_isSettings = False
+            Wv2Log.LogI "Wv2Pane: settings tab navigated to a web page - Settings host object removed"
+        End If
+    End If
 End Sub
 
 
 ' ============================================================
-' View_AddNavigationCompleted (第9.4b 段階で新規、第9.6a で改名)
+' View_AddNavigationCompleted (new in stage 9.4b, renamed in 9.6a)
 '
-'   ICoreWebView2::add_NavigationCompleted (vtable index 15) を呼んで
-'   永続イベントハンドラを登録する。
+'   Calls ICoreWebView2::add_NavigationCompleted (vtable index 15) to
+'   register a persistent event handler.
 '
-'   View_AddNavigationStarting と同形パターン。違いは:
-'     - 種別: HK_NavigationCompleted
+'   Same pattern as View_AddNavigationStarting. The differences are:
+'     - Kind: HK_NavigationCompleted
 '     - vtable index: 15 (add) / 16 (remove)
-'     - args 型: ICoreWebView2NavigationCompletedEventArgs
-'                (get_IsSuccess, get_WebErrorStatus, get_NavigationId を持つ)
+'     - args type: ICoreWebView2NavigationCompletedEventArgs
+'                (has get_IsSuccess, get_WebErrorStatus, get_NavigationId)
 ' ============================================================
 Public Function View_AddNavigationCompleted() As Long
     If m_pView = 0 Then
@@ -1987,7 +2005,7 @@ Public Function View_AddNavigationCompleted() As Long
     End If
 
     If Not (m_persistentHandlers(HK_NavigationCompleted) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddNavigationCompleted: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddNavigationCompleted: already registered, skipping"
         View_AddNavigationCompleted = 0
         Exit Function
     End If
@@ -1995,7 +2013,7 @@ Public Function View_AddNavigationCompleted() As Long
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_NavigationCompleted, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddNavigationCompleted: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddNavigationCompleted: failed to Acquire the handler"
         View_AddNavigationCompleted = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
@@ -2008,7 +2026,8 @@ Public Function View_AddNavigationCompleted() As Long
     hr = dcf(m_pView, 15, "View.add_NavigationCompleted", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddNavigationCompleted: add_NavigationCompleted 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_AddNavigationCompleted: add_NavigationCompleted failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddNavigationCompleted = hr
         Exit Function
@@ -2023,9 +2042,9 @@ End Function
 
 
 ' ============================================================
-' View_RemoveNavigationCompleted (第9.4b 段階で新規、第9.6a で改名)
-'   View_RemoveEvent (vtable index 16) で解除。
-'   未登録なら no-op (S_OK で返す)。
+' View_RemoveNavigationCompleted (new in stage 9.4b, renamed in 9.6a)
+'   Unregisters with View_RemoveEvent (vtable index 16).
+'   If not registered, a no-op (returns S_OK).
 ' ============================================================
 Public Function View_RemoveNavigationCompleted() As Long
     If m_pView = 0 Then
@@ -2043,7 +2062,7 @@ Public Function View_RemoveNavigationCompleted() As Long
              m_persistentTokens(HK_NavigationCompleted))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_RemoveNavigationCompleted: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_RemoveNavigationCompleted: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View_RemoveNavigationCompleted OK"
     End If
@@ -2056,22 +2075,22 @@ End Function
 
 
 ' ============================================================
-' View_OnNavigationCompleted (第9.4b 段階で新規、第9.6a で改名)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。
+' View_OnNavigationCompleted (new in stage 9.4b, renamed in 9.6a)
+'   Called from ComCallbackHandler via dynamic binding.
 '
-'   args = ICoreWebView2NavigationCompletedEventArgs の get_IsSuccess
-'   (vtable index 3) を呼んで成功/失敗をログ出力。
+'   args = calls get_IsSuccess of ICoreWebView2NavigationCompletedEventArgs
+'   (vtable index 3) and writes success/failure to the log.
 '
-'   Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 ' ============================================================
 Public Sub View_OnNavigationCompleted(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View_OnNavigationCompleted_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View_OnNavigationCompleted_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -2087,8 +2106,8 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View_OnNavigationCompleted: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View_OnNavigationCompleted: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
@@ -2097,50 +2116,50 @@ End Sub
 Private Sub View_OnNavigationCompleted_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Debug.Print "Wv2Pane.View_OnNavigationCompleted: pSender=" & pSender & ", pArgs=" & pArgs
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
     If pArgs = 0 Then
-        Debug.Print "  pArgs が 0 なので IsSuccess 取得をスキップ"
-        ' pArgs が無くてもページロード完了の通知としては有効
+        Debug.Print "  pArgs is 0, so skipping IsSuccess retrieval"
+        ' Even without pArgs it is valid as a page-load-complete notification
         m_pageLoaded = True
-        ' --- 第9.12a: この経路でも URL 状態を通知する (早期 return に埋もれさせない) ---
+        ' --- 9.12a: notify the URL state on this path too (do not bury it in the early return) ---
         NotifyUrlState pSender
         Exit Sub
     End If
 
-    ' args.get_IsSuccess を呼んで成否を取得
+    ' Call args.get_IsSuccess to get success or failure
     Dim isOk As Boolean
     isOk = GetBoolProperty(pArgs, 3, "NavCompletedArgs.get_IsSuccess")
-    Debug.Print "  → isSuccess: " & isOk
+    Debug.Print "  -> isSuccess: " & isOk
 
-    ' ページ読み込み完了フラグを立てる (第9.4c で追加)
-    ' 暫定実装: 成功/失敗にかかわらず NavigationCompleted が来たら True にする。
-    ' これは初回ロード待ちの同期用。SPA 等での追加遷移を区別したい場合は
-    ' 包括クラス側で別途設計する。
+    ' Set the page-load-complete flag (added in 9.4c)
+    ' Provisional implementation: set True whenever NavigationCompleted arrives, regardless of success/failure.
+    ' This is for synchronizing on the first load. If additional navigations in an SPA etc.
+    ' need to be distinguished, design that separately on the comprehensive class side.
     m_pageLoaded = True
 
-    ' --- 第9.12a: 所属 Browser に URL 状態を通知 (アドレスバー更新用) ---
+    ' --- 9.12a: notify the owning Browser of the URL state (for updating the address bar) ---
     NotifyUrlState pSender
 End Sub
 
 
 ' ============================================================
-' NotifyUrlState (第9.12a、URL 状態を Browser へ通知)
+' NotifyUrlState (9.12a, notify the Browser of the URL state)
 '
-'   sender (ICoreWebView2) から現在の URL / 戻れるか / 進めるか を読み取り、
-'   所属 Browser の NotifyUrlChanged に渡す。Browser がオブジェクト参照の一致で
-'   index を逆引きして RaiseEvent TabUrlChanged する (9.11a の NotifyTitleChanged
-'   と全く同じ構造)。
+'   Reads the current URL / can-go-back / can-go-forward from sender (ICoreWebView2)
+'   and passes them to the owning Browser's NotifyUrlChanged. The Browser looks up the
+'   index in reverse by object-reference match and does RaiseEvent TabUrlChanged (exactly the same structure
+'   as 9.11a's NotifyTitleChanged).
 '
-'   ★Pane はナビバーの存在を知らない★ ただ「自分の状態が変わった」と
-'   Browser に言うだけ。聞き手 (ナビバー) がいるかどうかは関知しない (疎結合)。
+'   *The Pane does not know the nav bar exists* It just tells the
+'   Browser that "my state has changed". Whether there is a listener (the nav bar) is not its concern (loose coupling).
 '
-'   呼び出し元:
-'     - View_OnNavigationCompleted : 通常のページ遷移の完了
-'     - View_OnHistoryChanged      : SPA の pushState / 戻る / 進む
-'   両方から撃つが、全体同期方式 (設計原則 60) なので多重発火は無害。
+'   Callers:
+'     - View_OnNavigationCompleted : completion of a normal page navigation
+'     - View_OnHistoryChanged      : SPA pushState / back / forward
+'   Fired from both, but it is the whole-sync approach (design principle 60), so multiple firing is harmless.
 ' ============================================================
 Private Sub NotifyUrlState(ByVal pSender As LongPtr)
     If m_browser Is Nothing Then Exit Sub
@@ -2158,13 +2177,13 @@ End Sub
 
 
 ' ============================================================
-' View_AddDocumentTitleChanged (第9.4b 段階で新規、第9.6a で改名)
+' View_AddDocumentTitleChanged (new in stage 9.4b, renamed in 9.6a)
 '
-'   ICoreWebView2::add_DocumentTitleChanged (vtable index 46) を呼んで
-'   永続イベントハンドラを登録する。
+'   Calls ICoreWebView2::add_DocumentTitleChanged (vtable index 46) to
+'   register a persistent event handler.
 '
-'   args は IUnknown* (情報なし)。タイトルは sender.get_DocumentTitle
-'   (vtable 48) を撃って取得する。
+'   args is an IUnknown* (no information). The title is obtained by firing sender.get_DocumentTitle
+'   (vtable 48).
 ' ============================================================
 Public Function View_AddDocumentTitleChanged() As Long
     If m_pView = 0 Then
@@ -2173,7 +2192,7 @@ Public Function View_AddDocumentTitleChanged() As Long
     End If
 
     If Not (m_persistentHandlers(HK_DocumentTitleChanged) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddDocumentTitleChanged: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddDocumentTitleChanged: already registered, skipping"
         View_AddDocumentTitleChanged = 0
         Exit Function
     End If
@@ -2181,7 +2200,7 @@ Public Function View_AddDocumentTitleChanged() As Long
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_DocumentTitleChanged, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddDocumentTitleChanged: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddDocumentTitleChanged: failed to Acquire the handler"
         View_AddDocumentTitleChanged = &H8000FFFF
         Exit Function
     End If
@@ -2194,7 +2213,8 @@ Public Function View_AddDocumentTitleChanged() As Long
     hr = dcf(m_pView, 46, "View.add_DocumentTitleChanged", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddDocumentTitleChanged: add_DocumentTitleChanged 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_AddDocumentTitleChanged: add_DocumentTitleChanged failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddDocumentTitleChanged = hr
         Exit Function
@@ -2209,8 +2229,8 @@ End Function
 
 
 ' ============================================================
-' View_RemoveDocumentTitleChanged (第9.4b 段階で新規、第9.6a で改名)
-'   View_RemoveEvent (vtable index 47) で解除。
+' View_RemoveDocumentTitleChanged (new in stage 9.4b, renamed in 9.6a)
+'   Unregisters with View_RemoveEvent (vtable index 47).
 ' ============================================================
 Public Function View_RemoveDocumentTitleChanged() As Long
     If m_pView = 0 Then
@@ -2228,7 +2248,7 @@ Public Function View_RemoveDocumentTitleChanged() As Long
              m_persistentTokens(HK_DocumentTitleChanged))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_RemoveDocumentTitleChanged: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_RemoveDocumentTitleChanged: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View_RemoveDocumentTitleChanged OK"
     End If
@@ -2241,24 +2261,24 @@ End Function
 
 
 ' ============================================================
-' View_OnDocumentTitleChanged (第9.4b 段階で新規、第9.6a で改名)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。
+' View_OnDocumentTitleChanged (new in stage 9.4b, renamed in 9.6a)
+'   Called from ComCallbackHandler via dynamic binding.
 '
-'   sender = ICoreWebView2 の get_DocumentTitle (vtable index 48) を呼んで
-'   現在のタイトルをログ出力する。
+'   sender = calls get_DocumentTitle (vtable index 48) of ICoreWebView2 and
+'   writes the current title to the log.
 '
-'   args は IUnknown* で情報がないので、sender 経由で取りに行く必要がある。
+'   args is an IUnknown* with no information, so it must be fetched via sender.
 '
-'   Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 ' ============================================================
 Public Sub View_OnDocumentTitleChanged(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View_OnDocumentTitleChanged_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View_OnDocumentTitleChanged_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -2274,8 +2294,8 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View_OnDocumentTitleChanged: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View_OnDocumentTitleChanged: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
@@ -2284,22 +2304,22 @@ End Sub
 Private Sub View_OnDocumentTitleChanged_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Debug.Print "Wv2Pane.View_OnDocumentTitleChanged: pSender=" & pSender & ", pArgs=" & pArgs
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
-    ' sender (ICoreWebView2).get_DocumentTitle (vtable index 48) を呼んでタイトル取得
+    ' Call sender (ICoreWebView2).get_DocumentTitle (vtable index 48) to get the title
     Dim title As String
     title = GetStringProperty(pSender, 48, "View.get_DocumentTitle")
-    Debug.Print "  → タイトル: " & title
+    Debug.Print "  -> title: " & title
 
-    ' --- 第9.11c: タイトルをこのペインにキャッシュ (選択肢3、真実源の一元化) ---
+    ' --- 9.11c: cache the title in this pane (option 3, unifying the source of truth) ---
     m_title = title
 
-    ' --- 第9.11a: 所属 Browser にタイトル変更を通知 (後方参照 m_browser 経由) ---
-    '   NewWindowRequested で実績のある後方参照をそのまま流用する。
-    '   m_browser 未設定時 (後方参照なしの使い方) は Debug.Print のみで
-    '   フォールバックし、疎結合を壊さない。
+    ' --- 9.11a: notify the owning Browser of the title change (via the back reference m_browser) ---
+    '   Reuse the back reference with a proven record in NewWindowRequested as is.
+    '   When m_browser is not set (usage without a back reference), only Debug.Print is used
+    '   as a fallback, so loose coupling is not broken.
     If Not m_browser Is Nothing Then
         m_browser.NotifyTitleChanged Me, title
     End If
@@ -2307,13 +2327,13 @@ End Sub
 
 
 ' ============================================================
-' View_AddWebMessageReceived (第9.4c 段階で新規、第9.6a で改名)
+' View_AddWebMessageReceived (new in stage 9.4c, renamed in 9.6a)
 '
-'   ICoreWebView2::add_WebMessageReceived (vtable index 34) を呼んで
-'   永続イベントハンドラを登録する。
+'   Calls ICoreWebView2::add_WebMessageReceived (vtable index 34) to
+'   register a persistent event handler.
 '
-'   JS 側から window.chrome.webview.postMessage(text) で送信されたメッセージを
-'   受信する。受信時に Wv2Pane.View_OnWebMessageReceived が呼ばれる。
+'   Receives messages sent from the JS side with window.chrome.webview.postMessage(text).
+'   On receipt, Wv2Pane.View_OnWebMessageReceived is called.
 ' ============================================================
 Public Function View_AddWebMessageReceived() As Long
     If m_pView = 0 Then
@@ -2322,7 +2342,7 @@ Public Function View_AddWebMessageReceived() As Long
     End If
 
     If Not (m_persistentHandlers(HK_WebMessageReceived) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddWebMessageReceived: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddWebMessageReceived: already registered, skipping"
         View_AddWebMessageReceived = 0
         Exit Function
     End If
@@ -2330,7 +2350,7 @@ Public Function View_AddWebMessageReceived() As Long
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_WebMessageReceived, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddWebMessageReceived: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddWebMessageReceived: failed to Acquire the handler"
         View_AddWebMessageReceived = &H8000FFFF
         Exit Function
     End If
@@ -2343,7 +2363,8 @@ Public Function View_AddWebMessageReceived() As Long
     hr = dcf(m_pView, 34, "View.add_WebMessageReceived", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddWebMessageReceived: add_WebMessageReceived 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_AddWebMessageReceived: add_WebMessageReceived failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddWebMessageReceived = hr
         Exit Function
@@ -2358,8 +2379,8 @@ End Function
 
 
 ' ============================================================
-' View_RemoveWebMessageReceived (第9.4c 段階で新規、第9.6a で改名)
-'   View_RemoveEvent (vtable index 35) で解除。
+' View_RemoveWebMessageReceived (new in stage 9.4c, renamed in 9.6a)
+'   Unregisters with View_RemoveEvent (vtable index 35).
 ' ============================================================
 Public Function View_RemoveWebMessageReceived() As Long
     If m_pView = 0 Then
@@ -2377,7 +2398,7 @@ Public Function View_RemoveWebMessageReceived() As Long
              m_persistentTokens(HK_WebMessageReceived))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_RemoveWebMessageReceived: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_RemoveWebMessageReceived: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View_RemoveWebMessageReceived OK"
     End If
@@ -2390,30 +2411,30 @@ End Function
 
 
 ' ============================================================
-' View_OnWebMessageReceived (第9.4c 段階で新規、第9.6a で改名)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。
+' View_OnWebMessageReceived (new in stage 9.4c, renamed in 9.6a)
+'   Called from ComCallbackHandler via dynamic binding.
 '
-'   JS が window.chrome.webview.postMessage(text) で送信したメッセージを
-'   受信する。Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Receives messages that JS sent with window.chrome.webview.postMessage(text).
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 '
-'   args = ICoreWebView2WebMessageReceivedEventArgs の vtable index:
-'     3 : get_Source                 (送信元 URL、本実装で使用)
-'     4 : get_WebMessageAsJson       (未使用、必要なら追加)
-'     5 : TryGetWebMessageAsString   (JS が string で送ったときに成功、本実装で使用)
+'   vtable indexes of args = ICoreWebView2WebMessageReceivedEventArgs:
+'     3 : get_Source                 (sender URL, used in this implementation)
+'     4 : get_WebMessageAsJson       (unused, add if needed)
+'     5 : TryGetWebMessageAsString   (succeeds when JS sent a string, used in this implementation)
 '
-'   TryGetWebMessageAsString は HRESULT を返すが、GetStringProperty は
-'   HRESULT に関係なく成功時のみ文字列を返す (失敗時は空文字)。
-'   JS が postMessage(jsonObj) でオブジェクト送信した場合はここが空文字に
-'   なる (その場合は get_WebMessageAsJson で取る)。
+'   TryGetWebMessageAsString returns an HRESULT, but GetStringProperty returns
+'   a string only on success regardless of HRESULT (an empty string on failure).
+'   If JS sent an object with postMessage(jsonObj), this becomes an empty string
+'   (in that case fetch it with get_WebMessageAsJson).
 ' ============================================================
 Public Sub View_OnWebMessageReceived(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View_OnWebMessageReceived_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View_OnWebMessageReceived_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -2429,8 +2450,8 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View_OnWebMessageReceived: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View_OnWebMessageReceived: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
@@ -2439,30 +2460,30 @@ End Sub
 Private Sub View_OnWebMessageReceived_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Debug.Print "Wv2Pane.View_OnWebMessageReceived: pSender=" & pSender & ", pArgs=" & pArgs
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
     If pArgs = 0 Then
-        Debug.Print "  pArgs が 0 なのでメッセージ取得をスキップ"
+        Debug.Print "  pArgs is 0, so skipping message retrieval"
         Exit Sub
     End If
 
-    ' args.get_Source を呼んで送信元 URL を取得
+    ' Call args.get_Source to get the sender URL
     Dim source As String
     source = GetStringProperty(pArgs, 3, "WebMsgArgs.get_Source")
-    Debug.Print "  → source: " & source
+    Debug.Print "  -> source: " & source
 
-    ' args.TryGetWebMessageAsString を呼んでメッセージ本文を取得
-    ' JS が文字列で送ったとき成功、オブジェクトで送ったとき空文字
+    ' Call args.TryGetWebMessageAsString to get the message body
+    ' Succeeds when JS sent a string, an empty string when it sent an object
     Dim msg As String
     msg = GetStringProperty(pArgs, 5, "WebMsgArgs.TryGetWebMessageAsString")
-    Debug.Print "  → message: " & msg
+    Debug.Print "  -> message: " & msg
 
-    ' --- 第9.11c: 登録されたシンク (TabBar 等) へメッセージを転送 (案P) ---
-    '   シンクは OnPaneWebMessage(pane, source, msg) を実装していること。
-    '   遅延バインド呼び出しなので、実装がなければ実行時エラーになるが、
-    '   シンク登録側 (TabBar) の責務として正しいメソッドを備える。
+    ' --- 9.11c: forward the message to the registered sink (TabBar etc.) (option P) ---
+    '   The sink must implement OnPaneWebMessage(pane, source, msg).
+    '   It is a late-bound call, so without an implementation it becomes a runtime error,
+    '   but it is the responsibility of the sink-registering side (TabBar) to provide the correct method.
     If Not m_webMsgSink Is Nothing Then
         m_webMsgSink.OnPaneWebMessage Me, source, msg
     End If
@@ -2470,22 +2491,22 @@ End Sub
 
 
 ' ============================================================
-' View_AddNewWindowRequested (第9.6a 段階で新規)
+' View_AddNewWindowRequested (new in stage 9.6a)
 '
-'   ICoreWebView2::add_NewWindowRequested (vtable index 44) を呼んで
-'   永続イベントハンドラを登録する。
+'   Calls ICoreWebView2::add_NewWindowRequested (vtable index 44) to
+'   register a persistent event handler.
 '
-'   ページ内の「新しいウィンドウを開く」要求 (target="_blank" リンク、
-'   window.open、Ctrl+クリック等) で発火する。
+'   Fires on an in-page "open a new window" request (target="_blank" link,
+'   window.open, Ctrl+click, etc.).
 '
-'   第9.6a 段階の動作:
-'     URL をログに出すだけ。put_Handled を立てないため、ブラウザは
-'     デフォルト挙動 (= OS の別ウィンドウ、または OS のデフォルトブラウザで
-'     開く) で振る舞う。Bing のリンクは現状この経路で「VBA からは開けない」
-'     状態が続く (たーぼーさん検証済みの従来挙動)。
+'   Behaviour in stage 9.6a:
+'     Only writes the URL to the log. Since put_Handled is not set, the browser behaves with the
+'     default (= a separate OS window, or opened in the OS default browser).
+'     Bing links continue to be in the state of "cannot be opened from VBA" via this path
+'     (the previous behaviour verified by tarboh).
 '
-'   第9.6b 段階で put_Handled = TRUE + 同一 View で View_Navigate(uri) する
-'   挙動を追加し、Bing のリンクが「同じ画面で」開けるようになる予定。
+'   Stage 9.6b is planned to add the behaviour of put_Handled = TRUE + View_Navigate(uri) on the same View,
+'   so that Bing links can be opened "on the same screen".
 ' ============================================================
 Public Function View_AddNewWindowRequested() As Long
     If m_pView = 0 Then
@@ -2494,7 +2515,7 @@ Public Function View_AddNewWindowRequested() As Long
     End If
 
     If Not (m_persistentHandlers(HK_NewWindowRequested) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddNewWindowRequested: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddNewWindowRequested: already registered, skipping"
         View_AddNewWindowRequested = 0
         Exit Function
     End If
@@ -2502,7 +2523,7 @@ Public Function View_AddNewWindowRequested() As Long
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_NewWindowRequested, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddNewWindowRequested: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddNewWindowRequested: failed to Acquire the handler"
         View_AddNewWindowRequested = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
@@ -2515,7 +2536,8 @@ Public Function View_AddNewWindowRequested() As Long
     hr = dcf(m_pView, 44, "View.add_NewWindowRequested", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddNewWindowRequested: add_NewWindowRequested 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_AddNewWindowRequested: add_NewWindowRequested failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddNewWindowRequested = hr
         Exit Function
@@ -2530,9 +2552,9 @@ End Function
 
 
 ' ============================================================
-' View_RemoveNewWindowRequested (第9.6a 段階で新規)
-'   View_RemoveEvent (vtable index 45) で解除。
-'   未登録なら no-op (S_OK で返す)。
+' View_RemoveNewWindowRequested (new in stage 9.6a)
+'   Unregisters with View_RemoveEvent (vtable index 45).
+'   If not registered, a no-op (returns S_OK).
 ' ============================================================
 Public Function View_RemoveNewWindowRequested() As Long
     If m_pView = 0 Then
@@ -2550,7 +2572,7 @@ Public Function View_RemoveNewWindowRequested() As Long
              m_persistentTokens(HK_NewWindowRequested))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_RemoveNewWindowRequested: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_RemoveNewWindowRequested: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View_RemoveNewWindowRequested OK"
     End If
@@ -2563,52 +2585,52 @@ End Function
 
 
 ' ============================================================
-' View_OnNewWindowRequested (第9.6a で新規、第9.6b で捌きを追加)
+' View_OnNewWindowRequested (new in 9.6a, handling added in 9.6b)
 '
-'   args = ICoreWebView2NewWindowRequestedEventArgs の vtable レイアウト
-'   (旧版 WebView2.cls の IDL コメントより):
-'      3 : get_Uri(LPWSTR* uri)            ← 9.6a で取得
+'   vtable layout of args = ICoreWebView2NewWindowRequestedEventArgs
+'   (from the IDL comment of the old WebView2.cls):
+'      3 : get_Uri(LPWSTR* uri)            <- obtained in 9.6a
 '      4 : put_NewWindow(ICoreWebView2*)
 '      5 : get_NewWindow(ICoreWebView2**)
-'      6 : put_Handled(BOOL)               ← 9.6b で利用
+'      6 : put_Handled(BOOL)               <- used in 9.6b
 '      7 : get_Handled(BOOL*)
 '      8 : get_IsUserInitiated(BOOL*)
 '      9 : GetDeferral(ICoreWebView2Deferral**)
 '     10 : get_WindowFeatures(ICoreWebView2WindowFeatures**)
 '
-'   第9.6b 段階の動作:
-'     1. URL を get_Uri で取得してログ出力 (9.6a から継承)
-'     2. args.put_Handled(1) で「VBA 側が捌く」と宣言
-'     3. 同じ View で View_Navigate(url) を撃って「同じ画面で」遷移
+'   Behaviour in stage 9.6b:
+'     1. Get the URL with get_Uri and write it to the log (inherited from 9.6a)
+'     2. Declare "the VBA side handles it" with args.put_Handled(1)
+'     3. Fire View_Navigate(url) on the same View to navigate "on the same screen"
 '
-'   put_Handled を立てない場合の挙動 (9.6a で確認済み):
-'     WebView2 ランタイムが Excel プロセス内に新規 WebView2 ウィンドウを生成する。
-'     UIA Inspect で確認した結果:
-'       - クラス名: Chrome_WidgetWin_1
-'       - Name: "Bing 画像" (= タイトルのみ、ブラウザ名なし)
-'       - タスクマネージャー上では「ユーティリティ」グループ内の WebView2 プロセス
-'     つまり Edge にバトンタッチするわけではなく、WebView2 が自分で別ウィンドウを
-'     開いている。put_Handled = TRUE でこれを抑制できる。
+'   Behaviour when put_Handled is not set (confirmed in 9.6a):
+'     The WebView2 runtime creates a new WebView2 window inside the Excel process.
+'     Result confirmed with UIA Inspect:
+'       - Class name: Chrome_WidgetWin_1
+'       - Name: "Bing Images" (= title only, no browser name)
+'       - In Task Manager, a WebView2 process in the "Utility" group
+'     That is, it does not hand the baton to Edge; WebView2 itself opens
+'     a separate window. put_Handled = TRUE can suppress this.
 '
-'   失敗時の挙動 (案 a + 案 c、たーぼーさん合意):
-'     put_Handled 失敗時: WebView2 が勝手に新規ウィンドウを開く (9.6a の挙動に戻る)
-'     View_Navigate 失敗時: 現在のページのまま、リンクは開かない (ハングはしない)
-'     どちらも致命的でないため Debug.Print だけして処理続行する。
+'   Behaviour on failure (option a + option c, agreed with tarboh):
+'     When put_Handled fails: WebView2 opens a new window on its own (returns to the 9.6a behaviour)
+'     When View_Navigate fails: stays on the current page, the link does not open (no hang)
+'     Neither is fatal, so only Debug.Print and processing continues.
 '
-'   将来 (タブブラウザ化、第9.6c 相当):
-'     View_Navigate の代わりに args.put_NewWindow で別の Wv2Pane インスタンスを
-'     渡す方針。put_Handled は据え置き。TabWebView2 包括クラスで対応予定。
+'   Future (tabbed browser, equivalent to 9.6c):
+'     Instead of View_Navigate, the policy is to pass another Wv2Pane instance with
+'     args.put_NewWindow. put_Handled stays as is. To be handled by the TabWebView2 comprehensive class.
 '
-'   Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 ' ============================================================
 Public Sub View_OnNewWindowRequested(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View_OnNewWindowRequested_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View_OnNewWindowRequested_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -2624,8 +2646,8 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View_OnNewWindowRequested: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View_OnNewWindowRequested: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
@@ -2634,139 +2656,139 @@ End Sub
 Private Sub View_OnNewWindowRequested_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Debug.Print "Wv2Pane.View_OnNewWindowRequested: pSender=" & pSender & ", pArgs=" & pArgs
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
     If pArgs = 0 Then
-        Debug.Print "  pArgs が 0 なので URL 取得をスキップ"
+        Debug.Print "  pArgs is 0, so skipping URL retrieval"
         Exit Sub
     End If
 
-    ' --- 1. args.get_Uri (vtable index 3) で遷移先 URL を取得 (9.6a から継承) ---
+    ' --- 1. Get the destination URL with args.get_Uri (vtable index 3) (inherited from 9.6a) ---
     Dim url As String
     url = GetStringProperty(pArgs, 3, "NewWindowReqArgs.get_Uri")
-    Debug.Print "  → 新規ウィンドウ要求 URL: " & url
+    Debug.Print "  -> new window request URL: " & url
 
-    ' --- 第9.26/9.27: NewWindowRequested の捌き方をモードで切り替える ---
-    '   m_browser が Nothing (単体 Pane 運用 = SetBrowser 未実行) のときはモードの
-    '   置き場そのものが無いので、常に LEGACY 相当 (下の現行動作) になる。
+    ' --- 9.26/9.27: switch how NewWindowRequested is handled by mode ---
+    '   When m_browser is Nothing (standalone Pane operation = SetBrowser not run), there is no place for the
+    '   mode itself, so it is always LEGACY-equivalent (the current behaviour below).
     Dim nwMode As Long
     nwMode = NWM_LEGACY
     If Not (m_browser Is Nothing) Then nwMode = m_browser.NewWindowMode
 
     If nwMode = NWM_POPUP Then
-        ' ★モード 1 (9.26 のプローブ)★ put_Handled を立てず、新タブ要求も出さずに
-        '   Exit する。以降の捌きはランタイム任せで、自前のポップアップウィンドウに
-        '   元のリクエスト (POST ならボディごと) が継続される = 仕様事実 23。
-        '   ★検証用★ 開いたウィンドウはこちらの管理外 (手動で閉じる)。
-        Debug.Print "  [9.26 委譲モード] put_Handled を立てずにランタイムへ委譲する"
-        Debug.Print "    (ポップアップが開けば元のリクエストが継続されている = POST 生存)"
-        Debug.Print "    ※自前の新タブは作らない。ポップアップは手動で閉じること。"
+        ' *Mode 1 (the 9.26 probe)* Without setting put_Handled and without issuing a new-tab request,
+        '   Exit. The handling after that is left to the runtime, and the original request
+        '   (with the body, if POST) continues in its own popup window = spec fact 23.
+        '   *For verification* the opened window is outside our management (close it manually).
+        Debug.Print "  [9.26 delegation mode] delegating to the runtime without setting put_Handled"
+        Debug.Print "    (if a popup opens, the original request is continued = POST survived)"
+        Debug.Print "    * No own new tab is created. Close the popup manually."
         Exit Sub
 
     ElseIf nwMode = NWM_PREWARM Then
-        ' ★モード 2 (9.27 の本命)★ 温めてある予備タブの CoreWebView2 を
-        '   args.put_NewWindow に渡す。ランタイムはその WebView に元のリクエストを
-        '   載せるので、POST のメソッド/ボディ/Referer が保たれたまま自前のタブで開く。
+        ' *Mode 2 (the real aim of 9.27)* Passes the CoreWebView2 of the warmed-up spare tab to
+        '   args.put_NewWindow. The runtime loads the original request into that WebView,
+        '   so it opens in our own tab with the POST method/body/Referer preserved.
         Dim pNew As LongPtr
         pNew = m_browser.ClaimPrewarmViewPtr()
 
         If pNew = 0 Then
-            ' 予備が無い / 未 Ready / 既に Claim 済み。壊さずに現行動作へ落ちる。
-            Debug.Print "  ★[9.27 プリウォーム] 予備タブが使えないので現行動作にフォールバックする★"
-            Debug.Print "    → この遷移は GET に化ける (POST リンクなら 405 になる)。補充を予約する。"
+            ' No spare / not Ready / already Claimed. Fall to the current behaviour without breaking anything.
+            Debug.Print "  *[9.27 pre-warm] the spare tab cannot be used, so falling back to the current behaviour*"
+            Debug.Print "    -> this navigation turns into GET (a 405 for a POST link). Reserving a refill."
             m_browser.RequestPrewarmAsync
-            ' ↓ 下の現行動作 (put_Handled + RequestNewTabAsync) へ落ちる
+            ' v Falls to the current behaviour below (put_Handled + RequestNewTabAsync)
         Else
             Dim hrNw As Long
             hrNw = dcf(pArgs, 4, "NewWindowReqArgs.put_NewWindow", pNew)
 
             If hrNw <> 0 Then
-                ' put_NewWindow が失敗。予約を戻してから現行動作へ落ちる。
-                Debug.Print "  ★[9.27 プリウォーム] put_NewWindow 失敗 hr=&H" & Hex(hrNw) & _
-                            " → 現行動作にフォールバックする★"
+                ' put_NewWindow failed. Return the reservation, then fall to the current behaviour.
+                Debug.Print "  *[9.27 pre-warm] put_NewWindow failed hr=&H" & Hex(hrNw) & _
+                            " -> falling back to the current behaviour*"
                 m_browser.ReleasePrewarmClaim
-                ' ↓ 下の現行動作へ落ちる
+                ' v Falls to the current behaviour below
             Else
-                Debug.Print "  [9.27 プリウォーム] put_NewWindow OK (予備タブの View=" & pNew & ")"
+                Debug.Print "  [9.27 pre-warm] put_NewWindow OK (View of the spare tab=" & pNew & ")"
 
-                ' put_Handled の併用は Browser 側のスイッチで切り替える (論点5 の保険)。
+                ' Whether to also use put_Handled is switched by a Browser-side switch (insurance for issue 5).
                 If m_browser.SetHandledWithNewWindow Then
                     hrNw = dcf(pArgs, 6, "NewWindowReqArgs.put_Handled", 1&)
                     If hrNw <> 0 Then
-                        Debug.Print "    put_Handled 失敗 hr=&H" & Hex(hrNw)
+                        Debug.Print "    put_Handled failed hr=&H" & Hex(hrNw)
                     Else
-                        Debug.Print "    put_Handled OK (put_NewWindow と併用)"
+                        Debug.Print "    put_Handled OK (used together with put_NewWindow)"
                     End If
                 Else
-                    Debug.Print "    put_Handled は立てない (SetHandledWithNewWindow = False)"
+                    Debug.Print "    not setting put_Handled (SetHandledWithNewWindow = False)"
                 End If
 
-                ' 採用 (m_tabs へ登録 → TabAdded → ActivateTab) と補充は Timer に任せる。
-                ' ★ここで待たない★ のがプリウォーム方式の要点 (仕様事実 14 を回避)。
+                ' Adoption (register in m_tabs -> TabAdded -> ActivateTab) and refill are left to the Timer.
+                ' *Not waiting here* is the key point of the pre-warm approach (avoids spec fact 14).
                 m_browser.RequestAdoptPrewarmedAsync url
                 Exit Sub
             End If
         End If
     End If
 
-    ' --- 第9.6b で追加: 同一 View で開く捌き ---
+    ' --- Added in 9.6b: handling by opening on the same View ---
     If url = "" Then
-        Debug.Print "  url が空なので put_Handled / View_Navigate をスキップ"
+        Debug.Print "  url is empty, so skipping put_Handled / View_Navigate"
         Exit Sub
     End If
 
     ' --- 2. put_Handled = TRUE ---
-    '   WebView2 ランタイムに「VBA 側で捌く」と宣言する。
-    '   引数 1& は BOOL の TRUE (Win32 では BOOL = Long、& サフィックスで
-    '   明示的に Long であることを保証、設計原則 29 に準ずる)。
+    '   Declare to the WebView2 runtime that "the VBA side handles it".
+    '   The argument 1& is the BOOL TRUE (in Win32 BOOL = Long; the & suffix
+    '   explicitly guarantees it is a Long, in line with design principle 29).
     Dim hr As Long
     hr = dcf(pArgs, 6, "NewWindowReqArgs.put_Handled", 1&)
     If hr <> 0 Then
-        Debug.Print "  put_Handled 失敗 hr=&H" & Hex(hr) & _
-                    " (WebView2 が新規ウィンドウを開く挙動になる)"
+        Debug.Print "  put_Handled failed hr=&H" & Hex(hr) & _
+                    " (WebView2 will open a new window)"
     Else
-        Debug.Print "  put_Handled OK (新規ウィンドウは抑制される)"
+        Debug.Print "  put_Handled OK (the new window is suppressed)"
     End If
 
-    ' --- 3. 新タブで開く (第9.10e、案A + 案Y) ---
-    '   9.6b の「同一 View で View_Navigate」から「Wv2Browser の新タブで開く」に
-    '   変更。m_browser 後方参照経由で AddTabWithUrl を呼ぶ (案Y)。
-    '   ★window.open の戻り値は null になる★ put_NewWindow で新 View を渡さない
-    '     簡易方式 (案A) のため。正攻法 (put_NewWindow + Deferral) は将来の別段階。
-    '   m_browser 未設定 (SetBrowser 未実行) の場合は、壊さないよう同一 View の
-    '     View_Navigate にフォールバックする (単体 Pane 運用でも動くように)。
+    ' --- 3. Open in a new tab (9.10e, option A + option Y) ---
+    '   Changed from 9.6b's "View_Navigate on the same View" to "open in a Wv2Browser new tab".
+    '   AddTabWithUrl is called via the m_browser back reference (option Y).
+    '   *The return value of window.open becomes null* because this is the simple approach (option A)
+    '     that does not pass a new View via put_NewWindow. The proper way (put_NewWindow + Deferral) is a separate future stage.
+    '   When m_browser is not set (SetBrowser not run), to avoid breaking, fall back to
+    '     View_Navigate on the same View (so it works in standalone Pane operation too).
     If m_browser Is Nothing Then
-        Debug.Print "  [警告] m_browser 未設定 (SetBrowser 未実行)。同一 View Navigate に" & _
-                    "フォールバック。"
+        Debug.Print "  [WARNING] m_browser not set (SetBrowser not run). Falling back to Navigate on the same View" & _
+                    "."
         hr = View_Navigate(url)
-        If hr <> 0 Then Debug.Print "  View_Navigate 失敗 hr=&H" & Hex(hr)
+        If hr <> 0 Then Debug.Print "  View_Navigate failed hr=&H" & Hex(hr)
         Exit Sub
     End If
 
-    ' ★デッドロック回避 (案β Timer)★ ここで m_browser.AddTabWithUrl を直接呼ぶと、
-    '   AddTab の WaitPaneReady が新 Controller の ControllerCompleted を待つが、
-    '   本ハンドラ (NewWindowRequested) が return するまで WebView2 はそれを配送
-    '   しないためデッドロック (タイムアウト) する (仕様事実 14)。そこで
-    '   RequestNewTabAsync に依頼し、ワンショット Timer 経由でハンドラ完了後に
-    '   AddTabWithUrl を実行させる。
+    ' *Deadlock avoidance (option beta Timer)* If m_browser.AddTabWithUrl is called directly here,
+    '   AddTab's WaitPaneReady waits for the new Controller's ControllerCompleted, but
+    '   WebView2 does not deliver it until this handler (NewWindowRequested) returns,
+    '   so it deadlocks (timeout) (spec fact 14). So
+    '   the request is made to RequestNewTabAsync, and AddTabWithUrl is run after the handler completes
+    '   via a one-shot Timer.
     m_browser.RequestNewTabAsync url
-    Debug.Print "  新タブ生成を Timer に依頼 (RequestNewTabAsync): " & url
+    Debug.Print "  Requesting new tab creation from the Timer (RequestNewTabAsync): " & url
 End Sub
 
 
 ' ============================================================
-' SetBrowser / ClearBrowserRef (第9.10e、Wv2Browser 後方参照の設定・切断)
+' SetBrowser / ClearBrowserRef (9.10e, set and disconnect the Wv2Browser back reference)
 '
-'   SetBrowser: Wv2Browser.AddTab がタブ生成時に自分自身 (Me) を渡す。これにより
-'     Wv2Pane は View_OnNewWindowRequested から m_browser.AddTabWithUrl を呼べる。
-'   ClearBrowserRef: Wv2Browser.Shutdown が循環参照 (Browser.m_tabs ? Pane.m_browser)
-'     を断つために呼ぶ。これを呼ばずに UserForm が m_browser=Nothing すると、
-'     循環参照で Browser も Pane も解放されずリークする (設計原則 58)。
+'   SetBrowser: Wv2Browser.AddTab passes itself (Me) when creating a tab. This lets
+'     Wv2Pane call m_browser.AddTabWithUrl from View_OnNewWindowRequested.
+'   ClearBrowserRef: called by Wv2Browser.Shutdown to break the circular reference (Browser.m_tabs ? Pane.m_browser).
+'     If the UserForm sets m_browser=Nothing without calling this,
+'     neither Browser nor Pane is released because of the circular reference, and it leaks (design principle 58).
 '
-'   ★設計原則 58★ VBA の参照カウント GC では相互参照が自動解放されない。
-'     後方参照を持つ場合は「明示的に断ち切る Shutdown」を上位に用意する。
+'   *Design principle 58* VBA's reference-counting GC does not automatically release mutual references.
+'     When holding a back reference, prepare a "Shutdown that explicitly cuts it" at the upper level.
 ' ============================================================
 Public Sub SetBrowser(ByVal browser As Wv2Browser)
     Set m_browser = browser
@@ -2774,21 +2796,21 @@ End Sub
 
 Public Sub ClearBrowserRef()
     Set m_browser = Nothing
-    Set m_webMsgSink = Nothing   ' 第9.11c: シンク後方参照も一緒に断つ (設計原則 58)
+    Set m_webMsgSink = Nothing   ' 9.11c: cut the sink back reference too (design principle 58)
 End Sub
 
 
 ' ============================================================
-' SetWebMsgSink / ClearWebMsgSink (第9.11c、WebMessage シンクの設定・切断、案P)
+' SetWebMsgSink / ClearWebMsgSink (9.11c, set and disconnect the WebMessage sink, option P)
 '
-'   SetWebMsgSink: JS からの postMessage をこのペインが受けたとき、指定した
-'     シンクオブジェクトの OnPaneWebMessage(pane, source, msg) へ転送する。
-'     TabBar が Init 時に自分自身をシンクに登録する。受信を実際に有効化する
-'     には別途 View_AddWebMessageReceived を呼ぶこと (登録は 9.4c から既存)。
-'   ClearWebMsgSink: シンクを切る。ClearBrowserRef からも呼ばれる (解放時)。
+'   SetWebMsgSink: when this pane receives a postMessage from JS, forwards it to
+'     OnPaneWebMessage(pane, source, msg) of the specified sink object.
+'     TabBar registers itself as the sink at Init time. To actually enable reception,
+'     separately call View_AddWebMessageReceived (the registration has existed since 9.4c).
+'   ClearWebMsgSink: cuts the sink. Also called from ClearBrowserRef (at release).
 '
-'   ★m_browser (NewWindowRequested 用の後方参照) とは別系統★ こちらは
-'     WebMessage 転送専用。両者を混ぜないことで責務を分離する。
+'   *A separate line from m_browser (the back reference for NewWindowRequested)* This one is
+'     dedicated to WebMessage forwarding. Not mixing the two separates the responsibilities.
 ' ============================================================
 Public Sub SetWebMsgSink(ByVal sink As Object)
     Set m_webMsgSink = sink
@@ -2800,28 +2822,28 @@ End Sub
 
 
 ' ============================================================
-' View_AddHistoryChanged (第9.9b 段階で新規、SPA 対応)
+' View_AddHistoryChanged (new in stage 9.9b, SPA support)
 '
-'   ICoreWebView2::add_HistoryChanged (vtable index 13) を呼んで
-'   永続イベントハンドラを登録する。基底 ICoreWebView2 のイベントなので
-'   m_pView を使う (m_pView2 は不要)。
+'   Calls ICoreWebView2::add_HistoryChanged (vtable index 13) to
+'   register a persistent event handler. It is an event of the base ICoreWebView2, so
+'   m_pView is used (m_pView2 is not needed).
 '
-'   発火タイミング:
-'     SPA で history.pushState / replaceState / back / forward が
-'     呼ばれて履歴状態が変化したとき。通常のページ遷移 (Navigate) でも
-'     履歴に積まれれば発火する。SPA のルート変更を検知する主要な手段。
+'   Firing timing:
+'     When an SPA calls history.pushState / replaceState / back / forward
+'     and the history state changes. It also fires for a normal page navigation (Navigate)
+'     if it is pushed onto the history. The main means of detecting SPA route changes.
 '
-'   ★ 実装は View_AddNavigationStarting を逐語的な見本にしている ★
-'     (設計原則 45: COM オブジェクトを WebView2 に渡すときは
-'      pVTableObj = h.Slot + VTABLE_OBJ_OFFSET を必ず通す。
-'      View_PostWebMessageAsString のような単純引数系は見本にしない)
+'   * The implementation uses View_AddNavigationStarting as a verbatim model *
+'     (design principle 45: when passing a COM object to WebView2,
+'      always go through pVTableObj = h.Slot + VTABLE_OBJ_OFFSET.
+'      Simple-argument types like View_PostWebMessageAsString are not used as the model)
 '
-'   違い:
-'     - 種別: HK_HistoryChanged
+'   Differences:
+'     - Kind: HK_HistoryChanged
 '     - vtable index: 13 (add) / 14 (remove)
-'     - args 型: IUnknown* (情報なし。sender 経由で get_Source 等を取る)
+'     - args type: IUnknown* (no information. Get get_Source etc. via sender)
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View_AddHistoryChanged() As Long
     If m_pView = 0 Then
@@ -2829,25 +2851,25 @@ Public Function View_AddHistoryChanged() As Long
         Exit Function
     End If
 
-    ' 既に登録済みなら何もしない
+    ' If already registered, do nothing
     If Not (m_persistentHandlers(HK_HistoryChanged) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddHistoryChanged: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddHistoryChanged: already registered, skipping"
         View_AddHistoryChanged = 0
         Exit Function
     End If
 
-    ' ComCallbackHandler を Acquire (owner = Me で動的バインディング経由でイベント受信)
+    ' Acquire a ComCallbackHandler (owner = Me; receives events via dynamic binding)
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_HistoryChanged, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddHistoryChanged: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddHistoryChanged: failed to Acquire the handler"
         View_AddHistoryChanged = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
 
-    ' add_HistoryChanged を撃つ (vtable index 13)
-    '   重要: WebView2 に渡すハンドラ COM オブジェクトのアドレスは
-    '   h.Slot そのものではなく h.Slot + VTABLE_OBJ_OFFSET (設計原則 45)。
+    ' Fire add_HistoryChanged (vtable index 13)
+    '   Important: the address of the handler COM object passed to WebView2 is not
+    '   h.Slot itself but h.Slot + VTABLE_OBJ_OFFSET (design principle 45).
     Dim pVTableObj As LongPtr
     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET
 
@@ -2856,13 +2878,14 @@ Public Function View_AddHistoryChanged() As Long
     hr = dcf(m_pView, 13, "View.add_HistoryChanged", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddHistoryChanged: add_HistoryChanged 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_AddHistoryChanged: add_HistoryChanged failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddHistoryChanged = hr
         Exit Function
     End If
 
-    ' 成功: token と ComCallbackHandler を保存
+    ' Success: save the token and the ComCallbackHandler
     m_persistentTokens(HK_HistoryChanged) = token
     Set m_persistentHandlers(HK_HistoryChanged) = h
     Debug.Print "Wv2Pane.View_AddHistoryChanged OK: token=" & token & ", handler.slot=" & h.Slot
@@ -2872,9 +2895,9 @@ End Function
 
 
 ' ============================================================
-' View_RemoveHistoryChanged (第9.9b 段階で新規)
-'   View_RemoveEvent (vtable index 14) で解除。基底 IF なので m_pView。
-'   未登録なら no-op (S_OK で返す)。
+' View_RemoveHistoryChanged (new in stage 9.9b)
+'   Unregisters with View_RemoveEvent (vtable index 14). It is a base IF, so m_pView.
+'   If not registered, a no-op (returns S_OK).
 ' ============================================================
 Public Function View_RemoveHistoryChanged() As Long
     If m_pView = 0 Then
@@ -2883,7 +2906,7 @@ Public Function View_RemoveHistoryChanged() As Long
     End If
 
     If m_persistentHandlers(HK_HistoryChanged) Is Nothing Then
-        View_RemoveHistoryChanged = 0   ' 未登録は no-op
+        View_RemoveHistoryChanged = 0   ' not registered is a no-op
         Exit Function
     End If
 
@@ -2892,7 +2915,7 @@ Public Function View_RemoveHistoryChanged() As Long
              m_persistentTokens(HK_HistoryChanged))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_RemoveHistoryChanged: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_RemoveHistoryChanged: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View_RemoveHistoryChanged OK"
     End If
@@ -2905,29 +2928,29 @@ End Function
 
 
 ' ============================================================
-' View_OnHistoryChanged (第9.9b 段階で新規)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。
+' View_OnHistoryChanged (new in stage 9.9b)
+'   Called from ComCallbackHandler via dynamic binding.
 '
-'   args は IUnknown* で情報がないので、sender (= ICoreWebView2) 経由で
-'   現在の状態を取りに行く (DocumentTitleChanged と同じパターン)。
+'   args is an IUnknown* with no information, so the current state is fetched
+'   via sender (= ICoreWebView2) (same pattern as DocumentTitleChanged).
 '
-'   取得する情報 (案 N2-a):
-'     - get_Source        (vtable 4)  : 現在の URL
-'     - get_CanGoBack     (vtable 38) : 「戻る」が可能か
-'     - get_CanGoForward  (vtable 39) : 「進む」が可能か
-'   SPA で pushState すると URL が変わり CanGoBack が True になる、という
-'   SPA の本質的な挙動を 1 イベントで可視化できる。
+'   Information obtained (option N2-a):
+'     - get_Source        (vtable 4)  : current URL
+'     - get_CanGoBack     (vtable 38) : whether "back" is possible
+'     - get_CanGoForward  (vtable 39) : whether "forward" is possible
+'   The essential SPA behaviour that pushState on an SPA changes the URL and makes CanGoBack True
+'   can be made visible with one event.
 '
-'   Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 ' ============================================================
 Public Sub View_OnHistoryChanged(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View_OnHistoryChanged_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View_OnHistoryChanged_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -2943,24 +2966,24 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View_OnHistoryChanged: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View_OnHistoryChanged: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
 
 
 Private Sub View_OnHistoryChanged_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
-    ' 第9.9c (β): pArgs=0 は HistoryChanged の仕様 (args は IUnknown* で情報なし)。
-    ' sender 経由で get_Source / get_CanGoBack / get_CanGoForward を取りに行く。
+    ' 9.9c (beta): pArgs=0 is the specification of HistoryChanged (args is an IUnknown* with no information).
+    ' Go through sender to fetch get_Source / get_CanGoBack / get_CanGoForward.
     Debug.Print "Wv2Pane.View_OnHistoryChanged: pSender=" & pSender & _
-                ", pArgs=" & pArgs & " (args=0 は仕様)"
+                ", pArgs=" & pArgs & " (args=0 is by specification)"
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
-    ' sender (ICoreWebView2) 経由で現在の状態を取得
+    ' Get the current state via sender (ICoreWebView2)
     Dim url As String
     url = GetStringProperty(pSender, 4, "View.get_Source")
     Dim canBack As Boolean
@@ -2968,18 +2991,18 @@ Private Sub View_OnHistoryChanged_Core(ByVal pSender As LongPtr, ByVal pArgs As 
     Dim canFwd As Boolean
     canFwd = GetBoolProperty(pSender, 39, "View.get_CanGoForward")
 
-    ' 第9.9c (α): NavigateToString 環境では about:blank になるのが正常。
-    ' 利用者が「URL が空っぽに見える」と困惑しないよう注記を入れる。
+    ' 9.9c (alpha): about:blank is normal in a NavigateToString environment.
+    ' A note is added so that users are not confused by "the URL looks empty".
     If url = "about:blank" Then
-        Debug.Print "  → URL: about:blank (NavigateToString 環境では正常、第9.9b 仕様事実 6)"
+        Debug.Print "  -> URL: about:blank (normal in a NavigateToString environment, 9.9b spec fact 6)"
     Else
-        Debug.Print "  → URL: " & url
+        Debug.Print "  -> URL: " & url
     End If
-    Debug.Print "  → CanGoBack: " & canBack & ", CanGoForward: " & canFwd
+    Debug.Print "  -> CanGoBack: " & canBack & ", CanGoForward: " & canFwd
 
-    ' --- 第9.12a: 所属 Browser に URL 状態を通知 (SPA の pushState / 戻る / 進む) ---
-    '   ここでは既に url / canBack / canFwd を取得済みなので、NotifyUrlState を
-    '   経由せず直接渡す (get_* の二度読みを避ける)。
+    ' --- 9.12a: notify the owning Browser of the URL state (SPA pushState / back / forward) ---
+    '   Here url / canBack / canFwd have already been obtained, so they are passed directly
+    '   without going through NotifyUrlState (avoiding reading get_* twice).
     If Not m_browser Is Nothing Then
         m_browser.NotifyUrlChanged Me, url, canBack, canFwd
     End If
@@ -2987,62 +3010,62 @@ End Sub
 
 
 ' ============================================================
-' View2_AddDOMContentLoaded (第9.9b 段階で新規、SPA 対応、ICoreWebView2_2)
+' View2_AddDOMContentLoaded (new in stage 9.9b, SPA support, ICoreWebView2_2)
 '
-'   ICoreWebView2_2::add_DOMContentLoaded (vtable index 64) を呼んで
-'   永続イベントハンドラを登録する。これは派生 IF (ICoreWebView2_2) の
-'   イベントなので、m_pView ではなく m_pView2 を使う。
-'   (= 第9.9a で実装した EnsureView2 / m_pView2 の初の実戦投入)
+'   Calls ICoreWebView2_2::add_DOMContentLoaded (vtable index 64) to
+'   register a persistent event handler. This is an event of the derived IF (ICoreWebView2_2),
+'   so m_pView2 is used rather than m_pView.
+'   (= the first real-world use of EnsureView2 / m_pView2 implemented in 9.9a)
 '
-'   発火タイミング:
-'     ページの DOM が構築完了したとき (DOMContentLoaded、初回ロード時に 1 回)。
-'     NavigationCompleted より前、DOM が触れるようになった時点で発火する。
-'     SPA でも初回ロード時に発火する (pushState では発火しない = それは
-'     HistoryChanged の役目)。
+'   Firing timing:
+'     When the page's DOM has finished being built (DOMContentLoaded, once at initial load).
+'     Fires before NavigationCompleted, at the point the DOM becomes touchable.
+'     Fires at initial load on an SPA too (does not fire on pushState = that is
+'     HistoryChanged's job).
 '
-'   ★ 実装は View_AddHistoryChanged / View_AddNavigationStarting を
-'      逐語的な見本にしている (設計原則 45) ★
-'     違いは「m_pView の代わりに EnsureView2() + m_pView2 を使う」点のみ。
-'     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET は同じく必ず通す。
+'   * The implementation uses View_AddHistoryChanged / View_AddNavigationStarting
+'      as a verbatim model (design principle 45) *
+'     The only difference is "use EnsureView2() + m_pView2 instead of m_pView".
+'     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET is always gone through in the same way.
 '
-'   命名: 派生 IF 由来なので View2_ 接頭辞 (第9.6a/9.9b 命名規約)。
+'   Naming: derived from a derived IF, so the View2_ prefix (9.6a/9.9b naming convention).
 '
-'   違い (基底版との比較):
-'     - 種別: HK_DOMContentLoaded
-'     - インターフェース: m_pView2 (EnsureView2 で遅延取得)
-'     - vtable index: 64 (add) / 65 (remove)  ※ m_pView2 上のオフセット
-'     - args 型: ICoreWebView2DOMContentLoadedEventArgs
-'                (get_NavigationId = UINT64、vtable 3)
+'   Differences (compared with the base version):
+'     - Kind: HK_DOMContentLoaded
+'     - Interface: m_pView2 (lazily acquired with EnsureView2)
+'     - vtable index: 64 (add) / 65 (remove)  * offsets on m_pView2
+'     - args type: ICoreWebView2DOMContentLoadedEventArgs
+'                (get_NavigationId = UINT64, vtable 3)
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View2_AddDOMContentLoaded() As Long
-    ' _2 IF が必要。EnsureView2 で m_pView2 を取得 (未取得なら遅延取得)。
+    ' The _2 IF is required. Get m_pView2 with EnsureView2 (lazily acquired if not yet).
     If Not EnsureView2() Then
-        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: EnsureView2 失敗 (m_pView2 取得不可)"
+        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: EnsureView2 failed (cannot get m_pView2)"
         View2_AddDOMContentLoaded = &H80004003   ' E_POINTER
         Exit Function
     End If
 
-    ' 既に登録済みなら何もしない
+    ' If already registered, do nothing
     If Not (m_persistentHandlers(HK_DOMContentLoaded) Is Nothing) Then
-        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: already registered, skipping"
         View2_AddDOMContentLoaded = 0
         Exit Function
     End If
 
-    ' ComCallbackHandler を Acquire (owner = Me で動的バインディング経由でイベント受信)
+    ' Acquire a ComCallbackHandler (owner = Me; receives events via dynamic binding)
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_DOMContentLoaded, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: failed to Acquire the handler"
         View2_AddDOMContentLoaded = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
 
-    ' add_DOMContentLoaded を撃つ (vtable index 64、m_pView2 上)
-    '   重要: WebView2 に渡すハンドラ COM オブジェクトのアドレスは
-    '   h.Slot そのものではなく h.Slot + VTABLE_OBJ_OFFSET (設計原則 45)。
+    ' Fire add_DOMContentLoaded (vtable index 64, on m_pView2)
+    '   Important: the address of the handler COM object passed to WebView2 is not
+    '   h.Slot itself but h.Slot + VTABLE_OBJ_OFFSET (design principle 45).
     Dim pVTableObj As LongPtr
     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET
 
@@ -3051,13 +3074,14 @@ Public Function View2_AddDOMContentLoaded() As Long
     hr = dcf(m_pView2, 64, "View2.add_DOMContentLoaded", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: add_DOMContentLoaded 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View2_AddDOMContentLoaded: add_DOMContentLoaded failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View2_AddDOMContentLoaded = hr
         Exit Function
     End If
 
-    ' 成功: token と ComCallbackHandler を保存
+    ' Success: save the token and the ComCallbackHandler
     m_persistentTokens(HK_DOMContentLoaded) = token
     Set m_persistentHandlers(HK_DOMContentLoaded) = h
     Debug.Print "Wv2Pane.View2_AddDOMContentLoaded OK: token=" & token & ", handler.slot=" & h.Slot
@@ -3067,21 +3091,21 @@ End Function
 
 
 ' ============================================================
-' View2_RemoveDOMContentLoaded (第9.9b 段階で新規、ICoreWebView2_2)
-'   remove_DOMContentLoaded (vtable index 65) で解除。_2 IF なので m_pView2。
-'   未登録なら no-op (S_OK で返す)。
+' View2_RemoveDOMContentLoaded (new in stage 9.9b, ICoreWebView2_2)
+'   Unregisters with remove_DOMContentLoaded (vtable index 65). It is a _2 IF, so m_pView2.
+'   If not registered, a no-op (returns S_OK).
 ' ============================================================
 Public Function View2_RemoveDOMContentLoaded() As Long
-    ' _2 IF が必要。ただし解除なので、既に m_pView2 を持っているはず。
-    ' 念のため EnsureView2 を通す (未取得なら 0 を返して弾く)。
+    ' The _2 IF is required. But this is unregistering, so it should already hold m_pView2.
+    ' Go through EnsureView2 just in case (if not acquired, returns 0 and is rejected).
     If Not EnsureView2() Then
-        Debug.Print "Wv2Pane.View2_RemoveDOMContentLoaded: m_pView2 が未取得"
+        Debug.Print "Wv2Pane.View2_RemoveDOMContentLoaded: m_pView2 is not acquired"
         View2_RemoveDOMContentLoaded = &H80004003
         Exit Function
     End If
 
     If m_persistentHandlers(HK_DOMContentLoaded) Is Nothing Then
-        View2_RemoveDOMContentLoaded = 0   ' 未登録は no-op
+        View2_RemoveDOMContentLoaded = 0   ' not registered is a no-op
         Exit Function
     End If
 
@@ -3090,7 +3114,7 @@ Public Function View2_RemoveDOMContentLoaded() As Long
              m_persistentTokens(HK_DOMContentLoaded))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View2_RemoveDOMContentLoaded: 解除失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View2_RemoveDOMContentLoaded: unregister failed hr=&H" & Hex(hr)
     Else
         Debug.Print "Wv2Pane.View2_RemoveDOMContentLoaded OK"
     End If
@@ -3103,29 +3127,29 @@ End Function
 
 
 ' ============================================================
-' View2_OnDOMContentLoaded (第9.9b 段階で新規、ICoreWebView2_2)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。
+' View2_OnDOMContentLoaded (new in stage 9.9b, ICoreWebView2_2)
+'   Called from ComCallbackHandler via dynamic binding.
 '
-'   args = ICoreWebView2DOMContentLoadedEventArgs の get_NavigationId
-'   (vtable index 3) を呼んで NavigationId をログ出力する。
-'   NavigationId は UINT64 なので GetLongLongProperty で取得 (64bit 専用)。
+'   args = calls get_NavigationId of ICoreWebView2DOMContentLoadedEventArgs
+'   (vtable index 3) and writes the NavigationId to the log.
+'   NavigationId is a UINT64, so it is fetched with GetLongLongProperty (64-bit only).
 '
-'   命名: 派生 IF 由来なので View2_On 接頭辞。
+'   Naming: derived from a derived IF, so the View2_On prefix.
 '
-'   Public Sub 必須 (Friend だと IDispatch::Invoke に乗らない)。
+'   Public Sub is required (a Friend does not ride on IDispatch::Invoke).
 '
-'   ★ 32bit 化ポイント ★
-'     GetLongLongProperty は #If Win64 で囲まれた 64bit 専用ヘルパー。
-'     32bit 対応段階では NavigationId の取得方法を別途設計する。
+'   * 32-bit point *
+'     GetLongLongProperty is a 64-bit-only helper enclosed in #If Win64.
+'     In the 32-bit support stage, how to get NavigationId will be designed separately.
 ' ============================================================
 Public Sub View2_OnDOMContentLoaded(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     ' ============================================================
-    ' D-1 論点7: in-callback ガードの薄いラッパー
-    '   本体は View2_OnDOMContentLoaded_Core。ここでは m_inCallback を +1 してから Core を呼び、
-    '   ★どの経路で抜けても★ -1 する。Core には途中 Exit Sub があるため、
-    '   Core 内に +1 / -1 を直書きする形では戻し漏れが出る (事後報告 (a))。
-    '   Core がエラーで抜けた場合はカウンタを戻したうえで同じエラーを投げ直す
-    '   (握り潰さない = 従来の挙動を変えない。事後報告 (b))。
+    ' D-1 issue 7: thin wrapper for the in-callback guard
+    '   The body is View2_OnDOMContentLoaded_Core. Here m_inCallback is raised by 1, Core is called, and
+    '   it is decremented by 1 *whichever path exits*. Core has Exit Sub in the middle, so
+    '   writing +1 / -1 directly inside Core would miss restoring in some paths (post-hoc report (a)).
+    '   If Core exits with an error, the counter is restored and the same error is re-raised
+    '   (not swallowed = previous behaviour unchanged. Post-hoc report (b)).
     ' ============================================================
     Dim errNum As Long
     Dim errSrc As String
@@ -3141,8 +3165,8 @@ GuardExit:
     errDsc = Err.Description
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
-        Debug.Print "Wv2Pane.View2_OnDOMContentLoaded: Core でエラー " & errNum & " " & errDsc & _
-                    " (in-callback ガードは解除済み、エラーは再送出)"
+        Debug.Print "Wv2Pane.View2_OnDOMContentLoaded: error in Core " & errNum & " " & errDsc & _
+                    " (in-callback guard already released, error re-raised)"
         Err.Raise errNum, errSrc, errDsc
     End If
 End Sub
@@ -3151,37 +3175,37 @@ End Sub
 Private Sub View2_OnDOMContentLoaded_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Debug.Print "Wv2Pane.View2_OnDOMContentLoaded: pSender=" & pSender & ", pArgs=" & pArgs
     If pSender <> m_pView Then
-        Debug.Print "  [警告] pSender が m_pView と一致しない (pSender=" & pSender & _
+        Debug.Print "  [WARNING] pSender does not match m_pView (pSender=" & pSender & _
                     ", m_pView=" & m_pView & ")"
     End If
 
     If pArgs = 0 Then
-        Debug.Print "  pArgs が 0 なので NavigationId 取得をスキップ"
+        Debug.Print "  pArgs is 0, so skipping NavigationId retrieval"
         Exit Sub
     End If
 
-    ' args.get_NavigationId (vtable index 3、UINT64) を取得
+    ' Get args.get_NavigationId (vtable index 3, UINT64)
     Dim navId As LongLong
     navId = GetLongLongProperty(pArgs, 3, "DOMContentLoadedArgs.get_NavigationId")
-    Debug.Print "  → navigationId: " & navId
+    Debug.Print "  -> navigationId: " & navId
 End Sub
 
 
 ' ============================================================
-' View_PostWebMessageAsString (第9.4c 段階で新規)
+' View_PostWebMessageAsString (new in stage 9.4c)
 '
-'   ICoreWebView2::PostWebMessageAsString (vtable index 33) を呼んで
-'   JS にメッセージを送信する。
+'   Calls ICoreWebView2::PostWebMessageAsString (vtable index 33) to
+'   send a message to JS.
 '
-'   JS 側で受け取るには、以下のリスナーを HTML 内に登録しておく:
+'   To receive it on the JS side, register the following listener in the HTML:
 '     window.chrome.webview.addEventListener('message', event => {
-'         console.log(event.data);   // 受信内容
+'         console.log(event.data);   // received content
 '     });
 '
-'   注意: WebView2 はメッセージを「ページ単位」で隔離する。
-'         ページが NavigationCompleted する前 (= まだリスナーが登録されていない)
-'         に PostMessage を撃つと、メッセージはどこにも届かない。
-'         必ず NavigationCompleted を待ってから撃つこと。
+'   Note: WebView2 isolates messages "per page".
+'         If PostMessage is fired before the page's NavigationCompleted (= the listener
+'         is not yet registered), the message reaches nowhere.
+'         Always wait for NavigationCompleted before firing.
 ' ============================================================
 Public Function View_PostWebMessageAsString(ByVal webMessage As String) As Long
     If m_pView = 0 Then
@@ -3195,12 +3219,12 @@ End Function
 
 
 ' ============================================================
-' ナビゲーション制御メソッド (第9.4b 段階で新規)
+' Navigation control methods (new in stage 9.4b)
 '
-'   ICoreWebView2 のナビゲーション関連メソッドを Public で公開する。
-'   ユーザは UserForm 等から m_pane.View_xxx() で呼べる。
+'   Exposes the navigation-related methods of ICoreWebView2 as Public.
+'   Users can call them from a UserForm etc. as m_pane.View_xxx().
 '
-'   各メソッドの vtable index は旧版で実機検証済み:
+'   The vtable index of each method was verified on a real machine in the old version:
 '     4  : get_Source
 '     6  : NavigateToString
 '     40 : GoBack
@@ -3208,30 +3232,30 @@ End Function
 '     48 : get_DocumentTitle
 ' ============================================================
 
-' --- HTML 文字列を直接 WebView2 に表示させる ---
+' --- Display an HTML string directly in WebView2 ---
 Public Function View_NavigateToString(ByVal htmlContent As String) As Long
     If m_pView = 0 Then
         View_NavigateToString = &H80004003
         Exit Function
     End If
-    ' 新しいナビゲーション開始でフラグをリセット
+    ' Reset the flag at the start of a new navigation
     m_pageLoaded = False
     View_NavigateToString = dcf(m_pView, 6, "View.NavigateToString", StrPtr(htmlContent))
 End Function
 
-' --- VBA オブジェクトを JS に公開する (第9.18、AddHostObjectToScript, vtable 49) ---
-'   objName  : JS 側で window.chrome.webview.hostObjects.<objName> となる名前
-'   instance : 公開する VBA クラスインスタンス (Instancing 1-Private でよい)
+' --- Expose a VBA object to JS (9.18, AddHostObjectToScript, vtable 49) ---
+'   objName  : the name that becomes window.chrome.webview.hostObjects.<objName> on the JS side
+'   instance : the VBA class instance to expose (Instancing 1-Private is fine)
 '
-'   ★旧 WebView2.cls の実機検証済み実装を現行作法へ移植★
-'     Variant にオブジェクトを詰め、その VarPtr を第2引数 (VARIANT*) に渡す。
-'     第1引数はホストオブジェクト名の LPCWSTR。既存の View_Navigate (StrPtr) と
-'     get_Settings (VarPtr) を組み合わせた形。
+'   *The old WebView2.cls implementation verified on a real machine, ported to the current convention*
+'     Put the object in a Variant and pass its VarPtr as the second argument (VARIANT*).
+'     The first argument is the host object name as an LPCWSTR. A form combining the existing View_Navigate (StrPtr) and
+'     get_Settings (VarPtr).
 '
-'   ★呼ぶタイミング (順序A)★ 設定タブでは NavigateToString の「前」に呼ぶ。
-'     登録が Navigate より先なら、読み込まれた JS が最初から hostObjects を
-'     使える、という仮説。実機で undefined になるようなら ready ハンドシェイク
-'     方式 (順序B) にフォールバックする。
+'   *Timing of the call (order A)* In the settings tab, call it "before" NavigateToString.
+'     The hypothesis is that if registration comes before Navigate, the loaded JS can use
+'     hostObjects from the start. If it turns out undefined on a real machine, fall back to the
+'     ready handshake approach (order B).
 Public Function View_AddHostObjectToScript(ByVal objName As String, ByVal instance As Object) As Long
     If m_pView = 0 Then
         View_AddHostObjectToScript = &H80004003   ' E_POINTER
@@ -3243,7 +3267,16 @@ Public Function View_AddHostObjectToScript(ByVal objName As String, ByVal instan
                                      StrPtr(objName), VarPtr(vObj))
 End Function
 
-' --- 履歴を 1 つ戻る ---
+' --- Go back one step in history ---
+' English fork: ICoreWebView2::RemoveHostObjectFromScript (vtable 50, checked against WebView2.h)
+Public Function View_RemoveHostObjectFromScript(ByVal objName As String) As Long
+    If m_pView = 0 Then
+        View_RemoveHostObjectFromScript = &H80004003
+        Exit Function
+    End If
+    View_RemoveHostObjectFromScript = dcf(m_pView, 50, "View.RemoveHostObjectFromScript", StrPtr(objName))
+End Function
+
 Public Function View_GoBack() As Long
     If m_pView = 0 Then
         View_GoBack = &H80004003
@@ -3252,7 +3285,7 @@ Public Function View_GoBack() As Long
     View_GoBack = dcf(m_pView, 40, "View.GoBack")
 End Function
 
-' --- 履歴を 1 つ進む ---
+' --- Go forward one step in history ---
 Public Function View_GoForward() As Long
     If m_pView = 0 Then
         View_GoForward = &H80004003
@@ -3261,13 +3294,13 @@ Public Function View_GoForward() As Long
     View_GoForward = dcf(m_pView, 41, "View.GoForward")
 End Function
 
-' --- 現在表示中のページの URL を取得 ---
+' --- Get the URL of the currently displayed page ---
 Public Function View_GetSource() As String
     If m_pView = 0 Then Exit Function
     View_GetSource = GetStringProperty(m_pView, 4, "View.get_Source")
 End Function
 
-' --- 現在表示中のページの DocumentTitle を取得 ---
+' --- Get the DocumentTitle of the currently displayed page ---
 Public Function View_GetDocumentTitle() As String
     If m_pView = 0 Then Exit Function
     View_GetDocumentTitle = GetStringProperty(m_pView, 48, "View.get_DocumentTitle")
@@ -3275,32 +3308,32 @@ End Function
 
 
 ' ============================================================
-' 第9.8b 段階で追加: ICoreWebView2 基底 IF のメソッド網羅 (View_ 系)
-'                  + ICoreWebView2Controller の Ctrl_Close
-'                  + ICoreWebView2Settings のヘルパー方式実装 (Settings_ 系)
+' Added in stage 9.8b: full coverage of the ICoreWebView2 base IF methods (View_ family)
+'                  + Ctrl_Close of ICoreWebView2Controller
+'                  + helper-style implementation of ICoreWebView2Settings (Settings_ family)
 '
-'   設計原則:
-'     ・View_ 系は既存パターン (m_pView 経由 + GetXxxProperty / dcf) を踏襲
-'     ・Settings 系は EnsureSettings で m_pSettings をキャッシュし、
-'       Wv2Pane 内で完結 (Wv2Settings クラスを増やさない方針、9.8b-A 採用)
-'     ・BOOL 取得系 (View_GetCanGoBack 等) は As Boolean を返すスタイル
-'       (HRESULT は内部で確認、IsPageLoaded と整合、9.8b-C 採用)
-'     ・void 系 (View_Reload, View_Stop, Ctrl_Close) は As Long で HRESULT 返却
-'       (View_Navigate と整合)
+'   Design principles:
+'     *The View_ family follows the existing pattern (via m_pView + GetXxxProperty / dcf)
+'     *The Settings family caches m_pSettings with EnsureSettings and
+'       is self-contained in Wv2Pane (policy of not adding a Wv2Settings class, 9.8b-A adopted)
+'     *BOOL getters (View_GetCanGoBack etc.) are in the style of returning As Boolean
+'       (HRESULT checked internally, consistent with IsPageLoaded, 9.8b-C adopted)
+'     *void ones (View_Reload, View_Stop, Ctrl_Close) return the HRESULT As Long
+'       (consistent with View_Navigate)
 ' ============================================================
 
-' --- ページを再読み込み (F5 相当、View vtable 31) ---
+' --- Reload the page (equivalent to F5, View vtable 31) ---
 Public Function View_Reload() As Long
     If m_pView = 0 Then
         View_Reload = &H80004003
         Exit Function
     End If
-    ' 再読み込みなのでページ読み込み完了フラグもリセット
+    ' This is a reload, so reset the page-load-complete flag too
     m_pageLoaded = False
     View_Reload = dcf(m_pView, 31, "View.Reload")
 End Function
 
-' --- ナビゲーション・読み込みを停止 (Esc 相当、View vtable 43) ---
+' --- Stop navigation / loading (equivalent to Esc, View vtable 43) ---
 Public Function View_Stop() As Long
     If m_pView = 0 Then
         View_Stop = &H80004003
@@ -3309,26 +3342,26 @@ Public Function View_Stop() As Long
     View_Stop = dcf(m_pView, 43, "View.Stop")
 End Function
 
-' --- 「戻る」が可能か (View vtable 38、UI の Back ボタン活性制御用) ---
-'   戻り値: True なら View_GoBack を呼べる状態
-'   HRESULT は内部処理、失敗時は False を返す
+' --- Whether "back" is possible (View vtable 38, for enabling the UI Back button) ---
+'   Return value: True if View_GoBack can be called
+'   HRESULT is handled internally; returns False on failure
 Public Function View_GetCanGoBack() As Boolean
     If m_pView = 0 Then Exit Function
     View_GetCanGoBack = GetBoolProperty(m_pView, 38, "View.get_CanGoBack")
 End Function
 
-' --- 「進む」が可能か (View vtable 39、UI の Forward ボタン活性制御用) ---
-'   戻り値: True なら View_GoForward を呼べる状態
-'   HRESULT は内部処理、失敗時は False を返す
+' --- Whether "forward" is possible (View vtable 39, for enabling the UI Forward button) ---
+'   Return value: True if View_GoForward can be called
+'   HRESULT is handled internally; returns False on failure
 Public Function View_GetCanGoForward() As Boolean
     If m_pView = 0 Then Exit Function
     View_GetCanGoForward = GetBoolProperty(m_pView, 39, "View.get_CanGoForward")
 End Function
 
-' --- WebView2 ブラウザプロセスの PID を取得 (View vtable 37、診断用) ---
-'   戻り値: ブラウザプロセスの Process ID (Long)
-'   タスクマネージャと突き合わせて WebView2 プロセスを特定するときに有用
-'   HRESULT は内部処理、失敗時は 0 を返す
+' --- Get the PID of the WebView2 browser process (View vtable 37, for diagnosis) ---
+'   Return value: Process ID (Long) of the browser process
+'   Useful for identifying the WebView2 process by matching against Task Manager
+'   HRESULT is handled internally; returns 0 on failure
 Public Function View_GetBrowserProcessId() As Long
     If m_pView = 0 Then Exit Function
     View_GetBrowserProcessId = GetLongProperty(m_pView, 37, "View.get_BrowserProcessId")
@@ -3336,18 +3369,18 @@ End Function
 
 
 ' ============================================================
-' EnsureSettings (Private、内部ヘルパー)
+' EnsureSettings (Private, internal helper)
 '
-'   m_pSettings が未取得 (= 0) なら View vtable 3 (get_Settings) を叩いて
-'   ICoreWebView2Settings* を取得し、m_pSettings にキャッシュする。
-'   既に取得済みならそのまま使う。
+'   If m_pSettings is not acquired (= 0), calls View vtable 3 (get_Settings) to
+'   get ICoreWebView2Settings* and caches it in m_pSettings.
+'   If already acquired, uses it as is.
 '
-'   COM 所有権:
-'     get_Settings は [out, retval] でポインタを返す。返ってきた時点で
-'     refcount は既に立っているので、VBA 側で別途 AddRef は不要。
-'     m_pSettings の解放責任は Class_Terminate にある。
+'   COM ownership:
+'     get_Settings returns the pointer as [out, retval]. By the time it returns
+'     the refcount is already raised, so no separate AddRef is needed on the VBA side.
+'     Responsibility for releasing m_pSettings lies with Class_Terminate.
 '
-'   戻り値: True なら m_pSettings が有効、False なら取得失敗
+'   Return value: True if m_pSettings is valid, False if acquisition failed
 ' ============================================================
 Private Function EnsureSettings() As Boolean
     If m_pSettings <> 0 Then
@@ -3355,7 +3388,7 @@ Private Function EnsureSettings() As Boolean
         Exit Function
     End If
     If m_pView = 0 Then
-        Debug.Print "Wv2Pane.EnsureSettings: m_pView が未取得"
+        Debug.Print "Wv2Pane.EnsureSettings: m_pView is not acquired"
         Exit Function
     End If
 
@@ -3363,23 +3396,23 @@ Private Function EnsureSettings() As Boolean
     Dim hr As Long
     hr = dcf(m_pView, 3, "View.get_Settings", VarPtr(pSettings))
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.EnsureSettings: get_Settings 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.EnsureSettings: get_Settings failed hr=&H" & Hex(hr)
         Exit Function
     End If
     If pSettings = 0 Then
-        Debug.Print "Wv2Pane.EnsureSettings: pSettings が 0"
+        Debug.Print "Wv2Pane.EnsureSettings: pSettings is 0"
         Exit Function
     End If
 
     m_pSettings = pSettings
-    Debug.Print "Wv2Pane.EnsureSettings: m_pSettings 取得 = " & m_pSettings
+    Debug.Print "Wv2Pane.EnsureSettings: m_pSettings acquired = " & m_pSettings
     EnsureSettings = True
 End Function
 
-' --- JS の実行可否を設定 (Settings vtable 4 = put_IsScriptEnabled) ---
-'   既定値 True。False にすると JS が一切動かなくなる。
-'   IsScriptEnabled は WebView2 起動後・ナビゲーション前に設定するのが本来
-'   だが、ナビゲーション後でも反映される (次回ロードから有効)。
+' --- Set whether JS may run (Settings vtable 4 = put_IsScriptEnabled) ---
+'   Default True. Setting False stops JS from running at all.
+'   IsScriptEnabled is originally to be set after WebView2 starts and before navigation,
+'   but it takes effect after navigation too (valid from the next load).
 Public Function Settings_PutIsScriptEnabled(ByVal v As Boolean) As Long
     If Not EnsureSettings() Then
         Settings_PutIsScriptEnabled = &H80004003
@@ -3390,9 +3423,9 @@ Public Function Settings_PutIsScriptEnabled(ByVal v As Boolean) As Long
     Settings_PutIsScriptEnabled = dcf(m_pSettings, 4, "Settings.put_IsScriptEnabled", bv)
 End Function
 
-' --- 右クリックメニューの表示可否を設定 (Settings vtable 14 = put_AreDefaultContextMenusEnabled) ---
-'   既定値 True。False にすると Ctrl+クリック等を含む右クリック系メニューが
-'   一切出なくなる。業務アプリで右クリックを抑制したいとき有効。
+' --- Set whether the right-click menu is shown (Settings vtable 14 = put_AreDefaultContextMenusEnabled) ---
+'   Default True. Setting False stops all right-click-family menus, including Ctrl+click,
+'   from appearing. Useful when you want to suppress right-click in a business app.
 Public Function Settings_PutAreDefaultContextMenusEnabled(ByVal v As Boolean) As Long
     If Not EnsureSettings() Then
         Settings_PutAreDefaultContextMenusEnabled = &H80004003
@@ -3404,9 +3437,9 @@ Public Function Settings_PutAreDefaultContextMenusEnabled(ByVal v As Boolean) As
                                               "Settings.put_AreDefaultContextMenusEnabled", bv)
 End Function
 
-' --- DevTools (F12) の利用可否を設定 (Settings vtable 12 = put_AreDevToolsEnabled) ---
-'   既定値 True。False にすると F12 を押しても DevTools が開かない。
-'   配布アプリで DevTools を封じたいときに利用。
+' --- Set whether DevTools (F12) is available (Settings vtable 12 = put_AreDevToolsEnabled) ---
+'   Default True. Setting False means DevTools does not open even when F12 is pressed.
+'   Used when you want to seal DevTools in a distributed app.
 Public Function Settings_PutAreDevToolsEnabled(ByVal v As Boolean) As Long
     If Not EnsureSettings() Then
         Settings_PutAreDevToolsEnabled = &H80004003
@@ -3419,57 +3452,57 @@ End Function
 
 
 ' ============================================================
-' 第9.9a 段階で追加: ICoreWebView2_2 派生 IF の遅延取得 (View2_ 系の基盤)
+' Added in stage 9.9a: lazy acquisition of the ICoreWebView2_2 derived IF (foundation of the View2_ family)
 '
-'   設計判断 (たーぼーさん合意済み):
-'     ・案 1: m_pView2 フィールド + EnsureView2 遅延取得 (Settings 流儀を踏襲)
-'     ・案 a: IID_ICoreWebView2_2 は EnsureView2 のローカル変数で都度作る
-'             (Wv2Thunks に IID テーブル追加せず、9.9a を Wv2Thunks 最小変更に)
-'     ・案 X: 戻り値は As Boolean (EnsureSettings と同形)
+'   Design decisions (agreed with tarboh):
+'     *Option 1: m_pView2 field + EnsureView2 lazy acquisition (following the Settings style)
+'     *Option a: IID_ICoreWebView2_2 is built each time as a local variable in EnsureView2
+'             (no IID table added to Wv2Thunks, keeping 9.9a to a minimal Wv2Thunks change)
+'     *Option X: return value is As Boolean (same form as EnsureSettings)
 '
-'   IID_ICoreWebView2_2 の出典:
+'   Source of IID_ICoreWebView2_2:
 '     WebView2.h L5078:
 '       EXTERN_C __declspec(selectany) const IID IID_ICoreWebView2_2 =
 '           {0x9E8F0CF8,0xE670,0x4B5E,{0xB2,0xBC,0x73,0xE0,0x61,0xE3,0x18,0x4C}};
-'     MIDL_INTERFACE 文字列: "9E8F0CF8-E670-4B5E-B2BC-73E061E3184C"
+'     MIDL_INTERFACE string: "9E8F0CF8-E670-4B5E-B2BC-73E061E3184C"
 '
-'   ICoreWebView2_2 で追加されるメソッド (基底 ICoreWebView2 の 61?67):
+'   Methods added by ICoreWebView2_2 (61?67 of the base ICoreWebView2):
 '     61 : add_WebResourceResponseReceived
 '     62 : remove_WebResourceResponseReceived
 '     63 : NavigateWithWebResourceRequest
-'     64 : add_DOMContentLoaded         ← 第9.9b で利用予定
-'     65 : remove_DOMContentLoaded      ← 第9.9b で利用予定
+'     64 : add_DOMContentLoaded         <- planned for use in 9.9b
+'     65 : remove_DOMContentLoaded      <- planned for use in 9.9b
 '     66 : get_CookieManager
 '     67 : get_Environment
 ' ============================================================
 
 
 ' ============================================================
-' EnsureView2 (Private、内部ヘルパー)
+' EnsureView2 (Private, internal helper)
 '
-'   m_pView2 が未取得 (= 0) なら QueryInterface(IID_ICoreWebView2_2) を
-'   叩いて ICoreWebView2_2* を取得し、m_pView2 にキャッシュする。
-'   既に取得済みならそのまま使う。
+'   If m_pView2 is not acquired (= 0), calls QueryInterface(IID_ICoreWebView2_2) to
+'   get ICoreWebView2_2* and caches it in m_pView2.
+'   If already acquired, uses it as is.
 '
-'   COM 所有権:
-'     QueryInterface は成功時にポインタを AddRef した状態で返す。
-'     m_pView2 は m_pView とは独立した参照カウントを持つ
-'     (= 同一 COM オブジェクトを別 IF で見ているだけだが、参照カウントは別)。
-'     m_pView2 の解放責任は Class_Terminate / Ctrl_Close にある (子から先)。
+'   COM ownership:
+'     QueryInterface returns the pointer already AddRef'd on success.
+'     m_pView2 has a reference count independent of m_pView
+'     (= merely the same COM object seen through a different IF, but the reference count is separate).
+'     Responsibility for releasing m_pView2 lies with Class_Terminate / Ctrl_Close (children first).
 '
-'   QueryInterface 呼び出し方:
+'   How to call QueryInterface:
 '     IUnknown::QueryInterface (vtable 0):
 '       HRESULT QueryInterface(REFIID riid, void** ppvObject);
-'     第 1 引数 riid は GUID 構造体のポインタ。
-'     第 2 引数 ppvObject は LongPtr の out 引数。
-'     dcf 経由なら VarPtr(localIID) と VarPtr(pv) で渡す。
+'     The first argument riid is a pointer to a GUID structure.
+'     The second argument ppvObject is a LongPtr out argument.
+'     Via dcf, pass them as VarPtr(localIID) and VarPtr(pv).
 '
-'   IID は EnsureView2 のローカル変数で都度作る (案 a 採用):
-'     Wv2Thunks の m_iidTable に追加せず、必要なときに必要なところで生成。
-'     初回 1 回しか呼ばれない (キャッシュ済みなら即 True で抜ける) ため
-'     オーバーヘッドは極小。Wv2Thunks の FillGUID を Public で呼ぶ。
+'   The IID is built each time as a local variable of EnsureView2 (option a adopted):
+'     Not added to Wv2Thunks' m_iidTable; generated where and when it is needed.
+'     It is called only once the first time (if already cached it exits immediately with True), so
+'     the overhead is minimal. Call Wv2Thunks' FillGUID as Public.
 '
-'   戻り値: True なら m_pView2 が有効、False なら取得失敗 (案 X、EnsureSettings と同形)
+'   Return value: True if m_pView2 is valid, False if acquisition failed (option X, same form as EnsureSettings)
 ' ============================================================
 Private Function EnsureView2() As Boolean
     If m_pView2 <> 0 Then
@@ -3477,54 +3510,54 @@ Private Function EnsureView2() As Boolean
         Exit Function
     End If
     If m_pView = 0 Then
-        Debug.Print "Wv2Pane.EnsureView2: m_pView が未取得"
+        Debug.Print "Wv2Pane.EnsureView2: m_pView is not acquired"
         Exit Function
     End If
 
-    ' --- IID_ICoreWebView2_2 をローカル GUID 構造体に組み立てる ---
+    ' --- Assemble IID_ICoreWebView2_2 into a local GUID structure ---
     '   {9E8F0CF8-E670-4B5E-B2BC-73E061E3184C}
-    '   FillGUID は Wv2Thunks の Public Sub (第9.9a で Private → Public 昇格)
+    '   FillGUID is a Public Sub of Wv2Thunks (promoted from Private to Public in 9.9a)
     Dim iidView2 As GUID
     FillGUID iidView2, "9E8F0CF8-E670-4B5E-B2BC-73E061E3184C"
 
-    ' --- QueryInterface(riid, &ppv) を叩く ---
-    '   vtable index 0 が QueryInterface (IUnknown 基底)。
-    '   引数:
-    '     #1: REFIID riid     → VarPtr(iidView2)  (GUID 構造体への参照)
-    '     #2: void** ppvObject → VarPtr(pv)        (出力先 LongPtr の参照)
-    '   戻り値: HRESULT (S_OK = 0 で成功)
+    ' --- Fire QueryInterface(riid, &ppv) ---
+    '   vtable index 0 is QueryInterface (IUnknown base).
+    '   Arguments:
+    '     #1: REFIID riid     -> VarPtr(iidView2)  (reference to the GUID structure)
+    '     #2: void** ppvObject -> VarPtr(pv)        (reference to the output LongPtr)
+    '   Return value: HRESULT (S_OK = 0 means success)
     Dim pv As LongPtr
     Dim hr As Long
     hr = dcf(m_pView, 0, "View.QueryInterface(ICoreWebView2_2)", _
              VarPtr(iidView2), VarPtr(pv))
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.EnsureView2: QueryInterface 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.EnsureView2: QueryInterface failed hr=&H" & Hex(hr)
         Exit Function
     End If
     If pv = 0 Then
-        Debug.Print "Wv2Pane.EnsureView2: QueryInterface 成功だが pv が 0"
+        Debug.Print "Wv2Pane.EnsureView2: QueryInterface succeeded but pv is 0"
         Exit Function
     End If
 
     m_pView2 = pv
-    Debug.Print "Wv2Pane.EnsureView2: m_pView2 取得 = " & m_pView2
+    Debug.Print "Wv2Pane.EnsureView2: m_pView2 acquired = " & m_pView2
     EnsureView2 = True
 End Function
 
 
 ' ============================================================
-' View2_Ensure (第9.9a で新規、Public 検証用ラッパ)
+' View2_Ensure (new in 9.9a, Public verification wrapper)
 '
-'   Immediate ウィンドウから ?UserForm1.GetActivePane.View2_Ensure で
-'   叩いて m_pView2 取得を確認するための薄いラッパ。
+'   A thin wrapper for calling ?UserForm1.GetActivePane.View2_Ensure
+'   from the Immediate window to confirm that m_pView2 was acquired.
 '
-'   9.9b 以降は View2_AddDOMContentLoaded 等の各メソッドが内部で
-'   EnsureView2 を呼ぶ形になるので、この関数の直接利用は基本的に検証時のみ。
+'   From 9.9b on, each method such as View2_AddDOMContentLoaded calls
+'   EnsureView2 internally, so direct use of this function is basically for verification only.
 '
-'   案 i 採用: 検証は本関数 + Test_AllEvents_Real のリグレッションゼロ確認で実施。
-'             テスト関数 (Test_View2_Ensure_Real) は新設しない。
+'   Option i adopted: verification is done with this function + confirming zero regressions with Test_AllEvents_Real.
+'             No test function (Test_View2_Ensure_Real) is added.
 '
-'   戻り値: True なら m_pView2 が有効 (取得成功 or 既に保持済み)
+'   Return value: True if m_pView2 is valid (acquired successfully or already held)
 ' ============================================================
 Public Function View2_Ensure() As Boolean
     View2_Ensure = EnsureView2()
@@ -3532,19 +3565,19 @@ End Function
 
 
 ' ============================================================
-' EnsureView3 (第9.10d-2a で新規、ICoreWebView2_3 派生 IF の遅延取得)
+' EnsureView3 (new in 9.10d-2a, lazy acquisition of the ICoreWebView2_3 derived IF)
 '
-'   ICoreWebView2_3 を QueryInterface で取り出して m_pView3 にキャッシュする。
-'   EnsureView2 (第9.9a) と完全に同形。基底 m_pView から QI する
-'   (ICoreWebView2_3 : ICoreWebView2_2 : ICoreWebView2 の単一継承なので
-'    基底から一段で取り出せる)。
+'   Takes ICoreWebView2_3 out with QueryInterface and caches it in m_pView3.
+'   Exactly the same form as EnsureView2 (9.9a). QI from the base m_pView
+'   (ICoreWebView2_3 : ICoreWebView2_2 : ICoreWebView2 is single inheritance, so
+'    it can be taken out of the base in one step).
 '
-'   SetVirtualHostNameToFolderMapping (vtable 71) を叩く前提の基盤。
+'   The foundation for calling SetVirtualHostNameToFolderMapping (vtable 71).
 '
 '   IID_ICoreWebView2_3 = {A0D6DF20-3B92-416D-AA0C-437A9C727857}
 '     (WebView2.h: 0xA0D6DF20,0x3B92,0x416D,{0xAA,0x0C,0x43,0x7A,0x9C,0x72,0x78,0x57})
 '
-'   戻り値: True なら m_pView3 が有効 (取得成功 or 既に保持済み)
+'   Return value: True if m_pView3 is valid (acquired successfully or already held)
 ' ============================================================
 Private Function EnsureView3() As Boolean
     If m_pView3 <> 0 Then
@@ -3552,39 +3585,39 @@ Private Function EnsureView3() As Boolean
         Exit Function
     End If
     If m_pView = 0 Then
-        Debug.Print "Wv2Pane.EnsureView3: m_pView が未取得"
+        Debug.Print "Wv2Pane.EnsureView3: m_pView is not acquired"
         Exit Function
     End If
 
-    ' --- IID_ICoreWebView2_3 をローカル GUID 構造体に組み立てる ---
-    '   FillGUID は Wv2Thunks の Public Sub (第9.9a で Public 昇格)
+    ' --- Assemble IID_ICoreWebView2_3 into a local GUID structure ---
+    '   FillGUID is a Public Sub of Wv2Thunks (promoted to Public in 9.9a)
     Dim iidView3 As GUID
     FillGUID iidView3, "A0D6DF20-3B92-416D-AA0C-437A9C727857"
 
-    ' --- QueryInterface(riid, &ppv) を叩く (vtable index 0) ---
+    ' --- Fire QueryInterface(riid, &ppv) (vtable index 0) ---
     Dim pv As LongPtr
     Dim hr As Long
     hr = dcf(m_pView, 0, "View.QueryInterface(ICoreWebView2_3)", _
              VarPtr(iidView3), VarPtr(pv))
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.EnsureView3: QueryInterface 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.EnsureView3: QueryInterface failed hr=&H" & Hex(hr)
         Exit Function
     End If
     If pv = 0 Then
-        Debug.Print "Wv2Pane.EnsureView3: QueryInterface 成功だが pv が 0"
+        Debug.Print "Wv2Pane.EnsureView3: QueryInterface succeeded but pv is 0"
         Exit Function
     End If
 
     m_pView3 = pv
-    Debug.Print "Wv2Pane.EnsureView3: m_pView3 取得 = " & m_pView3
+    Debug.Print "Wv2Pane.EnsureView3: m_pView3 acquired = " & m_pView3
     EnsureView3 = True
 End Function
 
 
 ' ============================================================
-' View3_Ensure (第9.10d-2a で新規、Public 検証用ラッパ)
-'   Immediate から ?UserForm1.GetActivePane.View3_Ensure で m_pView3 取得を確認。
-'   View2_Ensure (第9.9a) と同形。
+' View3_Ensure (new in 9.10d-2a, Public verification wrapper)
+'   Confirms m_pView3 acquisition from Immediate with ?UserForm1.GetActivePane.View3_Ensure.
+'   Same form as View2_Ensure (9.9a).
 ' ============================================================
 Public Function View3_Ensure() As Boolean
     View3_Ensure = EnsureView3()
@@ -3592,32 +3625,32 @@ End Function
 
 
 ' ============================================================
-' View3_SetVirtualHostNameToFolderMapping (第9.10d-2a で新規、ICoreWebView2_3)
+' View3_SetVirtualHostNameToFolderMapping (new in 9.10d-2a, ICoreWebView2_3)
 '
-'   ICoreWebView2_3::SetVirtualHostNameToFolderMapping (vtable index 71) を呼び、
-'   ローカルフォルダを仮想ホスト名にマッピングする。これにより
-'   https://<hostName>/ という secure origin でローカルファイルを配信でき、
-'   about:blank origin (仕様事実 6) の pushState/replaceState 制約を回避できる。
+'   Calls ICoreWebView2_3::SetVirtualHostNameToFolderMapping (vtable index 71) to
+'   map a local folder to a virtual host name. This allows
+'   serving local files from a secure origin https://<hostName>/, avoiding
+'   the pushState/replaceState restriction of the about:blank origin (spec fact 6).
 '
-'   ★これは単純引数系メソッド★ COM オブジェクト (ハンドラ) を WebView2 に
-'   渡さないので、設計原則 45 (VTABLE_OBJ_OFFSET) は不要。View_Navigate の
-'   ような文字列引数系を見本にする (View_AddNavigationStarting 等のハンドラ系は
-'   見本にしない)。
+'   *This is a simple-argument method* It does not pass a COM object (handler) to WebView2,
+'   so design principle 45 (VTABLE_OBJ_OFFSET) is not needed. A string-argument type such as View_Navigate
+'   is the model (handler types such as View_AddNavigationStarting are not
+'   the model).
 '
-'   シグネチャ (WebView2.h):
+'   Signature (WebView2.h):
 '     HRESULT SetVirtualHostNameToFolderMapping(
-'       LPCWSTR hostName,     ' 仮想ホスト名 (例 "appassets.example")
-'       LPCWSTR folderPath,   ' マッピング先ローカルフォルダの絶対パス
+'       LPCWSTR hostName,     ' virtual host name (e.g. "appassets.example")
+'       LPCWSTR folderPath,   ' absolute path of the local folder to map to
 '       COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND accessKind)  ' DENY=0/ALLOW=1/DENY_CORS=2
 '
-'   ★呼び出しタイミング★ Navigate の前に設定する必要がある。かつ View3 が
-'   必要なので、先に EnsureView3 を通す。
+'   *Timing of the call* Must be set before Navigate. And since View3 is
+'   needed, go through EnsureView3 first.
 '
-'   accessKind は Win32 の enum (4 byte int)。利用者が選べるよう引数で受ける
-'   (通常は 1 = ALLOW を渡す)。dcf には Long としてそのまま渡す
-'   (put_Handled 1& と同じ、単純な整数引数)。
+'   accessKind is a Win32 enum (4-byte int). It is accepted as an argument so the user can choose
+'   (normally pass 1 = ALLOW). Pass it to dcf as a Long as is
+'   (a simple integer argument, same as put_Handled 1&).
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View3_SetVirtualHostNameToFolderMapping( _
     ByVal hostName As String, _
@@ -3625,7 +3658,7 @@ Public Function View3_SetVirtualHostNameToFolderMapping( _
     ByVal accessKind As Long) As Long
 
     If Not EnsureView3() Then
-        Debug.Print "Wv2Pane.View3_SetVirtualHostNameToFolderMapping: EnsureView3 失敗"
+        Debug.Print "Wv2Pane.View3_SetVirtualHostNameToFolderMapping: EnsureView3 failed"
         View3_SetVirtualHostNameToFolderMapping = &H80004003   ' E_POINTER
         Exit Function
     End If
@@ -3635,7 +3668,7 @@ Public Function View3_SetVirtualHostNameToFolderMapping( _
              StrPtr(hostName), StrPtr(folderPath), accessKind)
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View3_SetVirtualHostNameToFolderMapping: 失敗 hr=&H" & _
+        Debug.Print "Wv2Pane.View3_SetVirtualHostNameToFolderMapping: failed hr=&H" & _
                     Hex(hr) & " (host=" & hostName & ", folder=" & folderPath & ")"
     Else
         Debug.Print "Wv2Pane.View3_SetVirtualHostNameToFolderMapping OK: https://" & _
@@ -3649,38 +3682,38 @@ End Function
 ' ============================================================
 ' Ctrl_Close (Controller vtable 24)
 '
-'   WebView2 controller を明示的に閉じる。Controller の寿命を VBA 側から
-'   即座に終わらせたい場合に使う。
+'   Explicitly closes the WebView2 controller. Used when you want to end the Controller's lifetime
+'   immediately from the VBA side.
 '
-'   第9.8c での拡張 (案 E 1+3 ハイブリッド):
-'     Close 後の安全性を高めるため、以下を実施:
-'       (1) 通常通り Controller::Close を撃つ (vtable 24)
-'       (2) m_pSettings / m_pView2 / m_pView / m_pCtrl をローカルにキャッシュして
-'           VBA 側でも Release を撃ち、メンバを 0 にクリア
-'           (第9.9a で m_pView2 を追加、Release 順序は子から親へ厳格 = 設計原則 43)
-'       (3) m_persistentTokens を 0 にクリア (Cleanup の二重 remove 防止)
-'           ※ 永続ハンドラは WebView2 側が Close で勝手に Release してくれるので、
-'              VBA 側で remove_xxx を撃ってはならない (= 既に refCount=0 の
-'              スロットに remove_xxx を撃つと AV のリスク)
-'       (4) m_closed = True を立てる (View_xxx / Settings_xxx の早期 return)
-'       (5) m_state = Cs_Failed (Init 直後とは異なる状態として示す)
+'   Extension in 9.8c (option E 1+3 hybrid):
+'     To improve safety after Close, the following is done:
+'       (1) Fire Controller::Close as usual (vtable 24)
+'       (2) Cache m_pSettings / m_pView2 / m_pView / m_pCtrl locally,
+'           Release them on the VBA side too, and clear the members to 0
+'           (m_pView2 added in 9.9a; Release order strictly child to parent = design principle 43)
+'       (3) Clear m_persistentTokens to 0 (prevents double remove in Cleanup)
+'           * Persistent handlers are Released by WebView2 itself on Close, so
+'              the VBA side must not fire remove_xxx (= firing remove_xxx at a
+'              slot whose refCount is already 0 risks an AV)
+'       (4) Set m_closed = True (early return in View_xxx / Settings_xxx)
+'       (5) m_state = Cs_Failed (to show it as a state different from right after Init)
 '
-'   これにより:
-'     - Close 後に Class_Terminate が走っても、CleanupAllPersistentHandlers は
-'       m_persistentTokens がすべて 0 なのでスキップ (= 安全)
-'     - Release も m_pSettings/m_pView2/m_pView/m_pCtrl がすべて 0 なのでスキップ
-'     - Close 後に利用者が誤って View_xxx を叩いても m_closed で早期 return
+'   As a result:
+'     - Even if Class_Terminate runs after Close, CleanupAllPersistentHandlers skips
+'       because m_persistentTokens are all 0 (= safe)
+'     - Release is also skipped because m_pSettings/m_pView2/m_pView/m_pCtrl are all 0
+'     - Even if the user mistakenly calls View_xxx after Close, m_closed causes an early return
 '
-'   注意:
-'     - Ctrl_Close の戻り値は Controller::Close 自体の HRESULT
-'       (= 後続の VBA 側クリア処理で失敗しても、戻り値には影響しない)
-'     - 同じ Wv2Pane インスタンスで再度 Init を呼ぶ用途は想定していない
-'       (= 再利用するなら新規 New Wv2Pane で別インスタンスを作る)
+'   Notes:
+'     - The return value of Ctrl_Close is the HRESULT of Controller::Close itself
+'       (= even if the later VBA-side clear processing fails, the return value is unaffected)
+'     - Calling Init again on the same Wv2Pane instance is not an intended use
+'       (= to reuse, create a separate instance with a new New Wv2Pane)
 ' ============================================================
 Public Function Ctrl_Close() As Long
     If m_closed Then
-        Debug.Print "Wv2Pane.Ctrl_Close: 既に Close 済み、無視"
-        Ctrl_Close = 0  ' 二重 Close は無害なので S_OK 返却
+        Debug.Print "Wv2Pane.Ctrl_Close: already Closed, ignoring"
+        Ctrl_Close = 0  ' a double Close is harmless, so return S_OK
         Exit Function
     End If
     If m_pCtrl = 0 Then
@@ -3692,28 +3725,28 @@ Public Function Ctrl_Close() As Long
     Dim hr As Long
     hr = dcf(m_pCtrl, 24, "Ctrl.Close")
 
-    ' --- (2) (3) (4) (5): Close 後の状態に遷移 ---
+    ' --- (2) (3) (4) (5): transition to the post-Close state ---
     '
-    ' Close を撃った時点で WebView2 ランタイム側は登録済みハンドラを Release 済み
-    ' のはず (実機検証で観察、第9.8b の知見「Ctrl_Close の副作用」)。
-    ' その状態で VBA 側も m_pSettings/m_pView2/m_pView/m_pCtrl の Release を撃って、
-    ' VBA 側の AddRef 分を清算する。
+    ' At the point Close is fired, the WebView2 runtime side should already have Released
+    ' the registered handlers (observed on a real machine, the finding of 9.8b "side effects of Ctrl_Close").
+    ' In that state, the VBA side also fires Release on m_pSettings/m_pView2/m_pView/m_pCtrl
+    ' to settle the VBA-side AddRef share.
     '
-    ' 順序は Class_Terminate と同じ Settings → View2 → View → Ctrl (子から親へ厳格、
-    ' 第9.9a で m_pView2 を追加、設計原則 43)。
+    ' The order is the same as Class_Terminate: Settings -> View2 -> View -> Ctrl (strictly child to parent,
+    ' m_pView2 added in 9.9a, design principle 43).
     If m_pSettings <> 0 Then
         Debug.Print "Wv2Pane.Ctrl_Close: Releasing m_pSettings = " & m_pSettings
         ComRelease m_pSettings
         m_pSettings = 0
     End If
     If m_pView3 <> 0 Then
-        ' 第9.10d-2a で追加: View3 は最派生 IF、m_pView2 より先に Release (設計原則 51)。
+        ' Added in 9.10d-2a: View3 is the most derived IF, Release it before m_pView2 (design principle 51).
         Debug.Print "Wv2Pane.Ctrl_Close: Releasing m_pView3 = " & m_pView3
         ComRelease m_pView3
         m_pView3 = 0
     End If
     If m_pView2 <> 0 Then
-        ' 第9.9a で追加: View2 は View から QI で取り出した派生 IF、View より先に Release。
+        ' Added in 9.9a: View2 is a derived IF obtained from View by QI, Release it before View.
         Debug.Print "Wv2Pane.Ctrl_Close: Releasing m_pView2 = " & m_pView2
         ComRelease m_pView2
         m_pView2 = 0
@@ -3729,122 +3762,123 @@ Public Function Ctrl_Close() As Long
         m_pCtrl = 0
     End If
 
-    ' (3) 永続ハンドラの token を 0 にクリア:
-    '   WebView2 が Close で勝手に Release を撃っているので、
-    '   ここで remove_xxx を撃つと「既に解放済みのハンドラに remove を撃つ」
-    '   ことになり危険。token を 0 にすることで CleanupAllPersistentHandlers が
-    '   スキップする (token=0 の要素は処理しない実装になっている、第9.4a)。
+    ' (3) Clear the persistent handlers' tokens to 0:
+    '   WebView2 fires Release on its own at Close,
+    '   so firing remove_xxx here would mean "firing remove at an already released handler",
+    '   which is dangerous. Setting token to 0 makes CleanupAllPersistentHandlers
+    '   skip it (it is implemented not to process elements with token=0, 9.4a).
     '
-    '   第9.9b: ループ範囲を固定値から LBound/UBound に変更。
-    '   配列上限が HK_DOMContentLoaded に拡張されても自動追従する
-    '   (= CleanupAllPersistentHandlers と同じ「横展開自動化」の流儀)。
+    '   9.9b: changed the loop range from a fixed value to LBound/UBound.
+    '   It follows automatically even if the array upper limit is extended to HK_DOMContentLoaded
+    '   (= the same "automated horizontal rollout" style as CleanupAllPersistentHandlers).
     Dim k As Long
     For k = LBound(m_persistentHandlers) To UBound(m_persistentHandlers)
         m_persistentTokens(k) = 0^
         Set m_persistentHandlers(k) = Nothing
     Next k
 
-    ' (4) m_closed フラグを立てる
+    ' (4) Set the m_closed flag
     m_closed = True
-    m_state = Cs_Failed   ' Close 後は無効状態とみなす
+    m_state = Cs_Failed   ' regarded as an invalid state after Close
 
     Ctrl_Close = hr
 End Function
 
 
 ' ============================================================
-' 第9.8c 段階で追加: View_ExecuteScript + OnExecuteScriptCompleted
-'                  (案 a = 同時並行 OK、案 α = イベントコールバック方式、
-'                   案 X = 連番 callback ID 返却)
+' Added in stage 9.8c: View_ExecuteScript + OnExecuteScriptCompleted
+'                  (option a = concurrency OK, option alpha = event callback approach,
+'                   option X = returns a sequential callback ID)
 ' ============================================================
 
 
-' --- 任意の JavaScript を WebView2 内で実行 (View vtable 29) ---
+' --- Run arbitrary JavaScript inside WebView2 (View vtable 29) ---
 '
-'   引数:
-'     jsCode  : 実行する JS コード (String)
+'   Arguments:
+'     jsCode  : the JS code to run (String)
 '
-'   戻り値 (As Long):
-'     >= 1    : 採番された callback ID (正常な呼び出し開始)
-'     <= 0    : エラー (m_pView = 0、Close 済み、dcf 失敗等)
-'                 -1 → m_closed (Close 済み)
-'                 -2 → m_pView = 0 (View 未取得)
-'                 -3 → Acquire 失敗
-'                 -4 → dcf 失敗 (戻り値の絶対値は HRESULT の下位、
-'                       詳細は Debug.Print に出力)
+'   Return value (As Long):
+'     >= 1    : the assigned callback ID (the call started normally)
+'     <= 0    : error (m_pView = 0, already Closed, dcf failure, etc.)
+'                 -1 -> m_closed (already Closed)
+'                 -2 -> m_pView = 0 (View not acquired)
+'                 -3 -> Acquire failed
+'                 -4 -> dcf failed (the absolute value of the return is the low part of the HRESULT,
+'                       details are written to Debug.Print)
 '
-'   流れ:
-'     1. callback ID を採番 (m_executeScriptCounter を 1 増やす)
-'     2. AcquireHandlerFor(HK_ExecuteScriptCompleted, Me) で新規ハンドラ取得
-'     3. ハンドラに callbackId を設定 (CallbackId プロパティ Let)
-'     4. View::ExecuteScript(jsCode, handler.Slot) を撃つ
-'     5. ローカルの h を Nothing に倒す (= Wv2Pane は ComCallbackHandler を保持しない、
-'        WebView2 ランタイム側だけが AddRef 経由で握る状態にする)
-'     6. callback ID を返却
+'   Flow:
+'     1. Assign a callback ID (increment m_executeScriptCounter by 1)
+'     2. Get a new handler with AcquireHandlerFor(HK_ExecuteScriptCompleted, Me)
+'     3. Set callbackId on the handler (CallbackId property Let)
+'     4. Fire View::ExecuteScript(jsCode, handler.Slot)
+'     5. Set the local h to Nothing (= Wv2Pane does not hold the ComCallbackHandler;
+'        only the WebView2 runtime side holds it via AddRef)
+'     6. Return the callback ID
 '
-'   後続:
-'     WebView2 ランタイムが JS 実行 → 完了時に handler.Invoke を撃つ
-'     → ComCallbackHandler.Invoke[HK_ExecuteScriptCompleted] が走る
-'     → 動的バインディングで Wv2Pane.OnExecuteScriptCompleted が呼ばれる
-'     → WebView2 が handler を Release → refCount=0 → auto-released
+'   Afterwards:
+'     The WebView2 runtime runs the JS -> on completion fires handler.Invoke
+'     -> ComCallbackHandler.Invoke[HK_ExecuteScriptCompleted] runs
+'     -> Wv2Pane.OnExecuteScriptCompleted is called via dynamic binding
+'     -> WebView2 Releases the handler -> refCount=0 -> auto-released
 '
-'   同時並行性:
-'     利用者が View_ExecuteScript を 10 回連続で叩いても、それぞれが独立した
-'     スロット + 独立した callback ID を持つので干渉しない (案 a の核心)。
+'   Concurrency:
+'     Even if the user calls View_ExecuteScript 10 times in a row, each has an independent
+'     slot + an independent callback ID, so they do not interfere (the core of option a).
 Public Function View_ExecuteScript(ByVal jsCode As String) As Long
     If m_closed Then
-        Debug.Print "Wv2Pane.View_ExecuteScript: Close 済みのため拒否"
+        Debug.Print "Wv2Pane.View_ExecuteScript: rejected because already Closed"
         View_ExecuteScript = -1
         Exit Function
     End If
     If m_pView = 0 Then
-        Debug.Print "Wv2Pane.View_ExecuteScript: m_pView が未取得"
+        Debug.Print "Wv2Pane.View_ExecuteScript: m_pView is not acquired"
         View_ExecuteScript = -2
         Exit Function
     End If
 
-    ' --- 1. callback ID を採番 ---
+    ' --- 1. Assign a callback ID ---
     m_executeScriptCounter = m_executeScriptCounter + 1
     Dim cbid As Long
     cbid = m_executeScriptCounter
 
-    ' --- 2. ハンドラを Acquire ---
+    ' --- 2. Acquire a handler ---
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_ExecuteScriptCompleted, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_ExecuteScript: ハンドラの Acquire 失敗"
+        Debug.Print "Wv2Pane.View_ExecuteScript: handler Acquire failed"
         View_ExecuteScript = -3
         Exit Function
     End If
 
-    ' --- 3. callback ID を設定 ---
+    ' --- 3. Set the callback ID ---
     h.callbackId = cbid
 
-    ' --- 4. ExecuteScript を撃つ (vtable 29) ---
-    '   シグネチャ: HRESULT ExecuteScript(LPCWSTR javaScript, IExecuteScriptCompletedHandler*)
+    ' --- 4. Fire ExecuteScript (vtable 29) ---
+    '   Signature: HRESULT ExecuteScript(LPCWSTR javaScript, IExecuteScriptCompletedHandler*)
     '
-    '   重要: WebView2 に渡す「ハンドラ COM オブジェクト」のポインタは
-    '   h.Slot そのものではなく、h.Slot + VTABLE_OBJ_OFFSET。
-    '   サンクヘッダの先頭ではなく、サンク内の VTable オブジェクト部分を
-    '   指すアドレスを渡す必要がある (= 既存の add_NavigationStarting 等と
-    '   同じパターン、設計原則 8 系)。
+    '   Important: the pointer to the "handler COM object" passed to WebView2 is not
+    '   h.Slot itself but h.Slot + VTABLE_OBJ_OFFSET.
+    '   We must pass an address that points not at the head of the thunk header but at the VTable object part
+    '   inside the thunk (= the same pattern as the existing add_NavigationStarting etc.,
+    '   design principle 8 family).
     '
-    '   これを忘れると WebView2 がデタラメなアドレスを vtable として辿って
-    '   即クラッシュする。
+    '   If this is forgotten, WebView2 follows a bogus address as a vtable and
+    '   crashes immediately.
     Dim pVTableObj As LongPtr
     pVTableObj = h.Slot + VTABLE_OBJ_OFFSET
 
     Dim hr As Long
     hr = dcf(m_pView, 29, "View.ExecuteScript", StrPtr(jsCode), pVTableObj)
 
-    ' --- 5. ローカル参照を破棄 (Wv2Pane は保持しない) ---
-    '   WebView2 が AddRef を撃って自分で保持しているので、こちらは捨てて OK。
-    '   完了通知で m_owner (= Me Wv2Pane) を経由して呼ばれる。
+    ' --- 5. Discard the local reference (Wv2Pane does not keep it) ---
+    '   WebView2 fires AddRef and holds it itself, so it is fine for us to drop it.
+    '   It is called via m_owner (= Me Wv2Pane) on the completion notice.
+    If hr <> 0 Then Wv2Thunks.Thunks_DiscardHandler h   ' English fork: no completion will come
     Set h = Nothing
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_ExecuteScript: dcf 失敗 hr=&H" & Hex(hr) & _
-                    " (callbackId=" & cbid & " は破棄、ハンドラは即解放見込み)"
+        Debug.Print "Wv2Pane.View_ExecuteScript: dcf failed hr=&H" & Hex(hr) & _
+                    " (callbackId=" & cbid & " discarded, the handler is expected to be released immediately)"
         View_ExecuteScript = -4
         Exit Function
     End If
@@ -3856,68 +3890,68 @@ End Function
 
 
 ' ============================================================
-' View_ExecuteScriptSafe (第9.9c 段階で新規、JS 例外の構造化結果ヘルパー)
+' View_ExecuteScriptSafe (new in stage 9.9c, helper for structured results of JS exceptions)
 '
-'   ユーザーが指定した JS 式を try-catch で包んでから ExecuteScript に渡す。
-'   完了通知の resultJson が必ず以下のいずれかの構造化 JSON になる:
-'     成功時: {"ok":true, "value":<JS の戻り値>}
-'     失敗時: {"ok":false, "errorName":"<例外名>", "errorMessage":"<メッセージ>",
-'              "stack":"<スタックトレース>"}
+'   Wraps the JS expression specified by the user in try-catch and then passes it to ExecuteScript.
+'   The completion notice's resultJson is always one of the following structured JSONs:
+'     On success: {"ok":true, "value":<JS return value>}
+'     On failure: {"ok":false, "errorName":"<exception name>", "errorMessage":"<message>",
+'              "stack":"<stack trace>"}
 '
-'   これにより、9.8c で判明した「JS 例外時に HRESULT=S_OK + result=null」で
-'   区別不能だった問題を VBA 側で構造的に判別できるようになる。
+'   This makes it possible to structurally distinguish on the VBA side the problem found in 9.8c,
+'   where "on a JS exception HRESULT=S_OK + result=null" was indistinguishable.
 '
-'   設計判断 (たーぼーさん合意済み):
-'     ・F1: 名前は View_ExecuteScriptSafe (簡潔、Safe = try-catch で包む)
-'     ・F2: VBA 側では JSON 文字列のまま OnExecuteScriptCompleted に流す
-'           (VBA で JSON パースは 64bit で標準機能なし。利用者が InStr 等で簡易解析)
-'     ・F3: シンプル結合 (ユーザーコードの " エスケープは利用者の責任)
+'   Design decisions (agreed with tarboh):
+'     *F1: the name is View_ExecuteScriptSafe (concise; Safe = wrapped in try-catch)
+'     *F2: on the VBA side, flow the JSON string as is to OnExecuteScriptCompleted
+'           (64-bit VBA has no standard JSON parsing. Users do simple analysis with InStr etc.)
+'     *F3: simple concatenation (escaping of " in user code is the user's responsibility)
 '
-'   ★ 制約 (利用者への注意) ★
-'     ユーザーコードは「文」ではなく「式」でなければならない。
-'     (= var __r = (USER_CODE) で代入できる単一の式が前提)
+'   * Constraint (note for users) *
+'     The user code must be an "expression", not a "statement".
+'     (= it assumes a single expression assignable as var __r = (USER_CODE))
 '
-'     具体的に NG / OK の例:
-'       NG: "throw new Error('x')"   ← throw は文 (statement)。式の括弧内に
-'                                       置けないため、wrappedJs がパース段階で
-'                                       構文エラーになり、ExecuteScript は
-'                                       resultJson = "null" を返す
-'                                       (= try-catch には届かない)
+'     Concrete NG / OK examples:
+'       NG: "throw new Error('x')"   <- throw is a statement. It cannot be placed inside
+'                                       the parentheses of an expression, so wrappedJs
+'                                       becomes a syntax error at the parse stage, and ExecuteScript
+'                                       returns resultJson = "null"
+'                                       (= it never reaches try-catch)
 '       OK: "(()=>{ throw new Error('x') })()"
-'                                     ← 即時関数で包めば「式」として扱える
-'                                       (戻り値は throw が走るので決まらないが、
-'                                        catch 節が確実に発火する)
+'                                     <- wrapping in an immediately-invoked function makes it treatable as an "expression"
+'                                       (the return value is not determined because throw runs, but
+'                                        the catch clause definitely fires)
 '       OK: "(function(){ var x=1; return x+2; })()"
-'                                     ← 複数文 + return を即時関数で包む
-'       OK: "nonexistentFunction()"   ← 式 (関数呼び出し)。実行時の
-'                                       ReferenceError は catch で受けられる
+'                                     <- multiple statements + return wrapped in an immediately-invoked function
+'       OK: "nonexistentFunction()"   <- an expression (function call). A runtime
+'                                       ReferenceError can be caught by catch
 '
-'     ★ 実機検証 (第9.9c) で判明した事実 ★
-'       VBA 標準のドキュメントには書きにくいが、JS の構文エラーは
-'       ExecuteScript の HRESULT=S_OK + result="null" で返ってくる。
-'       実行時例外 (ReferenceError 等) と区別できない。本ヘルパーは
-'       実行時例外には対応するが、構文エラーには対応できない。
-'       (構文エラーを catch する正攻法は eval() を使うことだが過剰)
+'     * Fact found by real-machine verification (9.9c) *
+'       Hard to write in standard VBA documentation, but a JS syntax error
+'       comes back from ExecuteScript as HRESULT=S_OK + result="null".
+'       It cannot be distinguished from a runtime exception (ReferenceError etc.). This helper
+'       handles runtime exceptions but cannot handle syntax errors.
+'       (The proper way to catch syntax errors is to use eval(), but that is excessive)
 '
-'     文字列リテラルに " を含めたいときは利用者側で \" にする
-'       (VBA の "" エスケープではなく JS の \" エスケープ)。
+'     To include " in a string literal, the user side writes \"
+'       (JS's \" escape, not VBA's "" escape).
 '
-'   使用例:
+'   Usage example:
 '     cbid = m_pane.View_ExecuteScriptSafe("1 + 2")
-'       → resultJson = "{\"ok\":true,\"value\":3}"
+'       -> resultJson = "{\"ok\":true,\"value\":3}"
 '     cbid = m_pane.View_ExecuteScriptSafe("(()=>{throw new Error('boom')})()")
-'       → resultJson = "{\"ok\":false,\"errorName\":\"Error\",
+'       -> resultJson = "{\"ok\":false,\"errorName\":\"Error\",
 '                         \"errorMessage\":\"boom\",\"stack\":\"...\"}"
-'       ※ "throw new Error('boom')" を直接渡すと resultJson="null" になる
-'         (上の制約参照)
+'       * Passing "throw new Error('boom')" directly gives resultJson="null"
+'         (see the constraint above)
 '     cbid = m_pane.View_ExecuteScriptSafe("nonexistentFunction()")
-'       → resultJson = "{\"ok\":false,\"errorName\":\"ReferenceError\",...}"
+'       -> resultJson = "{\"ok\":false,\"errorName\":\"ReferenceError\",...}"
 '
-'   戻り値: View_ExecuteScript と同じ (callback ID か負のエラーコード)
+'   Return value: same as View_ExecuteScript (a callback ID or a negative error code)
 ' ============================================================
 Public Function View_ExecuteScriptSafe(ByVal userCode As String) As Long
-    ' ユーザーコードを try-catch で包んで構造化 JSON を返す JS 式に組み立てる。
-    ' 改行は入れず 1 行で組む (ExecuteScript はソースマップが意味を持たないので可読性 < 単純性)。
+    ' Assemble the user code into a JS expression that is wrapped in try-catch and returns structured JSON.
+    ' Build it on one line with no line breaks (source maps are meaningless for ExecuteScript, so readability < simplicity).
     Dim wrappedJs As String
     wrappedJs = "(function(){try{var __r=(" & userCode & ");" & _
                 "return {ok:true,value:__r};}" & _
@@ -3929,56 +3963,56 @@ Public Function View_ExecuteScriptSafe(ByVal userCode As String) As Long
 End Function
 
 
-' --- ExecuteScript の完了通知を受け取る (動的バインディング受け取り口) ---
+' --- Receive the completion notice of ExecuteScript (dynamic-binding receiver) ---
 '
-'   ComCallbackHandler.Handler_Invoke[HK_ExecuteScriptCompleted] から
-'   m_owner.OnExecuteScriptCompleted で呼ばれる。Public でなければ動的バインディングで
-'   呼べないため Public 必須 (= 設計原則 14 系)。
+'   Called from ComCallbackHandler.Handler_Invoke[HK_ExecuteScriptCompleted] via
+'   m_owner.OnExecuteScriptCompleted. It cannot be called by dynamic binding unless Public,
+'   so Public is required (= design principle 14 family).
 '
-'   引数:
-'     callbackId  : View_ExecuteScript が返した連番 ID
+'   Arguments:
+'     callbackId  : the sequential ID that View_ExecuteScript returned
 '     errorCode   : HRESULT (0 = S_OK)
-'     resultJson  : JS の戻り値を JSON エンコードした文字列
-'                   例:
-'                     ExecuteScript("1 + 2")     → "3"
-'                     ExecuteScript("'foo'")     → "\"foo\""
+'     resultJson  : the JS return value as a JSON-encoded string
+'                   Examples:
+'                     ExecuteScript("1 + 2")     -> "3"
+'                     ExecuteScript("'foo'")     -> "\"foo\""
 '                     ExecuteScript("document.title")
-'                                                → "\"検索 - Microsoft Bing\""
-'                     ExecuteScript("undefined") → "null" (※ undefined は JSON 化で null)
-'                     ExecuteScript("throw 1")   → "" (errorCode が非 0)
+'                                                -> "\"Search - Microsoft Bing\""
+'                     ExecuteScript("undefined") -> "null" (* undefined becomes null when JSON-ized)
+'                     ExecuteScript("throw 1")   -> "" (errorCode is non-0)
 '
-'   案 α 第二実装 (第9.9c で拡張):
-'     1. Wv2Pane 内のログ出力 (= 9.8c 第一実装、リグレッション切り分け用に残す)
-'     2. UserForm1.OnExecuteScriptResult への通知 (= 9.9c で追加)
+'   Option alpha second implementation (extended in 9.9c):
+'     1. Log output inside Wv2Pane (= the 9.8c first implementation, kept for isolating regressions)
+'     2. Notification to UserForm1.OnExecuteScriptResult (= added in 9.9c)
 '
-'   ★ UserForm1 への通知の設計判断 (案 E1-a-i) ★
-'     Wv2Pane は UserForm1 への参照を **保持しない**。VBA の UserForm は
-'     モジュールレベルでグローバルにアクセスできる (= UserForm1 と書けば
-'     自動生成される) ので、ここで直接 UserForm1.OnExecuteScriptResult を
-'     呼べば循環参照なしで通知できる。
+'   * Design decision on notifying UserForm1 (option E1-a-i) *
+'     Wv2Pane does **not hold** a reference to UserForm1. A VBA UserForm is
+'     globally accessible at module level (= writing UserForm1 auto-creates
+'     it), so calling UserForm1.OnExecuteScriptResult directly here
+'     notifies without a circular reference.
 '
-'     これは「Wv2Pane が UserForm1 の存在を知っている」という意味で
-'     階層的にはやや乱暴 (= 通常は下位が上位を知らない方が綺麗) だが、
-'     9.10 で TabWebView2 が入る際に「結果通知を上位に流す経路」自体が
-'     再設計されるので、9.9c では暫定として直接呼びの形にする。
+'     This is somewhat crude hierarchically in the sense that "Wv2Pane knows UserForm1 exists"
+'     (= normally it is cleaner for the lower level not to know the upper), but
+'     when TabWebView2 comes in at 9.10, the "path that carries result notifications upward" itself
+'     will be redesigned, so 9.9c makes it a direct call as a provisional measure.
 '
-'     UserForm1 側に On Error Resume Next 等の防御は入れないので、
-'     UserForm1.OnExecuteScriptResult はエラーを投げない実装にする。
+'     No defenses such as On Error Resume Next are put on the UserForm1 side, so
+'     UserForm1.OnExecuteScriptResult is to be implemented so that it throws no errors.
 Public Sub OnExecuteScriptCompleted( _
     ByVal callbackId As Long, _
     ByVal errorCode As Long, _
     ByVal resultJson As String)
 
-    ' --- (1) Wv2Pane 内のログ (9.8c で実装、案 E2-X = 残す) ---
+    ' --- (1) Log inside Wv2Pane (implemented in 9.8c, option E2-X = keep) ---
     Debug.Print "Wv2Pane.OnExecuteScriptCompleted: callbackId=" & callbackId & _
                 ", errorCode=" & errorCode & _
                 ", resultJson=" & resultJson
 
-    ' --- (1b) D-1: 保留テーブルの更新 (論点2・論点5) ---
-    '   EvalSync が待っている callbackId なら結果を書き込む。
-    '   既に破棄済み (タイムアウト後の遅延到着) ならログを残して捨てる。
-    '   EvalSync を経由しない View_ExecuteScript 直呼びの結果はテーブルに
-    '   居ないので、何もせず素通りする。
+    ' --- (1b) D-1: update the pending table (issues 2 and 5) ---
+    '   If it is a callbackId that EvalSync is waiting on, write the result.
+    '   If already discarded (late arrival after a timeout), leave a log and discard.
+    '   Results of direct View_ExecuteScript calls that do not go through EvalSync are not
+    '   in the table, so they just pass through.
     Dim k As String
     Dim ent As Variant
     Dim found As Boolean
@@ -3994,8 +4028,8 @@ Public Sub OnExecuteScriptCompleted( _
 
         If found Then
             If ent(0) = EVAL_DISCARDED Then
-                Debug.Print "Wv2Pane.OnExecuteScriptCompleted: ★破棄済み★ の " & k & _
-                            " に遅延到着したので捨てる (タイムアウト後の完了)"
+                Debug.Print "Wv2Pane.OnExecuteScriptCompleted: *discarded* " & k & _
+                            " arrived late, so discarding it (completion after a timeout)"
                 m_evalPending.Remove k
             Else
                 m_evalPending.Remove k
@@ -4004,48 +4038,51 @@ Public Sub OnExecuteScriptCompleted( _
         End If
     End If
 
-    ' --- (2) UserForm1 への通知 (第9.9c で追加、案 α 第二実装) ---
-    '   VBA のグローバル UserForm 参照を活用 (循環参照なし、案 E1-a-i)。
-    '   UserForm1 が存在しないケース (起動していない、または既に Terminate 済み)
-    '   への配慮: VBA は UserForm1 を参照しただけで自動生成するので、
-    '   起動していなくても呼び出し自体は通る。Terminate 済みの場合は
-    '   再び自動生成 + Initialize される。
-    '   ただし、本来 ExecuteScript の完了通知は Wv2Pane が生きている
-    '   = UserForm1 が表示中であるべき状況でしか飛んでこないので、
-    '   この自動生成パスは現実的には踏まれない。
-    UserForm1.OnExecuteScriptResult callbackId, errorCode, resultJson
+    ' --- (2) Notification to UserForm1 (added in 9.9c, option alpha second implementation) ---
+    '   Use VBA's global UserForm reference (no circular reference, option E1-a-i).
+    '   Regarding the case where UserForm1 does not exist (not launched, or already Terminated):
+    '   VBA auto-creates UserForm1 merely by referencing it, so
+    '   the call itself goes through even if it is not launched. If already Terminated,
+    '   it is auto-created + Initialized again.
+    '   However, the completion notice of ExecuteScript originally only arrives when Wv2Pane is alive
+    '   = UserForm1 should be on display, so
+    '   this auto-creation path is realistically never taken.
+    ' English fork: no longer calls UserForm1.OnExecuteScriptResult. That made this class
+    ' uncompilable without UserForm1, and a late completion after the form was unloaded
+    ' silently re-created a hidden UserForm1 (running UserForm_Initialize). The form's
+    ' handler only printed the same values that (1) above already prints.
 End Sub
 
 
 ' ============================================================
-' ★D-1 の本体: EvalSync とその周辺★
+' *The body of D-1: EvalSync and its surroundings*
 ' ============================================================
 
 
 ' ============================================================
-' EvalSync (D-1) - JS 式を撃って戻り値を同期的に受け取る
+' EvalSync (D-1) - fire a JS expression and receive the return value synchronously
 '
-'   引数:
-'     jsExpr     : 評価する JS ★式★ (文は不可。複数文は即時関数で包む)
-'     timeoutSec : 待ち時間の上限 (既定 5 秒)。0 以下なら既定値に丸める。
+'   Arguments:
+'     jsExpr     : the JS *expression* to evaluate (statements not allowed. Wrap multiple statements in an immediately-invoked function)
+'     timeoutSec : upper limit of the wait (default 5 seconds). If 0 or less, rounded to the default.
 '
-'   戻り値 (As String):
-'     成功 : JS の戻り値を JSON.stringify した文字列。LastEvalOk = True
-'     失敗 : 空文字。理由は LastEvalError に入る。LastEvalOk = False
+'   Return value (As String):
+'     Success : the string obtained by JSON.stringify of the JS return value. LastEvalOk = True
+'     Failure : an empty string. The reason goes into LastEvalError. LastEvalOk = False
 '
-'   流れ:
-'     1. 拒否条件を確認 (Close 済み / View 未取得 / ★in-callback★)
-'     2. View_ExecuteScriptSafe で JSON.stringify(式) を撃って callbackId を得る
-'     3. 保留テーブルに待機中エントリを登録
-'     4. DoEvents を回して完了を待つ (WaitPaneReady と同じ形)
-'     5. 完了 → JSON をほどいて返す / 超過 → 破棄済みにして空文字を返す
+'   Flow:
+'     1. Check rejection conditions (already Closed / View not acquired / *in-callback*)
+'     2. Fire JSON.stringify(expression) with View_ExecuteScriptSafe and get a callbackId
+'     3. Register a waiting entry in the pending table
+'     4. Spin DoEvents to wait for completion (same form as WaitPaneReady)
+'     5. Completed -> unpack the JSON and return it / exceeded -> mark as discarded and return an empty string
 '
-'   ★なぜ JSON.stringify で包むのか (事後報告 (e))★
-'     Safe ラッパーは ok と value を返すが、value が数値・オブジェクト・文字列と
-'     型が揺れると VBA 側の取り出しが型ごとに分岐してしまう。JSON.stringify を
-'     通しておけば value は★常に文字列★になり、限定パーサ 1 本で足りる。
+'   *Why wrap with JSON.stringify (post-hoc report (e))*
+'     The Safe wrapper returns ok and value, but if the type of value varies among number, object and string,
+'     extraction on the VBA side would branch per type. Passing through JSON.stringify
+'     makes value *always a string*, and a single limited parser suffices.
 '
-'   ★DoEvents ループ中はブレーク/ステップ実行しないこと (仕様事実 20)★
+'   *Do not break / step through during the DoEvents loop (spec fact 20)*
 ' ============================================================
 Public Function EvalSync(ByVal jsExpr As String, _
                          Optional ByVal timeoutSec As Single = 5) As String
@@ -4065,29 +4102,29 @@ Public Function EvalSync(ByVal jsExpr As String, _
     m_lastEvalOk = False
     m_lastEvalError = ""
 
-    ' --- 1. 拒否条件 ---
+    ' --- 1. Rejection conditions ---
     If m_closed Then
         m_lastEvalError = "closed"
-        Wv2Log.LogW "Wv2Pane.EvalSync: Close 済みのため拒否"
+        Wv2Log.LogW "Wv2Pane.EvalSync: rejected because already Closed"
         EvalSync = ""
         Exit Function
     End If
 
     If m_pView = 0 Then
         m_lastEvalError = "no-view"
-        Wv2Log.LogW "Wv2Pane.EvalSync: m_pView が未取得"
+        Wv2Log.LogW "Wv2Pane.EvalSync: m_pView is not acquired"
         EvalSync = ""
         Exit Function
     End If
 
     If m_inCallback > 0 Then
-        ' ★論点7 のガード★ ここで撃つと仕様事実 14 でタイムアウトまで固まる。
+        ' *Guard of issue 7* Firing here would hang until the timeout because of spec fact 14.
         m_lastEvalError = "in-callback"
-        Wv2Log.LogW "Wv2Pane.EvalSync: ★イベントハンドラ内から呼ばれたので拒否★ " & _
-                    "(深さ=" & m_inCallback & ")。ハンドラ内で JS の結果が要るときは " & _
-                    "SafeTimer で一拍置いてから呼ぶこと (仕様事実 14)。" & _
-                    "ハンドラ外なのにこれが出るならカウンタ残留を疑い " & _
-                    "ResetCallbackGuard を実行すること。"
+        Wv2Log.LogW "Wv2Pane.EvalSync: *rejected because it was called from inside an event handler* " & _
+                    "(depth=" & m_inCallback & "). When you need the JS result inside a handler, " & _
+                    "call it after a beat via SafeTimer (spec fact 14). " & _
+                    "If this appears even though you are outside a handler, suspect a leftover counter and " & _
+                    "run ResetCallbackGuard."
         EvalSync = ""
         Exit Function
     End If
@@ -4095,34 +4132,34 @@ Public Function EvalSync(ByVal jsExpr As String, _
     If timeoutSec <= 0 Then timeoutSec = EVAL_TIMEOUT_DEFAULT
     If m_evalPending Is Nothing Then Set m_evalPending = New Collection
 
-    ' --- 2. Safe ラッパー経由で撃つ (論点4) ---
+    ' --- 2. Fire via the Safe wrapper (issue 4) ---
     cbid = View_ExecuteScriptSafe("JSON.stringify(" & jsExpr & ")")
     If cbid <= 0 Then
         m_lastEvalError = "execute-failed(" & cbid & ")"
-        Wv2Log.LogE "Wv2Pane.EvalSync: ExecuteScript の発行に失敗 rc=" & cbid
+        Wv2Log.LogE "Wv2Pane.EvalSync: failed to issue ExecuteScript rc=" & cbid
         EvalSync = ""
         Exit Function
     End If
 
-    ' --- 3. 保留テーブルに登録 ---
+    ' --- 3. Register in the pending table ---
     k = "cb" & cbid
     m_evalPending.Add Array(EVAL_WAITING, 0&, ""), k
 
     m_evalDepth = m_evalDepth + 1
     If m_evalDepth > 1 Then
-        Wv2Log.LogD "Wv2Pane.EvalSync: ネスト実行 深さ=" & m_evalDepth & " (" & k & ")"
+        Wv2Log.LogD "Wv2Pane.EvalSync: nested execution depth=" & m_evalDepth & " (" & k & ")"
     End If
 
-    ' --- 4. 完了待ち (WaitPaneReady と同じ形) ---
+    ' --- 4. Wait for completion (same form as WaitPaneReady) ---
     timedOut = False
     t = Timer
     Do
         DoEvents
         ent = m_evalPending(k)
         If ent(0) = EVAL_DONE Then Exit Do
-        If (Timer - t) > timeoutSec Then
+        If ElapsedSec(t) > timeoutSec Then
             timedOut = True
-            ' ★論点5★ 消さずに破棄済みで残す。遅延到着を捨てるため。
+            ' *Issue 5* Do not delete it; leave it marked discarded. To discard late arrivals.
             m_evalPending.Remove k
             m_evalPending.Add Array(EVAL_DISCARDED, 0&, ""), k
             Exit Do
@@ -4133,20 +4170,20 @@ Public Function EvalSync(ByVal jsExpr As String, _
 
     If timedOut Then
         m_lastEvalError = "timeout(" & timeoutSec & "s)"
-        Wv2Log.LogE "Wv2Pane.EvalSync: ★タイムアウト★ " & k & " を破棄済みにした " & _
-                    "(遅れて完了通知が来ても捨てる)"
+        Wv2Log.LogE "Wv2Pane.EvalSync: *timeout* marked " & k & " as discarded " & _
+                    "(a completion notice arriving late will be discarded)"
         EvalSync = ""
         Exit Function
     End If
 
-    ' --- 5. 結果をほどく ---
+    ' --- 5. Unpack the result ---
     errCode = ent(1)
     resultJson = ent(2)
     m_evalPending.Remove k
 
     If errCode <> 0 Then
         m_lastEvalError = "hresult(&H" & Hex$(errCode) & ")"
-        Wv2Log.LogE "Wv2Pane.EvalSync: ExecuteScript が失敗 " & m_lastEvalError
+        Wv2Log.LogE "Wv2Pane.EvalSync: ExecuteScript failed " & m_lastEvalError
         EvalSync = ""
         Exit Function
     End If
@@ -4156,8 +4193,8 @@ Public Function EvalSync(ByVal jsExpr As String, _
             m_lastEvalOk = True
             res = v
         Else
-            ' JSON.stringify(undefined) は undefined を返し、外側の stringify で
-            ' value キーごと消える。これは戻り値が undefined だった合図。
+            ' JSON.stringify(undefined) returns undefined, and the outer stringify drops
+            ' the value key entirely. This is the signal that the return value was undefined.
             m_lastEvalOk = True
             res = "undefined"
         End If
@@ -4166,11 +4203,11 @@ Public Function EvalSync(ByVal jsExpr As String, _
         Wv2Json.JsonPickStr resultJson, "errorName", eName
         Wv2Json.JsonPickStr resultJson, "errorMessage", eMsg
         m_lastEvalError = eName & ": " & eMsg
-        Wv2Log.LogW "Wv2Pane.EvalSync: JS 例外 " & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.EvalSync: JS exception " & m_lastEvalError
 
     Else
-        ' Safe ラッパーは必ず ok を返すので、ここに来るのは JS の構文エラー
-        ' (ExecuteScript が S_OK + null を返すケース。第9.9c の実測)。
+        ' The Safe wrapper always returns ok, so reaching here means a JS syntax error
+        ' (the case where ExecuteScript returns S_OK + null. Measured in 9.9c).
         m_lastEvalError = "syntax-error-or-null (resultJson=" & Left$(resultJson, 60) & ")"
         Wv2Log.LogE "Wv2Pane.EvalSync: " & m_lastEvalError
     End If
@@ -4180,9 +4217,9 @@ End Function
 
 
 ' ============================================================
-' LastEvalOk / LastEvalError (D-1) - 直前の EvalSync の結果
-'   EvalSync が空文字を返したとき、それが「JS が空文字を返した」のか
-'   「失敗した」のかを区別するために使う。
+' LastEvalOk / LastEvalError (D-1) - the result of the previous EvalSync
+'   Used to tell, when EvalSync returned an empty string, whether it is "JS returned an empty string"
+'   or "it failed".
 ' ============================================================
 Public Property Get LastEvalOk() As Boolean
     LastEvalOk = m_lastEvalOk
@@ -4194,47 +4231,47 @@ End Property
 
 
 ' ============================================================
-' InCallbackDepth / ResetCallbackGuard / Debug_SetInCallback (D-1 論点7)
+' InCallbackDepth / ResetCallbackGuard / Debug_SetInCallback (D-1 issue 7)
 '
 '   ResetCallbackGuard:
-'     イベントハンドラが想定外の抜け方をしてカウンタが残った場合の緊急脱出口。
-'     ラッパーが必ず戻すので通常は不要だが、EvalSync が in-callback で
-'     拒否され続けるときはこれを叩く。
+'     An emergency exit for when an event handler exited in an unexpected way and the counter was left over.
+'     The wrapper always restores it so it is normally unnecessary, but when EvalSync keeps being
+'     rejected as in-callback, call this.
 '
 '   Debug_SetInCallback:
-'     ★検証専用★ ガードの発火を Test_D1_Guard から再現するための注入口。
-'     本番コードからは呼ばない (Debug_ 接頭辞は Wv2Browser の Debug_* と同じ規約)。
+'     *For verification only* An injection port for reproducing the guard firing from Test_D1_Guard.
+'     Not called from production code (the Debug_ prefix follows the same convention as Wv2Browser's Debug_*).
 ' ============================================================
 Public Property Get InCallbackDepth() As Long
     InCallbackDepth = m_inCallback
 End Property
 
 Public Sub ResetCallbackGuard()
-    Debug.Print "Wv2Pane.ResetCallbackGuard: m_inCallback = " & m_inCallback & " → 0"
+    Debug.Print "Wv2Pane.ResetCallbackGuard: m_inCallback = " & m_inCallback & " -> 0"
     m_inCallback = 0
 End Sub
 
 Public Sub Debug_SetInCallback(ByVal n As Long)
-    Debug.Print "Wv2Pane.Debug_SetInCallback: " & m_inCallback & " → " & n & " (検証専用)"
+    Debug.Print "Wv2Pane.Debug_SetInCallback: " & m_inCallback & " -> " & n & " (verification only)"
     m_inCallback = n
 End Sub
 
 
 ' ============================================================
-' JsQuote (D-2、Friend) - VBA 文字列を JS の文字列リテラルにする
+' JsQuote (D-2, Friend) - turn a VBA string into a JS string literal
 '
-'   ★VBA のソース上にバックスラッシュ + 二重引用符を書かないための唯一の口★
-'     Wv2Json.JsonEscape が引用符・バックスラッシュ・制御文字を JSON 仕様で
-'     エスケープし、それを Chr$(34) で括る。エスケープ列は★実行時に組み立てられる★
-'     ので、VBA のソースには現れない (プロジェクトの JS-in-VBA 規則に適合)。
+'   *The only entry that avoids writing backslash + double quote in VBA source*
+'     Wv2Json.JsonEscape escapes quotes, backslashes and control characters per the JSON spec,
+'     and it is wrapped with Chr$(34). The escape sequences are *assembled at run time*
+'     so they do not appear in the VBA source (conforms to the project's JS-in-VBA rule).
 '
-'   例:
-'     JsQuote("input[name='q']")   → "input[name='q']"          (そのまま)
-'     JsQuote("a[title=""x""]")    → 引用符が JSON 仕様でエスケープされた形になる
-'                                    (エスケープ列は★実行時に組み立てられる★)
-'     JsQuote("C:\temp")           → "C:\\temp"
+'   Examples:
+'     JsQuote("input[name='q']")   -> "input[name='q']"          (as is)
+'     JsQuote("a[title=""x""]")    -> the quotes become escaped per the JSON spec
+'                                    (the escape sequences are *assembled at run time*)
+'     JsQuote("C:\temp")           -> "C:\\temp"
 '
-'   Friend にしているのは Wv2Element.GetAttribute が属性名を包むのに使うため。
+'   It is Friend because Wv2Element.GetAttribute uses it to wrap attribute names.
 ' ============================================================
 Friend Function JsQuote(ByVal s As String) As String
     JsQuote = Chr$(34) & Wv2Json.JsonEscape(s) & Chr$(34)
@@ -4242,13 +4279,13 @@ End Function
 
 
 ' ============================================================
-' JsRegistryPrologue (D-2、Private) - レジストリの自己生成コード
+' JsRegistryPrologue (D-2, Private) - self-generating code for the registry
 '
-'   D-2 の全 JS 式の先頭に置く共通部分 (論点1 案c)。
-'   無ければ作り、変数 R にレジストリを束縛する。
-'   ★ここで作られた場合、世代は新しい値になる★ = 既存ハンドルは全て stale。
+'   The common part placed at the head of every D-2 JS expression (issue 1 option c).
+'   Creates it if missing and binds the registry to variable R.
+'   *If it was created here, the generation becomes a new value* = all existing handles become stale.
 '
-'   ★JS の文字列リテラルはシングルクォート★ (プロジェクト規則)。
+'   *JS string literals use single quotes* (project rule).
 ' ============================================================
 Private Function JsRegistryPrologue() As String
     JsRegistryPrologue = _
@@ -4259,26 +4296,26 @@ End Function
 
 
 ' ============================================================
-' GetElementById / QuerySelector (D-2) - 要素を 1 個探す
+' GetElementById / QuerySelector (D-2) - find one element
 '
-'   見つかれば Wv2Element を、見つからなければ Nothing を返す (論点4 案a)。
+'   Returns a Wv2Element if found, Nothing if not (issue 4 option a).
 '
-'   ★Nothing の意味は 2 通り★
-'     Nothing + LastEvalOk = True  … 本当に存在しない (正常)
-'     Nothing + LastEvalOk = False … 失敗。LastEvalError に理由
+'   *Nothing has two meanings*
+'     Nothing + LastEvalOk = True  ... really does not exist (normal)
+'     Nothing + LastEvalOk = False ... failure. The reason is in LastEvalError
 '
-'   使用例:
+'   Usage example:
 '     Dim p As Wv2Pane, el As Wv2Element
 '     Set p = UserForm1.GetActivePane
 '     Set el = p.QuerySelector("input[name='q']")
 '     If el Is Nothing Then
-'         Debug.Print "無い (ok=" & p.LastEvalOk & " err=" & p.LastEvalError & ")"
+'         Debug.Print "not found (ok=" & p.LastEvalOk & " err=" & p.LastEvalError & ")"
 '     Else
 '         Debug.Print el.TagName & " / " & el.Value
 '     End If
 ' ============================================================
-'   ★D-3 から ImplicitWaitSec > 0 なら見つかるまでリトライする★
-'     既定は 0 なので、設定しない限り D-2 と同じ「1 往復で答える」ままである。
+'   *From D-3, if ImplicitWaitSec > 0 it retries until found*
+'     The default is 0, so unless set, it remains the same as D-2: "answers in one round trip".
 Public Function GetElementById(ByVal elementId As String) As Wv2Element
     Set GetElementById = FindWithWait("document.getElementById(" & JsQuote(elementId) & ")", _
                                       "GetElementById", elementId, m_implicitWaitSec)
@@ -4291,20 +4328,20 @@ End Function
 
 
 ' ============================================================
-' FindOne (D-2、Private) - 検索の共通実装
+' FindOne (D-2, Private) - common implementation of search
 '
-'   finderExpr : 要素を 1 個返す JS 式 (見つからなければ null を返すこと)
-'   apiName / arg : ログ用
+'   finderExpr : a JS expression that returns one element (must return null if not found)
+'   apiName / arg : for logging
 '
-'   JS 側は次を返す:
-'     {g:'<世代>', found:true,  h:<添字>}   見つかった
-'     {g:'<世代>', found:false, h:0}        見つからなかった
+'   The JS side returns the following:
+'     {g:'<generation>', found:true,  h:<index>}   found
+'     {g:'<generation>', found:false, h:0}        not found
 '
-'   ★h に負値を使わない理由★ Wv2Json.JsonGetNum は負数を扱わない (設計原則64)。
-'     found フラグで分けるので h は常に 0 以上でよい。
+'   *Why h does not use negative values* Wv2Json.JsonGetNum does not handle negative numbers (design principle 64).
+'     Since found separates the cases, h can always be 0 or more.
 ' ============================================================
-'   quiet (D-3): True なら「見つからない」のログを出さない。ポーリング中に
-'                1 往復ごとに出ると、イミディエイトが埋まってしまうため。
+'   quiet (D-3): if True, do not write the "not found" log. During polling,
+'                writing every round trip would fill up the Immediate window.
 Private Function FindOne(ByVal finderExpr As String, _
                          ByVal apiName As String, _
                          ByVal arg As String, _
@@ -4326,19 +4363,19 @@ Private Function FindOne(ByVal finderExpr As String, _
     res = EvalSync(js)
 
     If Not m_lastEvalOk Then
-        Debug.Print "Wv2Pane." & apiName & ": 失敗 (" & arg & ") err=" & m_lastEvalError
+        Debug.Print "Wv2Pane." & apiName & ": failed (" & arg & ") err=" & m_lastEvalError
         Exit Function
     End If
 
-    ' 世代キャッシュを更新する (成功したときだけ)
+    ' Update the generation cache (only on success)
     If Wv2Json.JsonPickStr(res, "g", gen) Then
         m_domGen = gen
     End If
 
     If InStr(1, res, """found"":true") = 0 Then
-        ' 見つからなかった。★これは正常★ なので m_lastEvalOk は True のまま。
+        ' Not found. *This is normal* so m_lastEvalOk stays True.
         If Not quiet Then
-            Debug.Print "Wv2Pane." & apiName & ": 見つからない (" & arg & ")"
+            Debug.Print "Wv2Pane." & apiName & ": not found (" & arg & ")"
         End If
         Exit Function
     End If
@@ -4349,15 +4386,15 @@ Private Function FindOne(ByVal finderExpr As String, _
     el.InitElement Me, h, gen
     Set FindOne = el
 
-    Debug.Print "Wv2Pane." & apiName & ": 取得 (" & arg & ") handle=" & h & " gen=" & gen
+    Debug.Print "Wv2Pane." & apiName & ": found (" & arg & ") handle=" & h & " gen=" & gen
 End Function
 
 
 ' ============================================================
-' CurrentDomGen (D-2) - 世代キャッシュの読み取り口
+' CurrentDomGen (D-2) - read entry point of the generation cache
 '
-'   ★これは権威ではない★ 「JS から最後に聞いた値」でしかない。
-'   stale 判定の高速パスと、検証・デバッグ表示に使う。
+'   *This is not an authority* It is only "the value last heard from JS".
+'   Used for the fast path of the stale check, and for verification / debug display.
 ' ============================================================
 Public Property Get CurrentDomGen() As String
     CurrentDomGen = m_domGen
@@ -4365,15 +4402,15 @@ End Property
 
 
 ' ============================================================
-' ClearElementRegistry (D-2、論点3) - レジストリを手動で作り直す
+' ClearElementRegistry (D-2, issue 3) - manually rebuild the registry
 '
-'   JS 側のレジストリを新しい世代で作り直す。
-'   ★既存の Wv2Element はすべて stale になる。★
+'   Rebuilds the JS-side registry with a new generation.
+'   *All existing Wv2Element objects become stale.*
 '
-'   同一ページ内で大量に検索して els が伸びたときの掃除用。通常は不要
-'   (ページ遷移でまるごと消えるため)。
+'   For cleanup when els has grown from many searches within the same page. Normally unnecessary
+'   (because it vanishes wholesale on page navigation).
 '
-'   戻り値: True = 成功。False = 失敗 (理由は LastEvalError)
+'   Return value: True = success. False = failure (reason in LastEvalError)
 ' ============================================================
 Public Function ClearElementRegistry() As Boolean
     Dim js As String
@@ -4387,41 +4424,41 @@ Public Function ClearElementRegistry() As Boolean
     res = EvalSync(js)
 
     If Not m_lastEvalOk Then
-        Wv2Log.LogE "Wv2Pane.ClearElementRegistry: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogE "Wv2Pane.ClearElementRegistry: failed err=" & m_lastEvalError
         ClearElementRegistry = False
         Exit Function
     End If
 
     gen = Wv2Json.JsonUnescape(res)
     m_domGen = gen
-    Wv2Log.LogD "Wv2Pane.ClearElementRegistry: レジストリを作り直した (新しい世代=" & gen & ")"
+    Wv2Log.LogD "Wv2Pane.ClearElementRegistry: rebuilt the registry (new generation=" & gen & ")"
     ClearElementRegistry = True
 End Function
 
 
 ' ============================================================
-' Elem_Read (D-2、Friend) - Wv2Element のプロパティ 1 個を読む
+' Elem_Read (D-2, Friend) - read one property of a Wv2Element
 '
-'   引数:
-'     elemHandle : JS 側 R.els[] の添字
-'     elemGen    : 要素を取得したときの世代
-'     valueExpr  : 変数 e (対象要素) を使う JS 式。例 "e.innerText"
-'     outVal     : 読み取れた値 (エスケープ復号済み)
-'     outStatus  : 失敗理由。成功時は空文字
-'   戻り値:
-'     True  = 読み取り成功 (値が null / undefined だった場合も True。outVal は空文字)
-'     False = stale または失敗。理由は outStatus
+'   Arguments:
+'     elemHandle : index into R.els[] on the JS side
+'     elemGen    : the generation at the time the element was obtained
+'     valueExpr  : a JS expression using variable e (the target element). Example "e.innerText"
+'     outVal     : the value read (escapes already decoded)
+'     outStatus  : failure reason. An empty string on success
+'   Return value:
+'     True  = read succeeded (True also when the value was null / undefined. outVal is an empty string)
+'     False = stale or failure. The reason is in outStatus
 '
-'   JS 側は次を返す:
-'     {s:'gen', g:'<世代>'}                 世代が違う = stale
-'     {s:'nil', g:'<世代>'}                 添字に要素が無い = stale 扱い
-'     {s:'ok',  g:'<世代>', has:false, v:''} 値が null / undefined
-'     {s:'ok',  g:'<世代>', has:true,  v:'<値>'}
+'   The JS side returns the following:
+'     {s:'gen', g:'<generation>'}                 generation differs = stale
+'     {s:'nil', g:'<generation>'}                 no element at the index = treated as stale
+'     {s:'ok',  g:'<generation>', has:false, v:''} value is null / undefined
+'     {s:'ok',  g:'<generation>', has:true,  v:'<value>'}
 '
-'   ★値は必ず String(x) で文字列に正規化してから返す★
-'     JSON の型のまま返すと VBA 側で型ごとの取り出しが要る。読み取り API の
-'     戻り値は全て String なので、JS 側で寄せた方が単純 (仕様事実31 の undefined
-'     消失問題も踏まない)。
+'   *The value is always normalized to a string with String(x) before returning*
+'     Returning it in the JSON type would require per-type extraction on the VBA side. The
+'     return values of the read APIs are all String, so aligning on the JS side is simpler (and it also
+'     avoids the undefined-vanishing problem of spec fact 31).
 ' ============================================================
 Friend Function Elem_Read(ByVal elemHandle As Long, _
                           ByVal elemGen As String, _
@@ -4436,8 +4473,8 @@ Friend Function Elem_Read(ByVal elemHandle As Long, _
     outStatus = ""
     Elem_Read = False
 
-    ' --- 高速パス: 手元の世代がキャッシュと違えば、往復せずに stale と確定できる ---
-    '     (キャッシュが古い場合は一致側に倒れて必ず問い合わせるので、誤判定はしない)
+    ' --- Fast path: if the generation in hand differs from the cache, stale can be determined without a round trip ---
+    '     (when the cache is stale it falls to the matching side and always asks, so no misjudgement)
     If Len(m_domGen) > 0 Then
         If elemGen <> m_domGen Then
             outStatus = "stale"
@@ -4470,7 +4507,7 @@ Friend Function Elem_Read(ByVal elemHandle As Long, _
     End If
 
     If InStr(1, res, """has"":true") = 0 Then
-        ' 値が null / undefined。★エラーではない★ (属性が無い / value を持たない要素)
+        ' The value is null / undefined. *Not an error* (no such attribute / an element without value)
         outVal = ""
         Elem_Read = True
         Exit Function
@@ -4482,13 +4519,13 @@ End Function
 
 
 ' ============================================================
-' Elem_CheckStale (D-2、Friend) - ハンドルが無効になっていないか
+' Elem_CheckStale (D-2, Friend) - whether the handle has become invalid
 '
-'   戻り値: True = stale (もう使えない)
-'   outStatus: 判定に失敗した場合の理由。成功時は空文字
+'   Return value: True = stale (no longer usable)
+'   outStatus: the reason if the check failed. An empty string on success
 '
-'   ★判定できなかった場合も True (安全側) を返す。★
-'     区別が必要な呼び出し側は outStatus を見ること。
+'   *True (the safe side) is also returned when it could not be determined.*
+'     Callers who need to distinguish should look at outStatus.
 ' ============================================================
 Friend Function Elem_CheckStale(ByVal elemHandle As Long, _
                                 ByVal elemGen As String, _
@@ -4500,7 +4537,7 @@ Friend Function Elem_CheckStale(ByVal elemHandle As Long, _
     outStatus = ""
     Elem_CheckStale = True
 
-    ' 高速パス (Elem_Read と同じ理屈)
+    ' Fast path (same logic as Elem_Read)
     If Len(m_domGen) > 0 Then
         If elemGen <> m_domGen Then Exit Function
     End If
@@ -4525,24 +4562,24 @@ End Function
 
 
 ' ============================================================
-' Elem_Exec (D-3、Friend) - 要素への書き込み・操作を 1 回撃つ
+' Elem_Exec (D-3, Friend) - fire one write / operation on an element
 '
-'   引数:
-'     elemHandle  : JS 側 R.els[] の添字
-'     elemGen     : 要素を取得したときの世代
-'     actionStmts : 変数 e (対象要素) を使う JS ★文★ (末尾のセミコロン込み)。
-'                   結果の手掛かりを返したいときは変数 rv に文字列を入れる。
-'     outVal      : rv の内容 (経路の名前)。使わない操作では空文字
-'     outStatus   : 失敗理由。成功時は空文字
-'   戻り値:
-'     True  = 操作が JS 側で最後まで走った
-'     False = stale または失敗。理由は outStatus
+'   Arguments:
+'     elemHandle  : index into R.els[] on the JS side
+'     elemGen     : the generation at the time the element was obtained
+'     actionStmts : a JS *statement* using variable e (the target element) (including the trailing semicolon).
+'                   To return a clue about the result, put a string in variable rv.
+'     outVal      : the content of rv (the path name). An empty string for operations that do not use it
+'     outStatus   : failure reason. An empty string on success
+'   Return value:
+'     True  = the operation ran to the end on the JS side
+'     False = stale or failure. The reason is in outStatus
 '
-'   ★成功 = 「JS が例外なく走った」であって「意図した効果が出た」ではない★
-'     例えば disabled なボタンへの Click は例外にならないが何も起きない。
-'     効果を確かめたいときは読み取り (Elem_Read) で確認すること。
+'   *Success = "the JS ran without an exception", not "the intended effect occurred"*
+'     For example, Click on a disabled button raises no exception but nothing happens.
+'     To confirm the effect, check with a read (Elem_Read).
 '
-'   高速パスと世代キャッシュの扱いは Elem_Read と同じ (安全側にしか倒れない)。
+'   The handling of the fast path and generation cache is the same as Elem_Read (it only falls to the safe side).
 ' ============================================================
 Friend Function Elem_Exec(ByVal elemHandle As Long, _
                           ByVal elemGen As String, _
@@ -4557,7 +4594,7 @@ Friend Function Elem_Exec(ByVal elemHandle As Long, _
     outStatus = ""
     Elem_Exec = False
 
-    ' --- 高速パス: 手元の世代がキャッシュと違えば、往復せずに stale と確定できる ---
+    ' --- Fast path: if the generation in hand differs from the cache, stale can be determined without a round trip ---
     If Len(m_domGen) > 0 Then
         If elemGen <> m_domGen Then
             outStatus = "stale"
@@ -4593,27 +4630,27 @@ Friend Function Elem_Exec(ByVal elemHandle As Long, _
 End Function
 
 ' ============================================================
-' ★D-3b の本体: DOM 条件待ち★
+' *The body of D-3b: DOM condition waits*
 '
-'   未知1 の実測 (2026-08-22) で「ExecuteScript は Promise を待たない」が確定した
-'   ため、待ちは論点3 の骨格どおり★VBA 側のポーリング★で実装する。
-'   JS 側に仕掛けを置く案 (postMessage で完了を通知する) は採らない。保留テーブルが
-'   増えるうえ、D-1 で作った EvalSync の型から外れるため。
+'   The measurement of unknown 1 (2026-08-22) settled that "ExecuteScript does not wait for a Promise", so
+'   the wait is implemented as *polling on the VBA side*, following the backbone of issue 3.
+'   The option of placing a mechanism on the JS side (notifying completion by postMessage) is not adopted. It would
+'   increase the pending tables, and it departs from the EvalSync pattern built in D-1.
 ' ============================================================
 
 
 ' ============================================================
-' ImplicitWaitSec (D-3、論点2 案C の opt-in 部分)
+' ImplicitWaitSec (D-3, the opt-in part of issue 2 option C)
 '
-'   0 より大きくすると、QuerySelector / GetElementById が★見つかるまで★
-'   リトライするようになる (SeleniumVBA の ImplicitMaxWait と同じ流儀)。
+'   When set above 0, QuerySelector / GetElementById retry *until found*
+'   (the same style as SeleniumVBA's ImplicitMaxWait).
 '
-'   ★既定は 0 (無効)★ 既定で待たせない理由はヘッダー参照。
-'   WaitFor / WaitGone は明示的な待ちなので★この設定の影響を受けない★。
+'   *The default is 0 (disabled)* For why it does not wait by default, see the header.
+'   WaitFor / WaitGone are explicit waits, so they are *not affected by this setting*.
 '
-'   使用例:
-'     p.ImplicitWaitSec = 5      ' 以後の検索は最大 5 秒粘る
-'     p.ImplicitWaitSec = 0      ' 元に戻す
+'   Usage example:
+'     p.ImplicitWaitSec = 5      ' later searches persist for up to 5 seconds
+'     p.ImplicitWaitSec = 0      ' restore
 ' ============================================================
 Public Property Get ImplicitWaitSec() As Single
     ImplicitWaitSec = m_implicitWaitSec
@@ -4622,42 +4659,42 @@ End Property
 Public Property Let ImplicitWaitSec(ByVal waitSec As Single)
     If waitSec < 0 Then waitSec = 0
     m_implicitWaitSec = waitSec
-    Wv2Log.LogD "Wv2Pane.ImplicitWaitSec = " & waitSec & " 秒"
+    Wv2Log.LogD "Wv2Pane.ImplicitWaitSec = " & waitSec & " sec"
 End Property
 
 
 ' ============================================================
-' WaitFor (D-3、論点2 案C の第一級 API)
-'   セレクタに一致する要素が★現れるまで★待つ。
+' WaitFor (D-3, the first-class API of issue 2 option C)
+'   Waits *until an element matching the selector appears*.
 '
-'   引数:
-'     selector   : CSS セレクタ
-'     timeoutSec : 上限 (秒)。既定 10。0 以下なら既定値に丸める
-'   戻り値:
-'     見つかった            → Wv2Element
-'     時間内に現れなかった  → ★Nothing + LastEvalOk = True★ (正常)
-'     失敗 (セレクタ不正等) → ★Nothing + LastEvalOk = False★ (LastEvalError に理由)
+'   Arguments:
+'     selector   : CSS selector
+'     timeoutSec : upper limit (seconds). Default 10. If 0 or less, rounded to the default
+'   Return value:
+'     Found                          -> Wv2Element
+'     Did not appear in time         -> *Nothing + LastEvalOk = True* (normal)
+'     Failure (bad selector etc.)    -> *Nothing + LastEvalOk = False* (reason in LastEvalError)
 '
-'   ★存在だけを見る (論点5 案A)★
-'     display:none でも「現れた」と判定する。SPA では DOM にあるが不可視、が
-'     普通にあるため。可視まで待ちたくなったら WaitVisible を別に用意する。
+'   *Looks only at existence (issue 5, option A)*
+'     Even display:none counts as "appeared". On an SPA, being in the DOM but invisible is
+'     perfectly common. If you want to wait until visible, prepare a separate WaitVisible.
 '
-'   ★失敗したら待たずに即座に返す★
-'     in-callback (仕様事実14) やセレクタの構文エラーは、待っても直らない。
-'     ここで粘ると、イベントハンドラ内から呼んだときに timeoutSec ぶん固まる。
+'   *On failure it returns immediately without waiting*
+'     in-callback (spec fact 14) and selector syntax errors do not get fixed by waiting.
+'     If it persisted here, calling from inside an event handler would freeze for timeoutSec.
 '
-'   ★待っている間はブレーク/ステップ実行しないこと★ (仕様事実20)
+'   *Do not break / step through while waiting* (spec fact 20)
 '
-'   ★タブを開いた直後に呼ばないこと★
-'     View がまだ無いうちは EvalSync が no-view で失敗し、上の方針により
-'     ★待たずに即座に Nothing を返す★。ページを開いた直後は、まず
-'     EvalSync が通るようになるまで待つこと (検証では D4WaitPane が実例)。
+'   *Do not call it right after opening a tab*
+'     While there is no View yet, EvalSync fails with no-view, and by the policy above
+'     *it returns Nothing immediately without waiting*. Right after opening a page, first
+'     wait until EvalSync goes through (D4WaitPane in the verification is a working example).
 '
-'   使用例:
+'   Usage example:
 '     Dim el As Wv2Element
 '     Set el = p.WaitFor("#result", 5)
 '     If el Is Nothing Then
-'         Debug.Print IIf(p.LastEvalOk, "現れなかった", "失敗: " & p.LastEvalError)
+'         Debug.Print IIf(p.LastEvalOk, "did not appear", "failed: " & p.LastEvalError)
 '     End If
 ' ============================================================
 Public Function WaitFor(ByVal selector As String, _
@@ -4671,20 +4708,20 @@ End Function
 
 ' ============================================================
 ' WaitGone (D-3)
-'   セレクタに一致する要素が★無くなるまで★待つ。
+'   Waits *until no element matching the selector remains*.
 '
-'   戻り値:
-'     True                  … 消えた (または最初から 1 個も無かった)
-'     False + LastEvalOk=True  … 時間内に消えなかった (正常な「まだ居る」)
-'     False + LastEvalOk=False … 失敗 (理由は LastEvalError)
+'   Return value:
+'     True                  ... it disappeared (or there was none from the start)
+'     False + LastEvalOk=True  ... did not disappear in time (a normal "still there")
+'     False + LastEvalOk=False ... failure (reason in LastEvalError)
 '
-'   ★存在確認にレジストリを使わない★ (D-3 の事後報告)
-'     FindOne を回すと、まだ消えていない要素をポーリングのたびに R.els へ
-'     push してしまう (10 秒待てば 70 個ほど積む)。WaitGone は掴む必要が
-'     無いので、found の真偽だけを返す専用の式 (ExistsNow) を使う。
+'   *The registry is not used for the existence check* (D-3 post-hoc report)
+'     Running FindOne would push the not-yet-vanished element into R.els
+'     at every poll (about 70 pile up after waiting 10 seconds). WaitGone does not need
+'     to grab it, so it uses a dedicated expression (ExistsNow) that returns only whether found is true.
 '
-'   使用例:
-'     If Not p.WaitGone(".spinner", 10) Then Debug.Print "まだ回っている"
+'   Usage example:
+'     If Not p.WaitGone(".spinner", 10) Then Debug.Print "still spinning"
 ' ============================================================
 Public Function WaitGone(ByVal selector As String, _
                          Optional ByVal timeoutSec As Single = WAIT_TIMEOUT_DEFAULT) As Boolean
@@ -4700,8 +4737,8 @@ Public Function WaitGone(ByVal selector As String, _
         found = ExistsNow(selector, ok)
 
         If Not ok Then
-            ' 失敗は待っても直らない。LastEvalOk = False のまま返す。
-            Debug.Print "Wv2Pane.WaitGone: 失敗 (" & selector & ") err=" & m_lastEvalError
+            ' A failure does not get fixed by waiting. Return with LastEvalOk = False as is.
+            Debug.Print "Wv2Pane.WaitGone: failed (" & selector & ") err=" & m_lastEvalError
             Exit Function
         End If
 
@@ -4711,8 +4748,8 @@ Public Function WaitGone(ByVal selector As String, _
         End If
 
         If ElapsedSec(t0) >= timeoutSec Then
-            Debug.Print "Wv2Pane.WaitGone: 時間切れ (" & selector & ") " & _
-                        timeoutSec & " 秒たっても消えなかった"
+            Debug.Print "Wv2Pane.WaitGone: timed out (" & selector & ") " & _
+                        timeoutSec & " seconds passed and it did not disappear"
             Exit Function
         End If
 
@@ -4722,11 +4759,11 @@ End Function
 
 
 ' ============================================================
-' FindWithWait (D-3、Private) - 見つかるまで FindOne を繰り返す
+' FindWithWait (D-3, Private) - repeat FindOne until found
 '
-'   waitSec <= 0 なら 1 回だけ試す (= D-2 までの挙動そのまま)。
-'   ★見つからない (Nothing + LastEvalOk=True) ときだけ粘る★
-'   失敗 (LastEvalOk=False) は即座に諦める。
+'   If waitSec <= 0, try only once (= the behaviour up to D-2 exactly).
+'   *Persist only when not found (Nothing + LastEvalOk=True)*
+'   Give up immediately on failure (LastEvalOk=False).
 ' ============================================================
 Private Function FindWithWait(ByVal finderExpr As String, _
                               ByVal apiName As String, _
@@ -4747,8 +4784,8 @@ Private Function FindWithWait(ByVal finderExpr As String, _
         If Not m_lastEvalOk Then Exit Function
         If waitSec <= 0 Then Exit Function
         If ElapsedSec(t0) >= waitSec Then
-            Debug.Print "Wv2Pane." & apiName & ": 時間切れ (" & arg & ") " & _
-                        waitSec & " 秒たっても現れなかった"
+            Debug.Print "Wv2Pane." & apiName & ": timed out (" & arg & ") " & _
+                        waitSec & " seconds passed and it did not appear"
             Exit Function
         End If
 
@@ -4758,10 +4795,10 @@ End Function
 
 
 ' ============================================================
-' ExistsNow (D-3、Private) - 要素があるかだけを 1 往復で調べる
+' ExistsNow (D-3, Private) - check only whether an element exists, in one round trip
 '
-'   ★レジストリに登録しない★ WaitGone のポーリング用 (上のコメント参照)。
-'   outOk : JS の実行自体が成功したか。False なら戻り値に意味は無い。
+'   *Not registered in the registry* For WaitGone's polling (see the comment above).
+'   outOk : whether the JS execution itself succeeded. If False the return value is meaningless.
 ' ============================================================
 Private Function ExistsNow(ByVal selector As String, ByRef outOk As Boolean) As Boolean
     Dim js As String
@@ -4788,15 +4825,15 @@ End Function
 
 
 ' ============================================================
-' PollPause / ElapsedSec (D-3、Private) - ポーリングの足踏みと経過時間
+' PollPause / ElapsedSec (D-3, Private) - polling pause and elapsed time
 '
-'   PollPause : POLL_INTERVAL_SEC (100ms) だけ DoEvents を回す。
-'               ★Sleep を使わない★ WebView2 の完了通知を回すため、
-'               この間もメッセージポンプを止めてはいけない。
+'   PollPause : spin DoEvents for POLL_INTERVAL_SEC (100ms).
+'               *Sleep is not used* In order to keep WebView2's completion notices flowing,
+'               the message pump must not be stopped during this time either.
 '
-'   ElapsedSec: ★Timer は深夜 0 時に 0 へ戻る★ ので、素の引き算だと負になり
-'               待ちループが永久に抜けなくなる。またいだ分を足して補正する
-'               (D-3 の事後報告。実機検証が 1:53 に走ったので他人事ではない)。
+'   ElapsedSec: *Timer returns to 0 at midnight* so a plain subtraction goes negative and
+'               the wait loop never exits. Correct by adding the amount crossed
+'               (D-3 post-hoc report. The real-machine verification ran at 1:53, so this is not someone else's problem).
 ' ============================================================
 Private Sub PollPause()
     Dim t0 As Single
@@ -4817,36 +4854,36 @@ Private Function ElapsedSec(ByVal sinceTimer As Single) As Single
 End Function
 
 ' ============================================================
-' ★D-4a の本体: ページ内 SPA プローブ★
+' *The body of D-4a: in-page SPA probe*
 ' ============================================================
 
 
 ' ============================================================
-' SpaProbeState (D-4a) - プローブを整えてから状態を読む
+' SpaProbeState (D-4a) - get the probe into shape, then read the state
 '
-'   戻り値: 状態 JSON (成功時)。失敗時は空文字 + LastEvalOk = False
+'   Return value: the state JSON (on success). On failure an empty string + LastEvalOk = False
 '
-'   JSON の中身:
-'     v  版番号        h  健康か (True/False)   g  設置世代    rp 作り直した回数
-'     f  実行中 fetch  x  実行中 XHR
-'     q  最後の DOM 変化からの経過 ms   qn 最後の通信完了からの経過 ms
-'     m  数えた DOM 変化  sm 除外した DOM 変化
-'     n  数えた通信        sn 除外した通信
-'     up プローブ設置からの経過 ms      ob MutationObserver が生きているか
-'     sda DOM シグナルを arm 済みか     sdh その当たり回数
-'     sna 通信シグナルを arm 済みか     snh その当たり回数
-'     sua URL シグナルを arm 済みか      suh 今それに一致しているか
-'     lgN 診断ログの件数                 lgOn 診断ログが有効か
-'     il  ★今飛んでいる要求★ (最大 5 件。"xhr 1234ms https://..." の形)
-'     ifn 飛んでいる要求のうち★新しいもの★の数 (静穏判定はこれを見る)
-'     ifo 同じく★居座っているもの★の数 (StaleInflightMs を超えたもの)
+'   Contents of the JSON:
+'     v  version number  h  healthy (True/False)   g  installation generation  rp number of rebuilds
+'     f  running fetch   x  running XHR
+'     q  ms since the last DOM change   qn ms since the last traffic completion
+'     m  DOM changes counted  sm DOM changes excluded
+'     n  traffic counted      sn traffic excluded
+'     up ms since the probe was installed      ob whether the MutationObserver is alive
+'     sda whether the DOM signal is armed      sdh its hit count
+'     sna whether the traffic signal is armed  snh its hit count
+'     sua whether the URL signal is armed      suh whether it matches now
+'     lgN number of diagnostic log entries     lgOn whether the diagnostic log is enabled
+'     il  *requests in flight now* (up to 5. In the form "xhr 1234ms https://...")
+'     ifn the number of *new ones* among the requests in flight (the quiescence check looks at this)
+'     ifo likewise the number of *lingering ones* (those that exceeded StaleInflightMs)
 '
-'   ★呼ぶたびに健康診断が走り、壊れていれば作り直す★
-'   したがって「まず Ensure、次に Read」の 2 往復は要らない。
+'   *A health check runs on every call, and if broken it is rebuilt*
+'   Therefore the 2 round trips of "first Ensure, then Read" are unnecessary.
 '
-'   使用例:
+'   Usage example:
 '     Debug.Print p.SpaProbeState
-'     → {""v"":1,""h"":true,""g"":1,...}
+'     -> {""v"":1,""h"":true,""g"":1,...}
 ' ============================================================
 Public Function SpaProbeState() As String
     Dim js As String
@@ -4869,15 +4906,15 @@ Public Function SpaProbeState() As String
     SpaProbeState = EvalSync(js)
 
     If Not m_lastEvalOk Then
-        Wv2Log.LogW "Wv2Pane.SpaProbeState: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.SpaProbeState: failed err=" & m_lastEvalError
         SpaProbeState = ""
     End If
 End Function
 
 
 ' ============================================================
-' SpaProbeHealthy (D-4a) - 健康かどうかだけを見る薄い口
-'   ★判定できなかった場合は False を返す★ (安全側)。区別が要るなら LastEvalOk。
+' SpaProbeHealthy (D-4a) - a thin entry that looks only at whether it is healthy
+'   *Returns False when it could not be determined* (safe side). If you need to distinguish, use LastEvalOk.
 ' ============================================================
 Public Function SpaProbeHealthy() As Boolean
     Dim st As String
@@ -4890,17 +4927,17 @@ End Function
 
 
 ' ============================================================
-' SpaProbeReset (D-4a) - プローブを捨てて作り直す
+' SpaProbeReset (D-4a) - discard the probe and rebuild it
 '
-'   ★通常は不要★ 健康診断が壊れを検出して自動で作り直すため。
-'   数えた値をゼロに戻したいときと、健康診断そのものを検証したいときに使う。
+'   *Normally unnecessary* because the health check detects breakage and rebuilds automatically.
+'   Use it when you want to return the counted values to zero, and when you want to verify the health check itself.
 '
-'   ★元の fetch / XHR には戻さない★ ラップを外すと、フレームワークが
-'   こちらのラッパーを掴んでいた場合に壊れる。直後に現在の window.fetch を包み直す。
+'   *It does not restore the original fetch / XHR* Removing the wrapper would break things if the framework
+'   had grabbed our wrapper. Immediately afterwards it wraps the current window.fetch again.
 '
-'   ★実装は「版番号を壊してから作り直させる」形★ (window.__wv2p を null に
-'   しない)。こうすると世代と作り直し回数が増え続け、除外リストも引き継がれる。
-'   null にすると世代が 1 に戻ってしまい、いつ作り直したのかが追えなくなる。
+'   *The implementation is "break the version number, then have it rebuilt"* (it does not set
+'   window.__wv2p to null). That way the generation and rebuild count keep increasing, and the exclusion list is carried over.
+'   Setting it to null would return the generation to 1, and we could no longer trace when it was rebuilt.
 ' ============================================================
 Public Function SpaProbeReset() As Boolean
     Dim js As String
@@ -4912,26 +4949,26 @@ Public Function SpaProbeReset() As Boolean
     SpaProbeReset = m_lastEvalOk
 
     If Not m_lastEvalOk Then
-        Wv2Log.LogW "Wv2Pane.SpaProbeReset: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.SpaProbeReset: failed err=" & m_lastEvalError
     Else
-        Wv2Log.LogD "Wv2Pane.SpaProbeReset: プローブを作り直した"
+        Wv2Log.LogD "Wv2Pane.SpaProbeReset: rebuilt the probe"
     End If
 End Function
 
 
 ' ============================================================
-' SpaProbeJs (D-4a、Private) - プローブを整える JS (自己生成プロローグの拡張)
+' SpaProbeJs (D-4a, Private) - JS that gets the probe into shape (extension of the self-generating prologue)
 '
-'   実行すると、変数 P にプローブが束縛された状態になる。
-'   無ければ作り、★壊れていれば作り直す★。健康診断は HP(P) で呼べる。
+'   When run, the probe ends up bound to variable P.
+'   Creates it if missing and *rebuilds it if broken*. The health check can be called with HP(P).
 '
-'   ★JS の文字列リテラルはシングルクォート★ (プロジェクト規則)。
-'   ★数える対象★
-'     fetch          … 呼び出しで +1、解決/失敗で -1
-'     XHR            … send で +1、loadend で -1 (二重減算を __wv2d で防ぐ)
-'     MutationObserver … childList / characterData / subtree / attributes
-'   除外リスト (ignoreNet / ignoreSel) は★参照を毎回読む★ので、
-'   作り直さずに差し替えられる (D-4b でその口を足す)。
+'   *JS string literals use single quotes* (project rule).
+'   *What is counted*
+'     fetch          ... +1 on call, -1 on resolve/failure
+'     XHR            ... +1 on send, -1 on loadend (double subtraction is prevented with __wv2d)
+'     MutationObserver ... childList / characterData / subtree / attributes
+'   The exclusion lists (ignoreNet / ignoreSel) are *read by reference each time* so
+'   they can be swapped without rebuilding (the entry for that is added in D-4b).
 ' ============================================================
 Private Function SpaProbeJs() As String
     Dim js As String
@@ -4944,7 +4981,7 @@ Private Function SpaProbeJs() As String
     js = js & "var P=window.__wv2p;"
     js = js & "if(!HP(P)){var prev=P;"
 
-    ' --- 新しいプローブの器 (除外リストは引き継ぐ) ---
+    ' --- Container of the new probe (the exclusion lists are carried over) ---
     js = js & "var q={v:V,gen:(prev?((prev.gen||0)+1):1)," & _
                       "repairs:(prev?((prev.repairs||0)+1):0)," & _
                       "since:N(),lastMut:N(),lastNet:N()," & _
@@ -4956,16 +4993,16 @@ Private Function SpaProbeJs() As String
                       "ignoreNet:(prev&&prev.ignoreNet?prev.ignoreNet:[])," & _
                       "ignoreSel:(prev&&prev.ignoreSel?prev.ignoreSel:'')};"
 
-    ' --- 除外の判定 (毎回 q から読むので後から差し替えられる) ---
+    ' --- Exclusion check (read from q each time, so it can be swapped later) ---
     js = js & "var ig=function(u){var a=q.ignoreNet,i;" & _
                       "for(i=0;i<a.length;i++){if(u.indexOf(a[i])>=0){return true;}}return false;};"
     js = js & "var sk=function(t){if(!q.ignoreSel){return false;}" & _
                       "try{var e=(t&&t.nodeType===1)?t:(t?t.parentElement:null);" & _
                       "return !!(e&&e.closest(q.ignoreSel));}catch(x){return false;}};"
 
-    ' --- D-4e: in-flight の台帳と診断ログ ---
-    '   ifl は「今飛んでいる要求」の一覧。★居座る要求の正体を見るため★
-    '   log は最近の出来事のリングバッファ (既定は無効。logOn で入れる)。
+    ' --- D-4e: ledger of in-flight requests and the diagnostic log ---
+    '   ifl is the list of "requests in flight now". *To see the identity of lingering requests*
+    '   log is a ring buffer of recent events (disabled by default. Enable with logOn).
     js = js & "var lg=function(k,d){if(!q.logOn){return;}" & _
                       "q.log.push(Math.round(N())+' '+k+' '+String(d).slice(0,120));" & _
                       "if(q.log.length>200){q.log.shift();}};q.lg=lg;"
@@ -4975,9 +5012,9 @@ Private Function SpaProbeJs() As String
                       "if(i>=0){q.ifl.splice(i,1);}" & _
                       "lg('NET-',Math.round(N()-o.t)+'ms '+o.u);};"
 
-    ' --- D-4c: 明示シグナルの当たり判定と arm 系 ---
-    '   ★当たったら lastMut を今にする★ = 証拠の後にもう一度まるごと静穏窓を取る
-    '   (参考プロダクトと同じ考え方。1 ポーリング分で満足しない)。
+    ' --- D-4c: hit detection of explicit signals and the arm family ---
+    '   *On a hit, set lastMut to now* = take a whole quiet window again after the evidence
+    '   (same idea as the reference product. Do not be satisfied with one poll).
     js = js & "var sn=function(u){if(q.snArmed&&q.snPat&&" & _
                       "String(u).indexOf(q.snPat)>=0){q.snHits++;q.lastMut=N();" & _
                       "lg('SIG','net hit '+String(u).slice(0,80));}};q.sn=sn;"
@@ -4998,11 +5035,11 @@ Private Function SpaProbeJs() As String
                       "q.sdObs=null;q.sdArmed=false;q.snArmed=false;q.suArmed=false;" & _
                       "return 0;};"
 
-    ' --- fetch のラップ (★現在の window.fetch を包む★) ---
+    ' --- Wrapping fetch (*wrap the current window.fetch*) ---
     js = js & "if(typeof window.fetch==='function'){"
     js = js & "var of=(prev&&prev.of&&prev.fw===window.fetch)?prev.of:window.fetch;q.of=of;"
-    '   ★除外した要求でも明示シグナルの判定はする★
-    '   除外は「静穏判定から外す」だけの意味で、arm した目印は別扱いにする。
+    '   *Even for excluded requests, the explicit-signal check is done*
+    '   Exclusion only means "remove from the quiescence check", and the armed marks are treated separately.
     js = js & "q.fw=function(u,o){" & _
                       "var r=(typeof u==='string')?u:((u&&u.url)?u.url:'');" & _
                       "var sp=ig(r);if(sp){q.skipNet++;}else{q.netN++;q.fetchN++;}" & _
@@ -5012,7 +5049,7 @@ Private Function SpaProbeJs() As String
                       "function(v){d();return v;},function(e){d();throw e;});};"
     js = js & "window.fetch=q.fw;}"
 
-    ' --- XHR のラップ ---
+    ' --- Wrapping XHR ---
     js = js & "if(XP){"
     js = js & "var oo=(prev&&prev.oo&&prev.xo===XP.open)?prev.oo:XP.open;"
     js = js & "var os=(prev&&prev.os&&prev.xs===XP.send)?prev.os:XP.send;q.oo=oo;q.os=os;"
@@ -5027,7 +5064,7 @@ Private Function SpaProbeJs() As String
                       "return os.apply(this,arguments);};"
     js = js & "XP.open=q.xo;XP.send=q.xs;}"
 
-    ' --- DOM 変化の観測 ---
+    ' --- Observing DOM changes ---
     js = js & "try{q.ob=new MutationObserver(function(ms){" & _
                       "var i,c=0,t;for(i=0;i<ms.length;i++){t=ms[i].target;" & _
                       "if(ms[i].type==='characterData'){t=(t&&t.parentElement)?t.parentElement:t;}" & _
@@ -5043,34 +5080,34 @@ Private Function SpaProbeJs() As String
 End Function
 
 ' ============================================================
-' ★D-4b の本体: 静穏待ち★
+' *The body of D-4b: waiting for quiescence*
 ' ============================================================
 
 
 ' ============================================================
-' WaitSettled (D-4b) - 通信と DOM の変化が落ち着くまで待つ
+' WaitSettled (D-4b) - wait until traffic and DOM changes settle
 '
-'   引数:
-'     timeoutSec : 上限 (秒)。既定 10。0 以下なら既定値に丸める
-'     stableMs   : 静穏窓 (ms)。既定 500。この時間 DOM が動かなければ静穏とみなす
-'   戻り値:
-'     True                     … 静穏に達した
-'     False + LastEvalOk=True  … 時間内に静まらなかった (正常)
-'     False + LastEvalOk=False … 失敗 (理由は LastEvalError)
+'   Arguments:
+'     timeoutSec : upper limit (seconds). Default 10. If 0 or less, rounded to the default
+'     stableMs   : quiet window (ms). Default 500. If the DOM does not move for this long it is regarded as quiescent
+'   Return value:
+'     True                     ... reached quiescence
+'     False + LastEvalOk=True  ... did not quiet down in time (normal)
+'     False + LastEvalOk=False ... failure (reason in LastEvalError)
 '
-'   ★★★ True は「アプリの処理が終わった」証明ではない ★★★
-'     静かなだけ。無視されて静かなのか終わって静かなのかは区別できない。
-'     重要な操作では D-4c の明示シグナルを併用すること。
+'   *** True is not proof that "the app has finished processing" ***
+'     It is merely quiet. It cannot be told whether it is quiet because it was ignored or because it finished.
+'     For important operations, combine it with D-4c's explicit signal.
 '
-'   ★待っている間はブレーク/ステップ実行しないこと★ (仕様事実20)
-'     10 秒待てば 10 秒間ずっと DoEvents 区間にいる。
+'   *Do not break / step through while waiting* (spec fact 20)
+'     Wait 10 seconds and you are in the DoEvents section for the full 10 seconds.
 '
-'   使用例:
+'   Usage example:
 '     el.Click
 '     If p.WaitSettled(10) Then
 '         Set r = p.QuerySelector("#result")
 '     Else
-'         Debug.Print "落ち着かなかった: " & p.LastSettleInfo
+'         Debug.Print "did not settle: " & p.LastSettleInfo
 '     End If
 ' ============================================================
 Public Function WaitSettled(Optional ByVal timeoutSec As Single = WAIT_TIMEOUT_DEFAULT, _
@@ -5097,36 +5134,36 @@ Public Function WaitSettled(Optional ByVal timeoutSec As Single = WAIT_TIMEOUT_D
         st = SpaProbeState()
 
         If Not m_lastEvalOk Then
-            ' 失敗は待っても直らない (設計原則104)。
+            ' A failure does not get fixed by waiting (design principle 104).
             m_lastSettle = "error " & m_lastEvalError
-            Wv2Log.LogW "Wv2Pane.WaitSettled: 失敗 err=" & m_lastEvalError
+            Wv2Log.LogW "Wv2Pane.WaitSettled: failed err=" & m_lastEvalError
             m_sigDom = False
             m_sigNet = False
             m_sigUrl = False
             Exit Function
         End If
 
-        ' ★居座っている要求は数えない★ (D-4f)
-        '   ifn = 飛んでいる要求のうち StaleInflightMs 以内に始まったものの数。
-        '   ロングポーリングやストリーミングを待ち続けないための現実的な妥協で、
-        '   ★「静かに見える」を判定しているのであって「全部終わった」ではない★
-        '   という WaitSettled の意味とは矛盾しない。正確さが要るなら
-        '   AddIgnoreNetwork か明示シグナルを使う。
+        ' *Lingering requests are not counted* (D-4f)
+        '   ifn = the number of requests in flight that started within StaleInflightMs.
+        '   A realistic compromise so as not to keep waiting on long polling or streaming, and
+        '   it does not contradict the meaning of WaitSettled, which is that
+        '   *it judges "looks quiet", not "everything is finished"*.
+        '   If accuracy is needed, use AddIgnoreNetwork or an explicit signal.
         inflight = Wv2Json.JsonGetNum(st, "ifn")
         stale = Wv2Json.JsonGetNum(st, "ifo")
         quietMs = Wv2Json.JsonGetNum(st, "q")
 
-        ' --- D-4c: arm したシグナルの状態を見る ---
-        '   ★arm したはずなのにページ側が arm していない = 遷移などで消えた★
-        '   黙って再 arm も無視もせず、失敗として返す (fail-visible)。
+        ' --- D-4c: look at the state of the armed signals ---
+        '   *Should be armed but the page side is not armed = it vanished, e.g. through navigation*
+        '   Neither silently re-arm nor ignore; return it as a failure (fail-visible).
         If m_sigDom Or m_sigNet Or m_sigUrl Then
             If (m_sigDom And InStr(1, st, """sda"":true") = 0) Or _
                (m_sigNet And InStr(1, st, """sna"":true") = 0) Or _
                (m_sigUrl And InStr(1, st, """sua"":true") = 0) Then
-                m_lastSettle = "signal-lost (遷移などで arm が消えた)"
-                Wv2Log.LogW "Wv2Pane.WaitSettled: ★signal-lost★ " & _
-                            "arm したシグナルがページ側から消えている。" & _
-                            "遷移をまたいだ可能性がある (arm し直すこと)"
+                m_lastSettle = "signal-lost (the arm vanished, e.g. through navigation)"
+                Wv2Log.LogW "Wv2Pane.WaitSettled: *signal-lost* " & _
+                            "The armed signal has vanished from the page side. " & _
+                            "It may have crossed a navigation (arm again)"
                 DisarmSignals
                 Exit Function
             End If
@@ -5143,15 +5180,15 @@ Public Function WaitSettled(Optional ByVal timeoutSec As Single = WAIT_TIMEOUT_D
             If Wv2Json.JsonGetNum(st, "suh") = 0 Then sigOk = False
         End If
 
-        ' --- ★静穏窓は「呼び出した時点」から測る★ (D-4b の事後報告) ---
-        '   ページ側の q は「最後の DOM 変化からの経過」なので、呼び出す前から
-        '   静かだった場合は最初の 1 往復でいきなり条件を満たしてしまう。それだと
-        '   ★「まだ始まっていない」と「もう終わった」を区別できない★
-        '   (操作の効果が数十 ms 遅れて始まるのは普通にある)。
-        '   そこで呼び出しからの経過で頭打ちにし、★最低でも stableMs は見張る★。
-        '   この間に何か動けば q が戻るので、始まりが遅れても捕まえられる。
-        '   ただし stableMs より後に始まる処理は原理的に取り逃す。
-        '   そこは D-4c の明示シグナル (arm) の担当。
+        ' --- *The quiet window is measured from "the moment of the call"* (D-4b post-hoc report) ---
+        '   The page-side q is "the time since the last DOM change", so if it was
+        '   already quiet before the call, the condition is met immediately on the first round trip. Then
+        '   *"has not started yet" and "already finished" cannot be distinguished*
+        '   (it is perfectly common for an operation's effect to start tens of ms late).
+        '   So we cap it by the time elapsed since the call, and *watch for at least stableMs*.
+        '   If anything moves during this time q resets, so even a late start can be caught.
+        '   However, processing that starts after stableMs is in principle missed.
+        '   That is the job of D-4c's explicit signal (arm).
         elapsedMs = CLng(ElapsedSec(t0) * 1000)
         quietEff = quietMs
         If quietEff > elapsedMs Then quietEff = elapsedMs
@@ -5160,7 +5197,7 @@ Public Function WaitSettled(Optional ByVal timeoutSec As Single = WAIT_TIMEOUT_D
             m_lastSettle = "stable q=" & quietMs & "ms(eff=" & quietEff & ") slack=" & _
                            (quietEff - stableMs) & "ms polls=" & polls & _
                            " elapsed=" & Format$(ElapsedSec(t0), "0.00") & "s" & _
-                           IIf(stale > 0, " (居座り " & stale & " 件は除外)", "") & _
+                           IIf(stale > 0, " (" & stale & " lingering excluded)", "") & _
                            SigInfoOf(st)
             WaitSettled = True
             DisarmSignals
@@ -5168,20 +5205,20 @@ Public Function WaitSettled(Optional ByVal timeoutSec As Single = WAIT_TIMEOUT_D
         End If
 
         If ElapsedSec(t0) >= timeoutSec Then
-            ' ★時間切れの原因が通信なら、何が飛んでいるかを見せる★ (D-4d の教訓)
-            '   Maps では終わらない XHR が 1 本居座って静穏が来なかった。
-            '   URL が分かれば AddIgnoreNetwork で外せる。
+            ' *If the cause of the timeout is traffic, show what is in flight* (lesson of D-4d)
+            '   On Maps, one endless XHR lingered and quiescence never came.
+            '   If the URL is known, it can be removed with AddIgnoreNetwork.
             Wv2Json.JsonPickStr st, "il", inflightList
 
             m_lastSettle = "timeout inflight=" & inflight & _
-                           IIf(stale > 0, "(居座り " & stale & " 件は除外)", "") & _
+                           IIf(stale > 0, "(" & stale & " lingering excluded)", "") & _
                            " q=" & quietMs & _
                            "ms (stableMs=" & stableMs & ") polls=" & polls & _
                            SigInfoOf(st)
             If Len(inflightList) > 0 Then
-                m_lastSettle = m_lastSettle & " | 実行中: " & inflightList
+                m_lastSettle = m_lastSettle & " | in flight: " & inflightList
             End If
-            Wv2Log.LogD "Wv2Pane.WaitSettled: 時間切れ " & m_lastSettle
+            Wv2Log.LogD "Wv2Pane.WaitSettled: timed out " & m_lastSettle
             DisarmSignals
             Exit Function
         End If
@@ -5192,14 +5229,14 @@ End Function
 
 
 ' ============================================================
-' LastSettleInfo (D-4b) - 直前の待ちの内訳
+' LastSettleInfo (D-4b) - breakdown of the previous wait
 '
-'   成功時: stable q=<静穏 ms> slack=<余裕 ms> polls=<往復回数> elapsed=<秒>
-'   失敗時: timeout inflight=<実行中の通信> q=<静穏 ms> ... / error <理由>
+'   On success: stable q=<quiet ms> slack=<spare ms> polls=<round trips> elapsed=<seconds>
+'   On failure: timeout inflight=<traffic in flight> q=<quiet ms> ... / error <reason>
 '
-'   ★slack が小さい (100ms 未満) 待ちは「際どい」★ 参考プロダクトの知見。
-'   たまたま静穏窓に滑り込んだだけかもしれないので、stableMs を上げるか
-'   明示シグナル (D-4c) を併用することを検討する。
+'   *A wait with small slack (under 100 ms) is "borderline"* Knowledge from the reference product.
+'   It may just have slipped into the quiet window by luck, so consider raising stableMs or
+'   combining with an explicit signal (D-4c).
 ' ============================================================
 Public Property Get LastSettleInfo() As String
     LastSettleInfo = m_lastSettle
@@ -5207,14 +5244,14 @@ End Property
 
 
 ' ============================================================
-' AutoWaitAfterAction (D-4b、論点7 案C の opt-in 部分)
+' AutoWaitAfterAction (D-4b, the opt-in part of issue 7 option C)
 '
-'   True にすると、Wv2Element の ★.Value = / .Click / .SetAttribute が成功した後★
-'   自動で WaitSettled を呼ぶ。既定 False。
+'   When True, WaitSettled is called automatically *after Wv2Element's .Value = / .Click / .SetAttribute succeeds*.
+'   Default False.
 '
-'   ★D-3 の契約は変えない★ 操作の戻り値は「JS が例外なく走った」のままで、
-'   待ちの成否は p.LastSettleInfo / p.WaitSettled を自分で見る。
-'   ImplicitWaitSec (D-3) と同じ「明示が第一級、自動は opt-in」の流儀。
+'   *The D-3 contract does not change* The operation's return value stays "the JS ran without an exception", and
+'   the success of the wait is checked by yourself via p.LastSettleInfo / p.WaitSettled.
+'   The same "explicit is first-class, automatic is opt-in" style as ImplicitWaitSec (D-3).
 ' ============================================================
 Public Property Get AutoWaitAfterAction() As Boolean
     AutoWaitAfterAction = m_autoWait
@@ -5227,22 +5264,22 @@ End Property
 
 
 ' ============================================================
-' AddIgnoreNetwork / ClearIgnoreNetwork / IgnoreSelectors (D-4b、論点5)
+' AddIgnoreNetwork / ClearIgnoreNetwork / IgnoreSelectors (D-4b, issue 5)
 '
-'   静穏の判定から外すものを指定する。★遮断ではない★ 要求は普通に飛ぶ。
+'   Specify what to remove from the quiescence check. *This is not blocking* Requests fly as normal.
 '
-'   AddIgnoreNetwork : URL の★部分一致★パターン。常時鳴っている計測系に使う
-'                      例: p.AddIgnoreNetwork "google-analytics"
-'   IgnoreSelectors  : DOM 変化を無視する要素の CSS セレクタ (カンマ区切り)
-'                      例: p.IgnoreSelectors = ".clock, .ticker, #ads"
-'                      ★closest で判定する★ ので、指定要素の子孫の変化も外れる
+'   AddIgnoreNetwork : *substring-match* pattern of URL. For measurement systems that are always chattering
+'                      Example: p.AddIgnoreNetwork "google-analytics"
+'   IgnoreSelectors  : CSS selectors (comma-separated) of elements whose DOM changes are ignored
+'                      Example: p.IgnoreSelectors = ".clock, .ticker, #ads"
+'                      *Judged with closest* so changes in descendants of the specified element are also excluded
 '
-'   ★リストは VBA 側が持つ★ ページ側に置くと遷移で消えるため。
-'   毎回の状態読み取りに相乗りして送り込むので往復は増えない。
+'   *The lists are held on the VBA side* because placing them on the page side would lose them on navigation.
+'   They are pushed along with each state read, so round trips do not increase.
 '
-'   ★★★ 広すぎる除外は「早すぎる静穏」を生む ★★★
-'     意味のある通信まで外すと、まだ処理中なのに静穏と判定してしまう。
-'     除外は「ログを見て、無関係だと確かめたものだけ」に留めること。
+'   *** An exclusion that is too broad produces "too-early quiescence" ***
+'     If you exclude even meaningful traffic, it judges quiescence while processing is still going on.
+'     Keep exclusions to "only those you looked at in the log and confirmed to be unrelated".
 ' ============================================================
 Public Function AddIgnoreNetwork(ByVal urlPattern As String) As Boolean
     Dim v As Variant
@@ -5259,13 +5296,13 @@ Public Function AddIgnoreNetwork(ByVal urlPattern As String) As Boolean
 
     m_ignoreNet.Add urlPattern
     Wv2Log.LogD "Wv2Pane.AddIgnoreNetwork: " & urlPattern & _
-                " (計 " & m_ignoreNet.Count & " 件)"
+                " (total " & m_ignoreNet.Count & " entries)"
     AddIgnoreNetwork = True
 End Function
 
 Public Sub ClearIgnoreNetwork()
     Set m_ignoreNet = New Collection
-    Wv2Log.LogD "Wv2Pane.ClearIgnoreNetwork: 除外リストを空にした"
+    Wv2Log.LogD "Wv2Pane.ClearIgnoreNetwork: emptied the exclusion list"
 End Sub
 
 Public Property Get IgnoreSelectors() As String
@@ -5279,10 +5316,10 @@ End Property
 
 
 ' ============================================================
-' SpaProbeApplyJs (D-4b、Private) - 除外リストをページへ送り込む JS
+' SpaProbeApplyJs (D-4b, Private) - JS that pushes the exclusion lists to the page
 '
-'   状態の読み取りと同じ往復に相乗りさせる。変数 P (プローブ) が束縛済みである
-'   ことが前提。★空であっても必ず送る★ (送らないとページ側に前の設定が残る)。
+'   Rides on the same round trip as reading the state. It assumes variable P (the probe)
+'   is already bound. *Always sent even when empty* (if not sent, the previous setting remains on the page side).
 ' ============================================================
 Private Function SpaProbeApplyJs() As String
     Dim js As String
@@ -5296,10 +5333,10 @@ Private Function SpaProbeApplyJs() As String
         Next v
     End If
 
-    ' ★空でも必ず送る★ (D-4b の実機検証で踏んだ)
-    '   「空だから送らない」にすると、★ページ側に前の設定が残り続ける★。
-    '   IgnoreSelectors = "" や ClearIgnoreNetwork が効かなくなり、
-    '   一度除外したものが二度と戻らない。毎回上書きすれば VBA 側が唯一の権威になる。
+    ' *Always send even when empty* (stepped on during D-4b's real-machine verification)
+    '   If we "do not send because it is empty", *the previous setting keeps remaining on the page side*.
+    '   IgnoreSelectors = "" and ClearIgnoreNetwork stop taking effect,
+    '   and something excluded once never comes back. Overwriting every time makes the VBA side the sole authority.
     js = "P.ignoreNet=[" & arr & "];P.ignoreSel=" & _
          JsQuote(m_ignoreSel) & ";"
 
@@ -5307,46 +5344,46 @@ Private Function SpaProbeApplyJs() As String
 End Function
 
 ' ============================================================
-' ★D-4c: 明示シグナル (arm してから操作する)★
+' *D-4c: explicit signals (arm, then act)*
 '
-'   ★静穏だけでは「アプリが終わった」と「アプリが無視した」を区別できない★
-'   どちらも静かだからである。重要な操作では、完了の目印を★操作の直前に arm★し、
-'   次の WaitSettled でそれが観測されるまで待つ。
+'   *Quiescence alone cannot distinguish "the app finished" from "the app ignored it"*
+'   because both are quiet. For important operations, *arm a completion marker right before the operation*,
+'   and wait until it is observed at the next WaitSettled.
 '
-'   ■ ワンショット
-'     arm したシグナルは★次の WaitSettled 1 回で消費される★。同じ操作を 2 回
-'     するなら 2 回 arm し直す。消費は成功でも時間切れでも起きる。
+'   # One-shot
+'     An armed signal is *consumed by the next single WaitSettled*. If you do the same operation twice,
+'     arm again twice. Consumption happens on success and on timeout alike.
 '
-'   ■ 当たったら静穏窓を測り直す
-'     証拠が来た直後の 1 ポーリング分で満足せず、★その後もう一度まるごと
-'     静穏窓を取る★ (参考プロダクトと同じ考え方)。
+'   # Re-measure the quiet window on a hit
+'     Do not be satisfied with one poll right after the evidence arrives; *take a whole
+'     quiet window again after that* (same idea as the reference product).
 '
-'   ■ ★arm が消えたら黙って直さない (fail-visible)★
-'     ページ遷移でプローブごと消えると arm も消える。そのまま待つと
-'     「条件なしの待ち」に化けて、静かになった瞬間に成功を返してしまう。
-'     VBA 側でも arm 済みを覚えておき、食い違ったら signal-lost で失敗させる。
+'   # *If the arm vanishes, do not silently fix it (fail-visible)*
+'     When the probe vanishes on page navigation, the arm vanishes with it. Waiting as is
+'     would turn into a "wait with no condition" and return success the moment it goes quiet.
+'     The VBA side also remembers that it is armed, and if they disagree it fails with signal-lost.
 '
-'   ■ 除外との関係
-'     ★除外した要求でも明示シグナルの判定はする★ 除外は「静穏判定から外す」
-'     だけの意味であって、「見なかったことにする」ではない。
+'   # Relation to exclusions
+'     *Even for excluded requests, the explicit-signal check is done* Exclusion only means
+'     "remove from the quiescence check", not "pretend we did not see it".
 '
-'   使用例 (arm してから act する):
-'     p.ArmContentSignal "#result-table"     ' 既存の器が書き変わるのを待つ
+'   Usage example (arm, then act):
+'     p.ArmContentSignal "#result-table"     ' wait for the existing container to be rewritten
 '     el.Click
 '     If Not p.WaitSettled(10) Then Debug.Print p.LastSettleInfo
 ' ============================================================
 
 
 ' ============================================================
-' ArmContentSignal (D-4c) - 既存の部分木が書き変わるのを待つ
+' ArmContentSignal (D-4c) - wait for an existing subtree to be rewritten
 '
-'   ★arm した時点で対象が存在しなければ False★ (fail-fast)
-'   セレクタの綴り間違いや、まだ作られていない要素を指定した事故を、
-'   待ってから気づくのではなくその場で気づけるようにする。
-'   ★操作の後にできる要素は指定できない★ 既にある親を指定すること。
+'   *False if the target does not exist at the moment of arming* (fail-fast)
+'   Lets you notice on the spot, rather than after waiting, an accident such as a misspelled selector
+'   or specifying an element that has not been created yet.
+'   *An element that will be created after the operation cannot be specified* Specify an existing parent.
 '
-'   戻り値: True = arm できた / False = 対象が無い・不正なセレクタ・通信失敗
-'           理由は LastEvalError (not-found / bad-selector / その他)
+'   Return value: True = armed / False = no target, invalid selector, or communication failure
+'           The reason is in LastEvalError (not-found / bad-selector / other)
 ' ============================================================
 Public Function ArmContentSignal(ByVal selector As String) As Boolean
     Dim js As String
@@ -5357,11 +5394,11 @@ Public Function ArmContentSignal(ByVal selector As String) As Boolean
 
     res = EvalSync(js)
     If Not m_lastEvalOk Then
-        Wv2Log.LogW "Wv2Pane.ArmContentSignal: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.ArmContentSignal: failed err=" & m_lastEvalError
         Exit Function
     End If
 
-    ' ★JsonGetNum は負数を扱わない (設計原則64)★ ので、戻り値は文字列として読む。
+    ' *JsonGetNum does not handle negative numbers (design principle 64)* so read the return value as a string.
     If InStr(1, res, """r"":0") = 0 Then
         If InStr(1, res, "-2") > 0 Then
             m_lastEvalError = "bad-selector"
@@ -5369,24 +5406,24 @@ Public Function ArmContentSignal(ByVal selector As String) As Boolean
             m_lastEvalError = "not-found"
         End If
         m_lastEvalOk = False
-        Wv2Log.LogW "Wv2Pane.ArmContentSignal: arm できない (" & selector & _
-                    ") 理由=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.ArmContentSignal: cannot arm (" & selector & _
+                    ") reason=" & m_lastEvalError
         Exit Function
     End If
 
     m_sigDom = True
-    Wv2Log.LogD "Wv2Pane.ArmContentSignal: arm した (" & selector & ")"
+    Wv2Log.LogD "Wv2Pane.ArmContentSignal: armed (" & selector & ")"
     ArmContentSignal = True
 End Function
 
 
 ' ============================================================
-' ArmNetworkSignal (D-4c) - 特定の要求の完了を待つ
+' ArmNetworkSignal (D-4c) - wait for the completion of a specific request
 '
-'   urlPattern は URL の★部分一致★。応答が返った時点で当たりとする。
-'   ★存在確認はできない★ (これから飛ぶ要求なので)。綴りを間違えると
-'   当たらないまま時間切れになる。LastSettleInfo に net:miss と出るので、
-'   そのときは D-4d の診断ログで実際の URL を見て直すこと。
+'   urlPattern is a *substring match* of the URL. A hit is when the response comes back.
+'   *Existence cannot be checked* (because it is a request that has yet to fly). If you misspell it,
+'   it times out without a hit. net:miss appears in LastSettleInfo, and
+'   in that case look at the actual URL in D-4d's diagnostic log and fix it.
 ' ============================================================
 Public Function ArmNetworkSignal(ByVal urlPattern As String) As Boolean
     Dim js As String
@@ -5398,20 +5435,20 @@ Public Function ArmNetworkSignal(ByVal urlPattern As String) As Boolean
 
     EvalSync js
     If Not m_lastEvalOk Then
-        Wv2Log.LogW "Wv2Pane.ArmNetworkSignal: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.ArmNetworkSignal: failed err=" & m_lastEvalError
         Exit Function
     End If
 
     m_sigNet = True
-    Wv2Log.LogD "Wv2Pane.ArmNetworkSignal: arm した (" & urlPattern & ")"
+    Wv2Log.LogD "Wv2Pane.ArmNetworkSignal: armed (" & urlPattern & ")"
     ArmNetworkSignal = True
 End Function
 
 
 ' ============================================================
-' DisarmSignals (D-4c) - arm を解除する
-'   WaitSettled が終わるときに自動で呼ばれる (ワンショット)。
-'   arm したあと操作を取りやめたときは手で呼ぶ。
+' DisarmSignals (D-4c) - cancel the arm
+'   Called automatically when WaitSettled ends (one-shot).
+'   Call it by hand if you call off the operation after arming.
 ' ============================================================
 Public Function DisarmSignals() As Boolean
     m_sigDom = False
@@ -5426,7 +5463,7 @@ End Function
 
 
 ' ============================================================
-' SigInfoOf (D-4c、Private) - 待ちの内訳に載せるシグナルの当たり外れ
+' SigInfoOf (D-4c, Private) - hit or miss of the signals to put in the wait breakdown
 ' ============================================================
 Private Function SigInfoOf(ByVal st As String) As String
     Dim r As String
@@ -5451,21 +5488,21 @@ Private Function SigInfoOf(ByVal st As String) As String
 End Function
 
 ' ============================================================
-' ArmUrlSignal (D-4e) - URL が指定の文字列を含むまで待つ
+' ArmUrlSignal (D-4e) - wait until the URL contains the specified string
 '
-'   ★D-4d の実測で必要と分かった★ SPA の完了が DOM でも通信でもなく
-'   ★URL に現れる★ ことがある。Google Maps の住所検索がまさにそれで、
-'   検索が通ると URL が /place/... と /@緯度,経度,ズーム に変わる。
-'   これは「完了の目印」であると同時に「欲しかった座標そのもの」でもある。
+'   *Found necessary by D-4d's measurement* The completion of an SPA may appear neither in the DOM nor in traffic but
+'   *in the URL*. Google Maps address search is exactly that:
+'   once the search goes through, the URL changes to /place/... and /@latitude,longitude,zoom.
+'   This is both a "completion marker" and "the very coordinates we wanted".
 '
-'   pushState による変化は DOM 変化として観測できないので、
-'   ★location.href を毎回の状態読み取りで見る★ 形にしてある。
+'   Changes by pushState cannot be observed as DOM changes, so
+'   it is made so that *location.href is looked at on every state read*.
 '
-'   ワンショット。次の WaitSettled 1 回で消費される。
-'   ★arm した時点で既に一致していても当たり扱いになる★ ので、
-'   遷移前の URL に含まれない文字列を指定すること。
+'   One-shot. Consumed by the next single WaitSettled.
+'   *Even if it already matches at the moment of arming, it counts as a hit* so
+'   specify a string that is not contained in the pre-navigation URL.
 '
-'   使用例:
+'   Usage example:
 '     p.ArmUrlSignal "/place/"
 '     el.Click
 '     If p.WaitSettled(15) Then Debug.Print p.View_GetSource()
@@ -5480,31 +5517,31 @@ Public Function ArmUrlSignal(ByVal urlFragment As String) As Boolean
 
     EvalSync js
     If Not m_lastEvalOk Then
-        Wv2Log.LogW "Wv2Pane.ArmUrlSignal: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.ArmUrlSignal: failed err=" & m_lastEvalError
         Exit Function
     End If
 
     m_sigUrl = True
-    Wv2Log.LogD "Wv2Pane.ArmUrlSignal: arm した (" & urlFragment & ")"
+    Wv2Log.LogD "Wv2Pane.ArmUrlSignal: armed (" & urlFragment & ")"
     ArmUrlSignal = True
 End Function
 
 
 ' ============================================================
-' SpaProbeLogging (D-4e) - 診断ログの ON / OFF
+' SpaProbeLogging (D-4e) - diagnostic log ON / OFF
 '
-'   ★既定は False★ 有効にすると、ページ側が最近 200 件の出来事を溜める:
-'     NET+ <fetch|xhr> <URL>     要求が始まった
-'     NET- <経過ms> <URL>        要求が終わった
-'     DOM  x<件数>               DOM 変化のバースト
-'     SIG  <種別> hit ...        arm したシグナルが当たった
+'   *Default is False* When enabled, the page side accumulates the most recent 200 events:
+'     NET+ <fetch|xhr> <URL>     a request started
+'     NET- <elapsed ms> <URL>    a request finished
+'     DOM  x<count>              a burst of DOM changes
+'     SIG  <kind> hit ...        an armed signal hit
 '
-'   ★何を待つべきかを推測でなく観測で決めるための道具★
-'   参考プロダクト (WebDriver BiDi for SeleniumVBA) の Discovery Log に当たる。
-'   arm なしで 1 回流し、ログに出た URL や DOM の動きを見て、次に何を arm するか /
-'   何を除外するかを決める。
+'   *A tool for deciding what to wait for by observation rather than guesswork*
+'   It corresponds to the Discovery Log of the reference product (WebDriver BiDi for SeleniumVBA).
+'   Run once without arming, look at the URLs and DOM movements that appeared in the log, and decide what to arm next /
+'   what to exclude.
 '
-'   ★常時 ON にしない★ 溜め込みの分だけページ側が重くなる。
+'   *Do not leave it ON all the time* The page side gets heavier by the amount accumulated.
 ' ============================================================
 Public Property Get SpaProbeLogging() As Boolean
     Dim st As String
@@ -5524,18 +5561,18 @@ Public Property Let SpaProbeLogging(ByVal onOff As Boolean)
 
     EvalSync js
     Wv2Log.LogD "Wv2Pane.SpaProbeLogging = " & onOff & _
-                IIf(m_lastEvalOk, "", " (失敗: " & m_lastEvalError & ")")
+                IIf(m_lastEvalOk, "", " (failed: " & m_lastEvalError & ")")
 End Property
 
 
 ' ============================================================
-' SpaProbeDrainLog (D-4e) - 溜まった診断ログを取り出して Wv2Log へ流す
+' SpaProbeDrainLog (D-4e) - take out the accumulated diagnostic log and flush it to Wv2Log
 '
-'   ★取り出したらページ側は空になる★ (溜め続けない)。
-'   戻り値: 流した件数。0 なら何も溜まっていなかった。
+'   *After taking out, the page side becomes empty* (does not keep accumulating).
+'   Return value: the number flushed. 0 means nothing had accumulated.
 '
-'   1 回の EvalSync で運べる量には限りがあるので、★1 回あたり 60 件まで★。
-'   残りは次の呼び出しで取れる (戻り値が 60 なら、まだ残っている可能性がある)。
+'   There is a limit to the amount one EvalSync can carry, so *up to 60 per call*.
+'   The rest can be taken at the next call (if the return value is 60, more may remain).
 ' ============================================================
 Public Function SpaProbeDrainLog() As Long
     Dim js As String
@@ -5550,7 +5587,7 @@ Public Function SpaProbeDrainLog() As Long
 
     res = EvalSync(js, 10)
     If Not m_lastEvalOk Then
-        Wv2Log.LogW "Wv2Pane.SpaProbeDrainLog: 失敗 err=" & m_lastEvalError
+        Wv2Log.LogW "Wv2Pane.SpaProbeDrainLog: failed err=" & m_lastEvalError
         Exit Function
     End If
 
@@ -5560,31 +5597,31 @@ Public Function SpaProbeDrainLog() As Long
     Wv2Json.JsonPickStr res, "s", txt
     lines = Split(txt, ChrW$(1))
 
-    Wv2Log.LogI "  --- 診断ログ (" & SpaProbeDrainLog & " 件) ---"
+    Wv2Log.LogI "  --- diagnostic log (" & SpaProbeDrainLog & " entries) ---"
     For i = LBound(lines) To UBound(lines)
         Wv2Log.LogI "    " & lines(i)
     Next i
 End Function
 
 ' ============================================================
-' StaleInflightMs (D-4f) - 居座る要求を静穏判定から外す境目 (ms)
+' StaleInflightMs (D-4f) - the boundary (ms) for excluding lingering requests from the quiescence check
 '
-'   ★既定 10000 (10 秒)★ 0 にすると無効 (すべての要求を数える)。
+'   *Default 10000 (10 seconds)* Setting 0 disables it (count all requests).
 '
-'   ■ なぜ要るか (D-4d の実測)
-'     Google Maps の住所検索は /search?tbm=map を★開きっぱなし★にして結果を
-'     流し続ける。検索自体は 2 秒で終わって DOM も静まり URL も変わっているのに、
-'     この 1 本のせいで永久に inflight=0 にならず、静穏待ちが時間切れになった。
-'     ロングポーリングやストリーミングはどのサイトにもあるので、個別の除外
-'     (AddIgnoreNetwork) だけに頼ると、知らないサイトでは必ず一度は踏む。
+'   # Why it is needed (D-4d's measurement)
+'     Google Maps address search keeps /search?tbm=map *open* and keeps
+'     streaming results. The search itself finished in 2 seconds, the DOM went quiet and the URL changed,
+'     yet because of this one request inflight never reached 0, and the quiescence wait timed out.
+'     Long polling and streaming exist on every site, so relying only on individual exclusions
+'     (AddIgnoreNetwork) means stepping on it at least once on any unfamiliar site.
 '
-'   ■ 何を捨てているか (正直に)
-'     ★本当に遅いだけの要求も、この時間を超えれば数えなくなる★
-'     ただしそのとき DOM も静穏窓のあいだ動いていないので、
-'     「見た目は落ち着いている」という WaitSettled の意味とは矛盾しない
-'     (True は「アプリの処理が終わった」証明ではない、という前提のまま)。
-'     正確さが要る場面では AddIgnoreNetwork で個別に外すか、
-'     D-4c の明示シグナルで「何を待つか」を書くこと。
+'   # What is being discarded (honestly)
+'     *Even a request that is truly just slow stops being counted once it exceeds this time*
+'     But at that point the DOM has not moved during the quiet window either, so
+'     it does not contradict the meaning of WaitSettled, "looks settled"
+'     (keeping the premise that True is not proof that "the app has finished processing").
+'     In situations that need accuracy, exclude individually with AddIgnoreNetwork, or
+'     write "what to wait for" with D-4c's explicit signal.
 ' ============================================================
 Public Property Get StaleInflightMs() As Long
     StaleInflightMs = m_staleMs
@@ -5594,13 +5631,13 @@ Public Property Let StaleInflightMs(ByVal ms As Long)
     If ms < 0 Then ms = 0
     m_staleMs = ms
     Wv2Log.LogD "Wv2Pane.StaleInflightMs = " & ms & _
-                IIf(ms = 0, " (無効: すべて数える)", "")
+                IIf(ms = 0, " (disabled: count all)", "")
 End Property
 
 
 ' ============================================================
-' StaleMsJs (D-4f、Private) - 居座り境目を JS の数値リテラルにする
-'   0 (無効) のときは巨大な値にして「すべて新しい」扱いにする。
+' StaleMsJs (D-4f, Private) - turn the lingering boundary into a JS numeric literal
+'   When 0 (disabled), use a huge value so that "everything is new".
 ' ============================================================
 Private Function StaleMsJs() As String
     If m_staleMs <= 0 Then
@@ -5611,36 +5648,36 @@ Private Function StaleMsJs() As String
 End Function
 
 ' ============================================================
-' ★D-6 の本体: QuerySelectorAll と寿命管理★
+' *The body of D-6: QuerySelectorAll and lifetime management*
 ' ============================================================
 
 
 ' ============================================================
-' QuerySelectorAll (D-6) - 一致する要素をまとめて掴む
+' QuerySelectorAll (D-6) - grab all matching elements at once
 '
-'   引数:
-'     selector : CSS セレクタ
-'     maxCount : 返す上限 (既定 200)。0 以下なら既定値に丸める
-'   戻り値:
-'     Wv2Element の Collection。★見つからなければ空の Collection★ (Nothing ではない)
-'     失敗したときも空の Collection を返す。区別は LastEvalOk で行う (設計原則93)。
+'   Arguments:
+'     selector : CSS selector
+'     maxCount : upper limit to return (default 200). If 0 or less, rounded to the default
+'   Return value:
+'     A Collection of Wv2Element. *If none is found, an empty Collection* (not Nothing)
+'     It returns an empty Collection on failure too. Distinguish with LastEvalOk (design principle 93).
 '
-'   ★件数が上限に達したら LastAllTruncated = True★
-'     「返ってきた件数 = ページにある数」と思い込ませないため。
+'   *If the count reaches the upper limit, LastAllTruncated = True*
+'     So that no one assumes "the returned count = the number on the page".
 '
-'   ★文書順で返る★ querySelectorAll の順序そのまま。
+'   *Returned in document order* Exactly the order of querySelectorAll.
 '
-'   使用例:
+'   Usage example:
 '     Dim els As Collection, el As Wv2Element
 '     Set els = p.QuerySelectorAll("a[href]")
-'     Debug.Print els.Count & " 件"
+'     Debug.Print els.Count & " items"
 '     For Each el In els
 '         Debug.Print el.GetAttribute("href")
 '     Next el
 '
-'   ★1 プロパティにつき 1 往復する★ (D-2 の割り切り) ので、200 件から属性を
-'   全部読むと 200 往復 = 8 秒ほどかかる。まとめて取りたいときは EvalSync で
-'   JS 式を 1 本書く方が速い。
+'   *One round trip per property* (the D-2 compromise), so reading all attributes from
+'   200 elements takes 200 round trips = about 8 seconds. When you want to fetch them in bulk, writing
+'   a single JS expression with EvalSync is faster.
 ' ============================================================
 Public Function QuerySelectorAll(ByVal selector As String, _
                                  Optional ByVal maxCount As Long = ALL_MAX_DEFAULT) As Collection
@@ -5659,9 +5696,9 @@ Public Function QuerySelectorAll(ByVal selector As String, _
 
     If maxCount <= 0 Then maxCount = ALL_MAX_DEFAULT
 
-    ' ★D-2 の FindOne を push からループに変えただけ★
-    '   ハンドルはカンマ区切りの文字列で返す (Wv2Json は配列を扱えないため。
-    '   パーサを拡張するより Split の方が小さい ― 論点5)。
+    ' *Just changed D-2's FindOne from push to a loop*
+    '   The handles are returned as a comma-separated string (because Wv2Json cannot handle arrays.
+    '   Split is smaller than extending the parser - issue 5).
     js = "(function(){" & JsRegistryPrologue() & _
          "var q=document.querySelectorAll(" & JsQuote(selector) & ");" & _
          "var mx=" & CStr(maxCount) & ",h=[],i;" & _
@@ -5672,7 +5709,7 @@ Public Function QuerySelectorAll(ByVal selector As String, _
     res = EvalSync(js)
 
     If Not m_lastEvalOk Then
-        Debug.Print "Wv2Pane.QuerySelectorAll: 失敗 (" & selector & ") err=" & m_lastEvalError
+        Debug.Print "Wv2Pane.QuerySelectorAll: failed (" & selector & ") err=" & m_lastEvalError
         Exit Function
     End If
 
@@ -5682,14 +5719,14 @@ Public Function QuerySelectorAll(ByVal selector As String, _
 
     m_allTruncated = (InStr(1, res, """cut"":true") > 0)
     If m_allTruncated Then
-        Wv2Log.LogW "Wv2Pane.QuerySelectorAll: ★打ち切った★ (" & selector & _
-                    ") ページには " & Wv2Json.JsonGetNum(res, "n") & _
-                    " 件あるが " & maxCount & " 件で止めた"
+        Wv2Log.LogW "Wv2Pane.QuerySelectorAll: *truncated* (" & selector & _
+                    ") the page has " & Wv2Json.JsonGetNum(res, "n") & _
+                    " items but stopped at " & maxCount & " items"
     End If
 
     Wv2Json.JsonPickStr res, "h", handles
     If Len(handles) = 0 Then
-        Debug.Print "Wv2Pane.QuerySelectorAll: 0 件 (" & selector & ")"
+        Debug.Print "Wv2Pane.QuerySelectorAll: 0 items (" & selector & ")"
         WarnIfElementsPiled Wv2Json.JsonGetNum(res, "tot")
         Exit Function
     End If
@@ -5703,15 +5740,15 @@ Public Function QuerySelectorAll(ByVal selector As String, _
 
     WarnIfElementsPiled Wv2Json.JsonGetNum(res, "tot")
 
-    Debug.Print "Wv2Pane.QuerySelectorAll: " & outCol.Count & " 件 (" & _
+    Debug.Print "Wv2Pane.QuerySelectorAll: " & outCol.Count & " items (" & _
                 selector & ") gen=" & gen
 End Function
 
 
 ' ============================================================
-' LastAllTruncated (D-6) - 直前の QuerySelectorAll が上限で打ち切られたか
-'   ★True なら「返ってきた件数 = ページにある数」ではない★
-'   全部要るなら maxCount を上げるか、セレクタを絞ること。
+' LastAllTruncated (D-6) - whether the previous QuerySelectorAll was truncated at the limit
+'   *If True, "the returned count = the number on the page" does not hold*
+'   If you need all of them, raise maxCount or narrow the selector.
 ' ============================================================
 Public Property Get LastAllTruncated() As Boolean
     LastAllTruncated = m_allTruncated
@@ -5719,14 +5756,14 @@ End Property
 
 
 ' ============================================================
-' ElementCount (D-6) - JS 側レジストリに積まれている要素の数
+' ElementCount (D-6) - the number of elements stacked in the JS-side registry
 '
-'   ★掴んだ要素は解放しない★ (D-2 論点3)。ページ遷移でレジストリごと消えるので
-'   実害は小さいが、QuerySelectorAll は 1 回で 200 個積みうるので伸びは速い。
-'   気になったらこれで数を見て、ClearElementRegistry で作り直す。
-'   ★作り直すと手元の Wv2Element はすべて stale になる★
+'   *Grabbed elements are not released* (D-2 issue 3). The registry vanishes wholesale on page navigation, so
+'   actual harm is small, but QuerySelectorAll can stack 200 at a time, so it grows fast.
+'   If concerned, look at the count with this and rebuild with ClearElementRegistry.
+'   *Rebuilding makes all Wv2Element objects in hand stale*
 '
-'   戻り値: 積まれている数。失敗したら -1 (LastEvalError に理由)
+'   Return value: the number stacked. -1 on failure (reason in LastEvalError)
 ' ============================================================
 Public Property Get ElementCount() As Long
     Dim res As String
@@ -5744,58 +5781,58 @@ End Property
 
 
 ' ============================================================
-' WarnIfElementsPiled (D-6、Private) - 積み上がりを知らせる
-'   ★捨てはしない★ 勝手に捨てると手元の Wv2Element が黙って stale になる。
-'   知らせるだけにして、捨てるかどうかは呼び出し側が決める。
+' WarnIfElementsPiled (D-6, Private) - report the pile-up
+'   *Does not discard* Discarding on its own would silently make the Wv2Element in hand stale.
+'   It only reports, and the caller decides whether to discard.
 ' ============================================================
 Private Sub WarnIfElementsPiled(ByVal total As Long)
     If total < ELEMENT_WARN_COUNT Then Exit Sub
 
-    Wv2Log.LogW "Wv2Pane: ★要素レジストリに " & total & " 個積まれている★ " & _
-                "(掴んだ要素は解放しない設計)。要らなければ ClearElementRegistry で" & _
-                "作り直せる。ただし手元の Wv2Element はすべて stale になる。"
+    Wv2Log.LogW "Wv2Pane: *" & total & " items are piled up in the element registry* " & _
+                "(by design grabbed elements are not released). If not needed, it can be rebuilt with ClearElementRegistry" & _
+                ". However, all Wv2Element objects in hand become stale."
 End Sub
 
 
 
 ' ============================================================
-' ★N-1 : ネットワーク要求のキャプチャ (WebResourceRequested)★
+' *N-1 : capturing network requests (WebResourceRequested)*
 '
-'   ここから下が N-1 段階で足した一式。並びは
-'     (1) 使う側の口   NetCaptureStart / NetCaptureStop / NetLogDrain ほか
-'     (2) COM の配線   View_AddWebResourceRequested ほか 4 本
-'     (3) 受け口       View_OnWebResourceRequested (+ in-callback ガード)
-'     (4) リング       NetRingAlloc / NetPush / NetElapsedMs / NetRingIndex
-'     (5) 種別の名前   NetCtxName / NetCtxFromName
+'   Everything from here down is the set added in stage N-1. The order is
+'     (1) entries for the user   NetCaptureStart / NetCaptureStop / NetLogDrain etc.
+'     (2) COM wiring   View_AddWebResourceRequested and 4 others
+'     (3) receiver       View_OnWebResourceRequested (+ in-callback guard)
+'     (4) ring       NetRingAlloc / NetPush / NetElapsedMs / NetRingIndex
+'     (5) kind names   NetCtxName / NetCtxFromName
 '
-'   使い方 (最小):
-'     p.NetCaptureStart          ' ★Navigate の前に呼べば初回の DOCUMENT から捕まる★
-'     ... 手で 1 回操作する ...
-'     p.NetLogDrain              ' 溜まった分をログファイルへ流して空にする
+'   Usage (minimal):
+'     p.NetCaptureStart          ' *If called before Navigate, the first DOCUMENT is caught too*
+'     ... operate by hand once ...
+'     p.NetLogDrain              ' flush what has accumulated to the log file and empty it
 '     p.NetCaptureStop
 ' ============================================================
 
 
 ' ============================================================
-' NetCaptureStart (N-1) - 捕捉を始める
+' NetCaptureStart (N-1) - start capturing
 '
-'   contexts  : 捕まえる種別をカンマ区切りで指定する。空なら DOCUMENT,XHR,FETCH。
-'               名前でも数字でもよい。"ALL" にすると全種別 (画像も CSS も来る)。
+'   contexts  : specify the kinds to catch, comma-separated. If empty, DOCUMENT,XHR,FETCH.
+'               Names or numbers both work. "ALL" means all kinds (images and CSS come too).
 '                 DOCUMENT / STYLESHEET / IMAGE / MEDIA / FONT / SCRIPT /
 '                 XHR (= XMLHTTPREQUEST) / FETCH / TEXTTRACK / EVENTSOURCE /
 '                 WEBSOCKET / MANIFEST / SIGNEDEXCHANGE / PING /
 '                 CSPVIOLATIONREPORT / OTHER / ALL
-'               ★数字も受ける★ SDK が種別を増やしてもここを直さずに使えるため。
-'   uriFilter : URL のフィルタ。既定 "*" (すべて)。* と ? が使える。
+'               *Numbers are also accepted* so that it can be used without fixing this even if the SDK adds kinds.
+'   uriFilter : URL filter. Default "*" (all). * and ? can be used.
 '
-'   ★既に捕捉中なら一度止めてから張り直す★
-'     種別を変えたつもりが前の網も残っている、という事故を防ぐ (設計原則106 の趣旨)。
+'   *If already capturing, stop once and re-set up*
+'     This prevents the accident where you thought you changed the kinds but the previous net also remains (in the spirit of design principle 106).
 '
-'   ★フィルタが 1 つも張れなかったらハンドラごと外して False を返す★
-'     フィルタゼロではイベントが 1 件も来ないので、「捕捉中なのに何も出ない」
-'     という一番たちの悪い状態を作らない。
+'   *If not a single filter could be set, remove the handler too and return False*
+'     With zero filters not one event arrives, so we do not create the worst state of
+'     "capturing but nothing shows up".
 '
-'   戻り値: True なら捕捉中。
+'   Return value: True if capturing.
 ' ============================================================
 Public Function NetCaptureStart(Optional ByVal contexts As String = "", _
                                 Optional ByVal uriFilter As String = "*") As Boolean
@@ -5807,11 +5844,11 @@ Public Function NetCaptureStart(Optional ByVal contexts As String = "", _
     Dim spec  As String
 
     If m_closed Then
-        Wv2Log.LogW "Wv2Pane.NetCaptureStart: このペインは既に閉じている"
+        Wv2Log.LogW "Wv2Pane.NetCaptureStart: this pane is already closed"
         Exit Function
     End If
     If m_pView = 0 Then
-        Wv2Log.LogW "Wv2Pane.NetCaptureStart: m_pView が未取得 (先にタブを作ること)"
+        Wv2Log.LogW "Wv2Pane.NetCaptureStart: m_pView is not acquired (create a tab first)"
         Exit Function
     End If
 
@@ -5821,24 +5858,24 @@ Public Function NetCaptureStart(Optional ByVal contexts As String = "", _
     If LenB(spec) = 0 Then spec = NET_CTX_DEFAULT
     If LenB(Trim$(uriFilter)) = 0 Then uriFilter = "*"
 
-    ' --- (1) ハンドラを登録する ---
+    ' --- (1) Register the handler ---
     hr = View_AddWebResourceRequested()
     If hr <> 0 Then
-        Wv2Log.LogE "Wv2Pane.NetCaptureStart: add_WebResourceRequested 失敗 hr=&H" & Hex(hr)
+        Wv2Log.LogE "Wv2Pane.NetCaptureStart: add_WebResourceRequested failed hr=&H" & Hex(hr)
         Exit Function
     End If
 
-    ' --- (2) フィルタを張る (★1 つも張らないと 1 件も来ない★) ---
+    ' --- (2) Set up the filters (*if none is set, not one arrives*) ---
     parts = Split(spec, ",")
     For i = LBound(parts) To UBound(parts)
         ctx = NetCtxFromName(CStr(parts(i)))
         If ctx < 0 Then
-            Wv2Log.LogW "Wv2Pane.NetCaptureStart: 種別 [" & Trim$(CStr(parts(i))) & _
-                        "] が分からないので飛ばす"
+            Wv2Log.LogW "Wv2Pane.NetCaptureStart: unknown kind [" & Trim$(CStr(parts(i))) & _
+                        "], skipping"
         Else
             hr = View_AddWebResourceRequestedFilter(uriFilter, ctx)
             If hr <> 0 Then
-                Wv2Log.LogW "Wv2Pane.NetCaptureStart: フィルタ登録に失敗 " & _
+                Wv2Log.LogW "Wv2Pane.NetCaptureStart: filter registration failed " & _
                             NetCtxName(ctx) & " hr=&H" & Hex(hr)
             Else
                 m_netFilters.Add uriFilter & vbTab & ctx
@@ -5848,42 +5885,42 @@ Public Function NetCaptureStart(Optional ByVal contexts As String = "", _
     Next i
 
     If added = 0 Then
-        Wv2Log.LogE "Wv2Pane.NetCaptureStart: ★フィルタが 1 つも張れなかった★ " & _
-                    "この状態ではイベントが 1 件も来ないので、ハンドラも外して中止する。"
+        Wv2Log.LogE "Wv2Pane.NetCaptureStart: *not a single filter could be set* " & _
+                    "In this state not one event arrives, so the handler is removed too and it is aborted."
         View_RemoveWebResourceRequested
         Exit Function
     End If
 
-    ' --- (3) 応答イベントも張る (N-3) ---
-    '   ★このイベントにはフィルタが無い★ ので全部来る。一覧に居る要求に
-    '   対応するものだけ記録する (論点1 案A)。_2 IF が取れない環境では
-    '   ★ステータス欄が永久に空欄になる★ ので、黙って進まず知らせる。
+    ' --- (3) Also set up the response event (N-3) ---
+    '   *This event has no filter* so everything arrives. Only those that match a request
+    '   in the list are recorded (issue 1, option A). In an environment where the _2 IF cannot be obtained,
+    '   *the status column stays blank forever* so do not proceed silently; report it.
     m_netRespOn = False
     hr = View2_AddWebResourceResponseReceived()
     If hr = 0 Then
         m_netRespOn = True
     Else
-        Wv2Log.LogW "Wv2Pane.NetCaptureStart: ★応答イベントを張れなかった★ hr=&H" & _
-                    Hex(hr) & " 一覧のステータス欄は空欄のままになる。"
+        Wv2Log.LogW "Wv2Pane.NetCaptureStart: *could not set up the response event* hr=&H" & _
+                    Hex(hr) & " the status column of the list stays blank."
     End If
 
     NetLogClear
     m_netOn = True
     NetCaptureStart = True
 
-    Wv2Log.LogI "Wv2Pane.NetCaptureStart: 捕捉開始 uri=" & uriFilter & _
-                " 種別=" & spec & " (フィルタ " & added & " 本)"
+    Wv2Log.LogI "Wv2Pane.NetCaptureStart: capture started uri=" & uriFilter & _
+                " kinds=" & spec & " (" & added & " filters)"
 End Function
 
 
 ' ============================================================
-' NetCaptureStop (N-1) - 捕捉をやめる
+' NetCaptureStop (N-1) - stop capturing
 '
-'   ★張ったフィルタは必ず外す★ (設計原則106 の趣旨)
-'   ハンドラを外すだけでもイベントは来なくなるが、相手側に網が残ったままだと
-'   次の NetCaptureStart が知らないうちに広い網で動くことになる。
+'   *Always remove the filters that were set* (in the spirit of design principle 106)
+'   Removing just the handler also stops events from arriving, but if the net is left on the other side,
+'   the next NetCaptureStart would unknowingly run with a wide net.
 '
-'   戻り値: True なら後始末まで含めて成功。
+'   Return value: True if everything including cleanup succeeded.
 ' ============================================================
 Public Function NetCaptureStop() As Boolean
     Dim v     As Variant
@@ -5898,17 +5935,17 @@ Public Function NetCaptureStop() As Boolean
 
     allOk = True
 
-    ' --- (1) フィルタを外す ---
-    '   ★既に閉じている / View が無いときは COM を叩けない★
-    '   相手ごと消えているので網も残らない。覚えている分を捨てるだけにする。
+    ' --- (1) Remove the filters ---
+    '   *When already closed / there is no View, COM cannot be hit*
+    '   The other side is gone, so no net remains either. Just discard what we remember.
     If m_closed Or m_pView = 0 Then
-        Wv2Log.LogD "Wv2Pane.NetCaptureStop: View が無いのでフィルタ解除は省略"
+        Wv2Log.LogD "Wv2Pane.NetCaptureStop: there is no View, so skipping filter removal"
     Else
         For Each v In m_netFilters
             parts = Split(CStr(v), vbTab)
             hr = View_RemoveWebResourceRequestedFilter(CStr(parts(0)), CLng(parts(1)))
             If hr <> 0 Then
-                Wv2Log.LogW "Wv2Pane.NetCaptureStop: フィルタ解除に失敗 " & _
+                Wv2Log.LogW "Wv2Pane.NetCaptureStop: filter removal failed " & _
                             CStr(parts(0)) & " / " & NetCtxName(CLng(parts(1))) & _
                             " hr=&H" & Hex(hr)
                 allOk = False
@@ -5917,29 +5954,29 @@ Public Function NetCaptureStop() As Boolean
     End If
     Set m_netFilters = New Collection
 
-    ' --- (2) ハンドラを外す ---
+    ' --- (2) Remove the handler ---
     hr = View_RemoveWebResourceRequested()
     If hr <> 0 Then allOk = False
 
-    ' --- (3) 応答イベントを外す (N-3) ---
+    ' --- (3) Remove the response event (N-3) ---
     hr = View2_RemoveWebResourceResponseReceived()
     If hr <> 0 Then allOk = False
     m_netRespOn = False
 
-    ' --- (4) N-4: 保持している ResponseView をほどく ---
-    '   ★完了が来ないまま終わることがある★ ので漏らさない。
+    ' --- (4) N-4: release the held ResponseViews ---
+    '   *It may end without the completion ever arriving* so do not leak.
     NetRespPendingClear
 
     m_netOn = False
     NetCaptureStop = allOk
 
-    Wv2Log.LogI "Wv2Pane.NetCaptureStop: 捕捉終了 (総発火 " & m_netTotal & " 件 / " & _
-                "手元 " & m_netCount & " 件 / 溢れ " & m_netDropped & " 件)"
+    Wv2Log.LogI "Wv2Pane.NetCaptureStop: capture ended (total fired " & m_netTotal & " / " & _
+                "in hand " & m_netCount & " / overflowed " & m_netDropped & ")"
 End Function
 
 
 ' ============================================================
-' NetCaptureOn (N-1) - 捕捉中かどうか
+' NetCaptureOn (N-1) - whether capturing
 ' ============================================================
 Public Property Get NetCaptureOn() As Boolean
     NetCaptureOn = m_netOn
@@ -5949,15 +5986,15 @@ End Property
 ' ============================================================
 ' NetLogCount / NetLogTotal / NetLogDropped (N-1)
 '
-'   NetLogCount   : 今リングに入っている件数 (取り出せる数)
-'   NetLogTotal   : 捕捉開始からの★総発火数★ (溢れた分も数える)
-'   NetLogDropped : ★リングから溢れて捨てた件数★
+'   NetLogCount   : number of entries currently in the ring (the number that can be taken out)
+'   NetLogTotal   : *total fired count* since capture started (overflowed ones are counted too)
+'   NetLogDropped : *number dropped by overflowing from the ring*
 '
-'   ★どちらも「捕捉開始からの通算」で、NetLogDrain では 0 に戻らない★ (N-1b)
-'   取り出したのは中身だけ。0 に戻したいときは NetLogClear を呼ぶ。
+'   *Both are "cumulative since capture started" and do not return to 0 on NetLogDrain* (N-1b)
+'   Only the contents were taken out. To return to 0, call NetLogClear.
 '
-'   ★NetLogCount と NetLogTotal が食い違っていたら取りこぼしている★
-'   件数を黙って切らないための組 (D-6 の LastAllTruncated と同じ判断)。
+'   *If NetLogCount and NetLogTotal disagree, some were missed*
+'   A pair so as not to cut counts silently (same judgement as D-6's LastAllTruncated).
 ' ============================================================
 Public Property Get NetLogCount() As Long
     NetLogCount = m_netCount
@@ -5973,8 +6010,8 @@ End Property
 
 
 ' ============================================================
-' NetLogCapacity (N-1) - リングの容量 (件)
-'   ★変えると中身は捨てられる★ (作り直すため)。捕捉を始める前に決めること。
+' NetLogCapacity (N-1) - capacity of the ring (entries)
+'   *Changing it discards the contents* (because it is rebuilt). Decide before starting capture.
 ' ============================================================
 Public Property Get NetLogCapacity() As Long
     NetLogCapacity = m_netCap
@@ -5983,20 +6020,20 @@ End Property
 Public Property Let NetLogCapacity(ByVal n As Long)
     If n < 1 Then n = 1
     If n > NET_CAP_MAX Then
-        Wv2Log.LogW "Wv2Pane.NetLogCapacity: " & n & " は上限 " & NET_CAP_MAX & " を超えるので丸める"
+        Wv2Log.LogW "Wv2Pane.NetLogCapacity: " & n & " exceeds the upper limit " & NET_CAP_MAX & ", so rounding"
         n = NET_CAP_MAX
     End If
     m_netCap = n
     NetRingAlloc
-    Wv2Log.LogD "Wv2Pane.NetLogCapacity = " & m_netCap & " (中身は作り直したので空)"
+    Wv2Log.LogD "Wv2Pane.NetLogCapacity = " & m_netCap & " (contents were rebuilt, so empty)"
 End Property
 
 
 ' ============================================================
-' NetLogClear (N-1) - リングを空にする
-'   ★経過 ms の基準もここで打ち直す★ (次の 1 件が +0ms から始まる)
-'   ★通算カウンタ (NetLogTotal / NetLogDropped) も 0 に戻る★
-'   中身だけ取り出したいなら NetLogDrain を使うこと (通算は保たれる)。
+' NetLogClear (N-1) - empty the ring
+'   *The baseline of elapsed ms is reset here too* (the next entry starts from +0ms)
+'   *The cumulative counters (NetLogTotal / NetLogDropped) also return to 0*
+'   If you only want to take out the contents, use NetLogDrain (the cumulative counts are kept).
 ' ============================================================
 Public Sub NetLogClear()
     NetRingAlloc
@@ -6004,16 +6041,16 @@ End Sub
 
 
 ' ============================================================
-' NetLogLine (N-1) - 流さずに 1 件だけ読む
+' NetLogLine (N-1) - read only one entry without flushing
 '
-'   idx は★古い順に 1 起点★。範囲外なら空文字。
-'   1 行は vbTab 区切りで 7 項目 (N-3 で 5 → 7):
-'     通し番号 / 経過ms / メソッド / 種別名 / URL / ステータス / 理由句
-'   ★ステータスは末尾に足した★ 既存の添字 (0～4) を動かさないため。
-'   ★まだ応答が来ていなければ空欄★ (論点7 案α)
+'   idx is *1-based, oldest first*. An empty string if out of range.
+'   One line is 7 items separated by vbTab (5 -> 7 in N-3):
+'     serial number / elapsed ms / method / kind name / URL / status / reason phrase
+'   *Status was added at the end* so as not to move the existing indexes (0 to 4).
+'   *Blank if no response has arrived yet* (issue 7, option alpha)
 '
-'   ★ドレインすると消えるので、判定に使うときはこちらで読む★
-'   (N-5 で PowerShell コードを吐くときの入口もここになる)
+'   *Draining removes them, so when using it for judgement, read with this*
+'   (this will also be the entry point when emitting PowerShell code in N-5)
 ' ============================================================
 Public Property Get NetLogLine(ByVal idx As Long) As String
     Dim k As Long
@@ -6027,14 +6064,14 @@ End Property
 
 
 ' ============================================================
-' NetLogDrain (N-1) - 溜まった分を Wv2Log へ流して空にする
+' NetLogDrain (N-1) - flush what has accumulated to Wv2Log and empty it
 '
-'   ★取り出したらリングは空になる★ (D-4 の SpaProbeDrainLog と同じ契約)。
-'   ★N-3 の注意★ 応答は一覧の行に書かれるので、まだ応答が来ていない要求を
-'   ドレインすると、その応答は行き場を失って NetRespUnmatched に数えられる。
-'   ★判定はログファイルで読む★ (設計原則105)。イミディエイトは配管ログで流れる。
+'   *After taking out, the ring becomes empty* (same contract as D-4's SpaProbeDrainLog).
+'   *Note for N-3* Responses are written to the list rows, so if you drain a request whose
+'   response has not arrived yet, that response loses its place and is counted in NetRespUnmatched.
+'   *Read the verdict from the log file* (design principle 105). The Immediate window is flooded by plumbing logs.
 '
-'   戻り値: 流した件数。0 なら何も溜まっていなかった。
+'   Return value: the number flushed. 0 means nothing had accumulated.
 ' ============================================================
 Public Function NetLogDrain() As Long
     Dim i As Long
@@ -6042,49 +6079,49 @@ Public Function NetLogDrain() As Long
 
     n = m_netCount
     If n = 0 Then
-        Wv2Log.LogI "  --- ネットワーク要求: 溜まっていない (総発火 " & m_netTotal & " 件) ---"
+        Wv2Log.LogI "  --- network requests: none accumulated (total fired " & m_netTotal & ") ---"
         Exit Function
     End If
 
-    Wv2Log.LogI "  --- ネットワーク要求 " & n & " 件 (総発火 " & m_netTotal & " 件) ---"
-    Wv2Log.LogI "        #   経過ms  メソッド 種別       状態  URL"
+    Wv2Log.LogI "  --- network requests " & n & " (total fired " & m_netTotal & ") ---"
+    Wv2Log.LogI "        #   elapsed  method   kind       status  URL"
     For i = 1 To n
         Wv2Log.LogI "      " & NetLogFormat(i)
     Next i
 
     If m_netDropped > 0 Then
-        ' ★通算で数えている★ ので、溢れたまま何度もドレインすると毎回出る。
-        '   出続けるのが鬱陶しいのではなく、★取りこぼしたままだという事実★ が
-        '   消えないだけ。消したいなら NetLogClear で数え直す。
-        Wv2Log.LogW "  ★捕捉開始から " & m_netDropped & " 件が溢れて捨てられている★ " & _
-                    "NetLogCapacity を増やすか、こまめに NetLogDrain すること。"
+        ' *Counted cumulatively* so if you drain repeatedly while overflowed, it appears every time.
+        '   It is not that it keeps appearing and is annoying; *the fact that we are still missing entries*
+        '   does not go away. If you want it gone, recount with NetLogClear.
+        Wv2Log.LogW "  *" & m_netDropped & " entries have overflowed and been discarded since capture started* " & _
+                    "Increase NetLogCapacity or run NetLogDrain more often."
     End If
 
-    ' --- N-3: 一覧に対応が無かった応答 ---
-    '   ★大きい数が出るのは異常ではない★ このイベントにはフィルタが無いので、
-    '   画像や CSS の応答も全部ここへ来る。取りこぼしの指標は NetLogDropped の方。
+    ' --- N-3: responses that had no counterpart in the list ---
+    '   *A large number is not abnormal* This event has no filter, so
+    '   responses for images and CSS all come here too. The indicator of misses is NetLogDropped.
     If m_netUnmatched > 0 Then
-        Wv2Log.LogI "  (一覧に対応が無かった応答 " & m_netUnmatched & " 件 ― " & _
-                    "画像や CSS など捕捉対象外のものが大半で、これは正常)"
+        Wv2Log.LogI "  (" & m_netUnmatched & " responses had no counterpart in the list - " & _
+                    "mostly things outside the capture target such as images and CSS, and this is normal)"
     End If
 
     NetLogDrain = n
-    ' ★中身だけ空にする (通算は保つ)★ 論点3 案Y
+    ' *Empty only the contents (the cumulative counts are kept)* issue 3 option Y
     NetRingEmpty
 End Function
 
 
 ' ============================================================
-' View_AddWebResourceRequested (N-1、ICoreWebView2 vtable 55)
+' View_AddWebResourceRequested (N-1, ICoreWebView2 vtable 55)
 '
-'   ★index 55 は tools/vtable.py で WebView2.h から確定させた値★ (設計原則115)。
-'   既存の配線からの逆算では 54 になっていた (OpenDevToolsWindow の数え落とし)。
+'   *Index 55 is the value settled from WebView2.h with tools/vtable.py* (design principle 115).
+'   Working backwards from the existing wiring it had come out as 54 (OpenDevToolsWindow was missed in the count).
 '
-'   実装は View2_AddDOMContentLoaded を逐語的な見本にしている。違いは
-'   「m_pView2 ではなく m_pView」「vtable 64/65 ではなく 55/56」だけ。
-'   pVTableObj = h.Slot + VTABLE_OBJ_OFFSET は同じく必ず通す (設計原則45)。
+'   The implementation uses View2_AddDOMContentLoaded as a verbatim model. The only differences are
+'   "m_pView instead of m_pView2" and "55/56 instead of vtable 64/65".
+'   pVTableObj = h.Slot + VTABLE_OBJ_OFFSET is always gone through in the same way (design principle 45).
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View_AddWebResourceRequested() As Long
     If m_closed Then
@@ -6092,14 +6129,14 @@ Public Function View_AddWebResourceRequested() As Long
         Exit Function
     End If
     If m_pView = 0 Then
-        Debug.Print "Wv2Pane.View_AddWebResourceRequested: m_pView が未取得"
+        Debug.Print "Wv2Pane.View_AddWebResourceRequested: m_pView is not acquired"
         View_AddWebResourceRequested = &H80004003
         Exit Function
     End If
 
-    ' 既に登録済みなら何もしない
+    ' If already registered, do nothing
     If Not (m_persistentHandlers(HK_WebResourceRequested) Is Nothing) Then
-        Debug.Print "Wv2Pane.View_AddWebResourceRequested: 既に登録済みなのでスキップ"
+        Debug.Print "Wv2Pane.View_AddWebResourceRequested: already registered, skipping"
         View_AddWebResourceRequested = 0
         Exit Function
     End If
@@ -6107,7 +6144,7 @@ Public Function View_AddWebResourceRequested() As Long
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_WebResourceRequested, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View_AddWebResourceRequested: ハンドラの Acquire に失敗"
+        Debug.Print "Wv2Pane.View_AddWebResourceRequested: failed to Acquire the handler"
         View_AddWebResourceRequested = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
@@ -6120,7 +6157,8 @@ Public Function View_AddWebResourceRequested() As Long
     hr = dcf(m_pView, 55, "View.add_WebResourceRequested", pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View_AddWebResourceRequested: 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View_AddWebResourceRequested: failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View_AddWebResourceRequested = hr
         Exit Function
@@ -6136,12 +6174,12 @@ End Function
 
 
 ' ============================================================
-' View_RemoveWebResourceRequested (N-1、ICoreWebView2 vtable 56)
-'   未登録なら no-op (S_OK で返す)。
+' View_RemoveWebResourceRequested (N-1, ICoreWebView2 vtable 56)
+'   If not registered, a no-op (returns S_OK).
 ' ============================================================
 Public Function View_RemoveWebResourceRequested() As Long
     If m_persistentHandlers(HK_WebResourceRequested) Is Nothing Then
-        View_RemoveWebResourceRequested = 0   ' 未登録は no-op
+        View_RemoveWebResourceRequested = 0   ' not registered is a no-op
         Exit Function
     End If
 
@@ -6150,13 +6188,13 @@ Public Function View_RemoveWebResourceRequested() As Long
         hr = dcf(m_pView, 56, "View.remove_WebResourceRequested", _
                  m_persistentTokens(HK_WebResourceRequested))
         If hr <> 0 Then
-            Debug.Print "Wv2Pane.View_RemoveWebResourceRequested: 解除失敗 hr=&H" & Hex(hr)
+            Debug.Print "Wv2Pane.View_RemoveWebResourceRequested: unregister failed hr=&H" & Hex(hr)
         Else
             Debug.Print "Wv2Pane.View_RemoveWebResourceRequested OK"
         End If
     Else
-        ' m_pView が無いので remove を撃つ手段がない。参照だけ切る。
-        Debug.Print "Wv2Pane.View_RemoveWebResourceRequested: m_pView が 0 なので参照のみ解放"
+        ' There is no m_pView, so there is no means to fire remove. Just cut the reference.
+        Debug.Print "Wv2Pane.View_RemoveWebResourceRequested: m_pView is 0, so releasing the reference only"
     End If
 
     Set m_persistentHandlers(HK_WebResourceRequested) = Nothing
@@ -6167,15 +6205,15 @@ End Function
 
 
 ' ============================================================
-' View_AddWebResourceRequestedFilter (N-1、ICoreWebView2 vtable 57)
+' View_AddWebResourceRequestedFilter (N-1, ICoreWebView2 vtable 57)
 '
-'   ★フィルタを 1 つも登録しないとイベントは 1 件も来ない★
-'   種別ごとに 1 回ずつ呼ぶ。NetCaptureStart が既定の 3 種別ぶん撃つ。
+'   *If no filter is registered, not a single event arrives*
+'   Call once per kind. NetCaptureStart fires it for the 3 default kinds.
 '
-'   uriFilter       : URL のパターン。* と ? が使える ("*" ですべて)
-'   resourceContext : COREWEBVIEW2_WEB_RESOURCE_CONTEXT の値 (0=ALL, 1=DOCUMENT, ...)
+'   uriFilter       : URL pattern. * and ? can be used ("*" for all)
+'   resourceContext : value of COREWEBVIEW2_WEB_RESOURCE_CONTEXT (0=ALL, 1=DOCUMENT, ...)
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View_AddWebResourceRequestedFilter( _
     ByVal uriFilter As String, _
@@ -6192,8 +6230,8 @@ End Function
 
 
 ' ============================================================
-' View_RemoveWebResourceRequestedFilter (N-1、ICoreWebView2 vtable 58)
-'   ★登録したときと同じ (uri, context) の組で呼ばないと外れない★
+' View_RemoveWebResourceRequestedFilter (N-1, ICoreWebView2 vtable 58)
+'   *It is not removed unless called with the same (uri, context) pair as when it was registered*
 ' ============================================================
 Public Function View_RemoveWebResourceRequestedFilter( _
     ByVal uriFilter As String, _
@@ -6211,14 +6249,14 @@ End Function
 
 ' ============================================================
 ' View_OnWebResourceRequested (N-1)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。Public Sub 必須。
+'   Called from ComCallbackHandler via dynamic binding. Public Sub is required.
 '
-'   ★他の受け口と違ってエラーを再送出しない★ (事後報告)
-'     WebResourceRequested は通信の途中で同期的に呼ばれるので、ここで
-'     Err.Raise すると★通信の最中にエラーダイアログが出る★。しかも 1 ページで
-'     数十～数百件来るので、1 件壊れただけで操作が続けられなくなる。
-'     そこで握り潰す代わりに★リングに 1 件「(err)」として書き残す★。
-'     握り潰したことは NetLogDrain の出力に必ず現れる。
+'   *Unlike the other receivers, the error is not re-raised* (post-hoc report)
+'     WebResourceRequested is called synchronously in the middle of traffic, so if Err.Raise
+'     is done here, *an error dialog appears in the middle of the traffic*. Moreover, a single page produces
+'     tens to hundreds of them, so a single broken one makes it impossible to continue operating.
+'     So instead of swallowing it, *one "(err)" entry is left in the ring*.
+'     The fact that it was swallowed always shows up in the output of NetLogDrain.
 ' ============================================================
 Public Sub View_OnWebResourceRequested(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Dim errNum As Long
@@ -6234,27 +6272,27 @@ GuardExit:
     If m_inCallback > 0 Then m_inCallback = m_inCallback - 1
     If errNum <> 0 Then
         On Error Resume Next
-        NetPush "(err)", -1, "★受け口でエラー " & errNum & " " & errDsc & "★"
+        NetPush "(err)", -1, "*error in the receiver " & errNum & " " & errDsc & "*"
     End If
 End Sub
 
 
 ' ============================================================
-' View_OnWebResourceRequested_Core (N-1、Private)
+' View_OnWebResourceRequested_Core (N-1, Private)
 '
-'   ★記録だけしてすぐ返す (論点5)★
-'     ここで Wv2Log も Debug.Print も撃たない。EvalSync は論外 (仕様事実14 / 20)。
-'     dcf / GetStringProperty に渡す funcName も空にして、失敗しても
-'     イミディエイトに何も出さない (失敗はリングに書き残すので消えない)。
+'   *Record only, then return immediately (issue 5)*
+'     Fire neither Wv2Log nor Debug.Print here. EvalSync is out of the question (spec facts 14 / 20).
+'     The funcName passed to dcf / GetStringProperty is also left empty, so that even on failure
+'     nothing is shown in the Immediate window (failures are written to the ring, so they are not lost).
 '
-'   args の vtable (tools/vtable.py で確定):
+'   vtable of args (settled with tools/vtable.py):
 '     3 = get_Request(ICoreWebView2WebResourceRequest**)
 '     7 = get_ResourceContext(COREWEBVIEW2_WEB_RESOURCE_CONTEXT*)
-'   request の vtable:
+'   vtable of request:
 '     3 = get_Uri(LPWSTR*)   5 = get_Method(LPWSTR*)
 '
-'   ★get_Request は AddRef 済みで返る★ ので必ず Release する (COM 規約)。
-'   1 ページで数百回通る経路なので、ここを漏らすと目に見えて漏れる。
+'   *get_Request returns AddRef'd* so always Release it (COM convention).
+'   This path runs hundreds of times per page, so a leak here visibly leaks.
 ' ============================================================
 Private Sub View_OnWebResourceRequested_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Dim pReq As LongPtr
@@ -6264,17 +6302,17 @@ Private Sub View_OnWebResourceRequested_Core(ByVal pSender As LongPtr, ByVal pAr
     Dim ctx  As Long
 
     If pArgs = 0 Then
-        NetPush "(err)", -1, "★args が 0★"
+        NetPush "(err)", -1, "*args is 0*"
         Exit Sub
     End If
 
-    ' 種別 (取得できなければ 0 = ALL が返る。get_ResourceContext は本来 ALL を
-    ' 返さないので、ログに ALL が並んでいたらこの取得が失敗している合図)
+    ' Kind (if it cannot be obtained, 0 = ALL is returned. get_ResourceContext does not originally
+    ' return ALL, so if ALL lines up in the log it is a sign that this retrieval failed)
     ctx = GetLongProperty(pArgs, 7, "")
 
     hr = dcf(pArgs, 3, "", VarPtr(pReq))
     If hr <> 0 Or pReq = 0 Then
-        NetPush "(err)", ctx, "★get_Request 失敗 hr=&H" & Hex(hr) & "★"
+        NetPush "(err)", ctx, "*get_Request failed hr=&H" & Hex(hr) & "*"
         Exit Sub
     End If
 
@@ -6283,9 +6321,9 @@ Private Sub View_OnWebResourceRequested_Core(ByVal pSender As LongPtr, ByVal pAr
 
     NetPush mth, ctx, uri
 
-    ' --- N-2: 詳細 (ヘッダとボディ) ---
-    '   ★既定 OFF★ なので、ここは NetDetailOn = True のときしか走らない。
-    '   pReq を Release する前に読む (args も pReq も Invoke の間しか有効でない)。
+    ' --- N-2: detail (headers and body) ---
+    '   *Default OFF* so this runs only when NetDetailOn = True.
+    '   Read before releasing pReq (both args and pReq are valid only during Invoke).
     If m_detOn Then NetReadDetail pReq, mth, uri
 
     ComRelease pReq
@@ -6293,14 +6331,14 @@ End Sub
 
 
 ' ============================================================
-' NetReadDetail (N-2、Private) - 1 要求ぶんの詳細を読んでリングに置く
+' NetReadDetail (N-2, Private) - read the detail of one request and put it on the ring
 '
-'   ★ハンドラの中で走る★ (論点1 案A)。args は Invoke の間しか有効でないので、
-'   ここで同期的に読むしかない。だから上限で必ず切る。
+'   *Runs inside the handler* (issue 1, option A). args is valid only during Invoke, so
+'   there is no choice but to read synchronously here. Hence it is always cut at the limit.
 '
-'   ★ボディを読むのは GET 以外だけ (論点7 案α)★
-'     GET にボディはほぼ無い。既定でこれだけ外すと大半の無駄が消える。
-'     URL でさらに絞りたいときは NetDetailUriFilter。
+'   *Bodies are read only for non-GET (issue 7, option alpha)*
+'     A GET almost never has a body. Excluding just this by default removes most of the waste.
+'     To narrow further by URL, use NetDetailUriFilter.
 ' ============================================================
 Private Sub NetReadDetail(ByVal pReq As LongPtr, _
                           ByVal mth As String, _
@@ -6314,7 +6352,7 @@ Private Sub NetReadDetail(ByVal pReq As LongPtr, _
     Dim hexHead  As String
     Dim buf()    As Byte
 
-    ' URL で絞る (空なら絞らない)
+    ' Narrow by URL (do not narrow if empty)
     If LenB(m_detUriFilter) > 0 Then
         If InStr(1, uri, m_detUriFilter, vbTextCompare) = 0 Then Exit Sub
     End If
@@ -6322,7 +6360,7 @@ Private Sub NetReadDetail(ByVal pReq As LongPtr, _
     headers = NetReadHeaders(pReq)
     cType = NetHeaderValue(headers, "content-type")
 
-    ' ★GET はボディを読まない★
+    ' *Do not read the body of a GET*
     If UCase$(mth) <> "GET" Then
         If NetReadBody(pReq, nBytes, trunc, buf) Then
             If nBytes > 0 Then
@@ -6342,8 +6380,8 @@ End Sub
 
 
 ' ============================================================
-' NetRingAlloc (N-1、Private) - リングを作り直して空にする
-'   容量を変えたときと、捕捉を始め直すときに通る。
+' NetRingAlloc (N-1, Private) - rebuild the ring and empty it
+'   Passed through when the capacity is changed and when capture is restarted.
 ' ============================================================
 Private Sub NetRingAlloc()
     If m_netCap < 1 Then m_netCap = NET_CAP_DEFAULT
@@ -6366,9 +6404,9 @@ End Sub
 
 
 ' ============================================================
-' NetRingEmpty (N-1b、Private) - ★中身だけ★ 空にする
-'   通算カウンタ (m_netTotal / m_netDropped) と経過 ms の基準は触らない。
-'   NetLogDrain が「取り出したぶんを捨てる」ために使う。
+' NetRingEmpty (N-1b, Private) - empty *only the contents*
+'   The cumulative counters (m_netTotal / m_netDropped) and the baseline of elapsed ms are not touched.
+'   Used by NetLogDrain to "discard what was taken out".
 ' ============================================================
 Private Sub NetRingEmpty()
     m_netHead = 0
@@ -6377,8 +6415,8 @@ End Sub
 
 
 ' ============================================================
-' NetPush (N-1、Private) - 1 件をリングに置く
-'   ★溢れたら古いものを上書きし、捨てた数を数える★ (黙って切らない)
+' NetPush (N-1, Private) - put one entry on the ring
+'   *If it overflows, overwrite the oldest and count the number discarded* (not cut silently)
 ' ============================================================
 Private Sub NetPush(ByVal mth As String, ByVal ctx As Long, ByVal uri As String)
     m_netTotal = m_netTotal + 1
@@ -6388,7 +6426,7 @@ Private Sub NetPush(ByVal mth As String, ByVal ctx As Long, ByVal uri As String)
     m_netCtx(m_netHead) = ctx
     m_netMethod(m_netHead) = mth
     m_netUri(m_netHead) = uri
-    ' ★使い回すスロットなので必ず消す★ 前の要求の応答が残ると嘘になる (N-3)
+    ' *This slot is reused, so always clear it* Leaving the previous request's response would be a lie (N-3)
     m_netStatus(m_netHead) = 0
     m_netReason(m_netHead) = ""
 
@@ -6404,9 +6442,9 @@ End Sub
 
 
 ' ============================================================
-' NetElapsedMs (N-1、Private) - 捕捉開始からの経過 ms
-'   GetTickCount は Long なので約 49.7 日で一周する。差は Double に上げて
-'   計算し、負になったら 2^32 を足して戻す。
+' NetElapsedMs (N-1, Private) - elapsed ms since capture started
+'   GetTickCount is a Long, so it wraps around in about 49.7 days. The difference is raised to Double
+'   and computed, and if it goes negative, 2^32 is added to restore it.
 ' ============================================================
 Private Function NetElapsedMs() As Long
     Dim d As Double
@@ -6418,8 +6456,8 @@ End Function
 
 
 ' ============================================================
-' NetRingIndex (N-1、Private) - 古い順 1 起点 → リング上の位置
-'   範囲外なら -1。
+' NetRingIndex (N-1, Private) - oldest-first 1-based -> position on the ring
+'   -1 if out of range.
 ' ============================================================
 Private Function NetRingIndex(ByVal idx As Long) As Long
     Dim k As Long
@@ -6438,7 +6476,7 @@ End Function
 
 
 ' ============================================================
-' NetLogFormat (N-1、Private) - 1 件を桁を揃えた 1 行にする
+' NetLogFormat (N-1, Private) - make one entry a single column-aligned line
 ' ============================================================
 Private Function NetLogFormat(ByVal idx As Long) As String
     Dim k As Long
@@ -6455,20 +6493,20 @@ End Function
 
 
 ' ============================================================
-' NetStatusText (N-3、Private) - ステータスの見せ方
-'   ★0 は「まだ応答が来ていない」なので空欄にする★ (論点7 案α)
-'   0 を書くと本物のステータスコードと見分けが付かず、後段が信じる (設計原則111)。
+' NetStatusText (N-3, Private) - how to present the status
+'   *0 means "no response has arrived yet", so make it blank* (issue 7, option alpha)
+'   Writing 0 is indistinguishable from a real status code, and later stages would believe it (design principle 111).
 ' ============================================================
 Private Function NetStatusText(ByVal st As Long) As String
     If st = 0 Then Exit Function
-    If st < 0 Then NetStatusText = "(読めず)": Exit Function
+    If st < 0 Then NetStatusText = "(unreadable)": Exit Function
     NetStatusText = CStr(st)
 End Function
 
 
 ' ============================================================
-' NetCtxName (N-1、Private) - COREWEBVIEW2_WEB_RESOURCE_CONTEXT の名前
-'   ★値は tools/vtable.py --enum COREWEBVIEW2_WEB_RESOURCE_CONTEXT で確定★
+' NetCtxName (N-1, Private) - the name of COREWEBVIEW2_WEB_RESOURCE_CONTEXT
+'   *Values settled with tools/vtable.py --enum COREWEBVIEW2_WEB_RESOURCE_CONTEXT*
 ' ============================================================
 Private Function NetCtxName(ByVal ctx As Long) As String
     Select Case ctx
@@ -6495,8 +6533,8 @@ End Function
 
 
 ' ============================================================
-' NetCtxFromName (N-1、Private) - 名前 (または数字) → 種別の値
-'   分からなければ -1。★数字も受ける★ SDK が種別を増やしても直さずに済む。
+' NetCtxFromName (N-1, Private) - name (or number) -> kind value
+'   -1 if unknown. *Numbers are also accepted* so that no fix is needed even if the SDK adds kinds.
 ' ============================================================
 Private Function NetCtxFromName(ByVal ctxToken As String) As Long
     Dim t As String
@@ -6539,56 +6577,56 @@ End Function
 
 
 ' ============================================================
-' ★N-2 : リクエストのヘッダとボディ★
+' *N-2 : request headers and body*
 '
-'   N-1 の一覧 (URL / メソッド / 種別) の上に、★1 本を再現するのに要るもの★を足す。
+'   On top of the N-1 list (URL / method / kind), add *what is needed to reproduce a single request*.
 '
-'   ■ ★詳細はまるごと既定 OFF (論点8 案κ)★
-'     N-1 の一覧は「軽くて常に使える道具」として完成している。そこに
-'     ヘッダのイテレータ (1 要求あたり COM 呼び出し 60 回前後) とボディ読み出しを
-'     既定で足すと、その良さを壊す。`NetDetailOn = True` にしたときだけ働く。
+'   # *The detail is entirely OFF by default (issue 8, option kappa)*
+'     The N-1 list is complete as a "light tool that can always be used". Adding
+'     header iteration (about 60 COM calls per request) and body reading
+'     by default would spoil that quality. It works only when `NetDetailOn = True`.
 '
-'   ■ ★読むと通信が壊れうる (論点2)★
-'     `get_Content` が返す `IStream` は位置を持つ。読めば位置が進むので、
-'     そのあと WebView2 が同じストリームから送ると★空のボディが飛ぶ★。
-'     読み終わったら必ず `Seek(0, STREAM_SEEK_SET)` で先頭へ戻す。
-'     ★これは「たぶん大丈夫」で済ませない★ ―― 検証では POST 先が返す本文と
-'     突き合わせて、ボディが壊れずに届いたことを数える (設計原則112)。
+'   # *Reading can break the traffic (issue 2)*
+'     The `IStream` returned by `get_Content` has a position. Reading advances the position,
+'     so when WebView2 later sends from the same stream, *an empty body goes out*.
+'     After reading, always rewind to the start with `Seek(0, STREAM_SEEK_SET)`.
+'     *Do not settle this with "it's probably fine"* -- in the verification, we compare against the body that the
+'     POST target returns and count that the body arrived unbroken (design principle 112).
 '
-'   ■ ★秘密は既定で伏せる (論点3 案M)★
-'     `Cookie` / `Authorization` などはログファイルに平文で残さない。
-'     ★リング上には生のまま持ち、出すときに伏せる★ ので、必要なら
-'     `NetRedact = False` で見られる。既定は安全側。
+'   # *Secrets are hidden by default (issue 3, option M)*
+'     `Cookie` / `Authorization` and the like are not left in plain text in the log file.
+'     *They are held raw on the ring and hidden when output*, so if necessary
+'     they can be seen with `NetRedact = False`. The default is the safe side.
 '
-'   ■ 追加した Public メンバ
-'     NetDetailOn        As Boolean  ★既定 False★ 詳細を取るか
-'     NetDetailCapacity  As Long     詳細リングの容量 (既定 50)
-'     NetBodyMaxBytes    As Long     ボディの上限 (既定 65536)
-'     NetRedact          As Boolean  ★既定 True★ 秘密を伏せるか
+'   # Added Public members
+'     NetDetailOn        As Boolean  *default False* whether to take the detail
+'     NetDetailCapacity  As Long     capacity of the detail ring (default 50)
+'     NetBodyMaxBytes    As Long     upper limit of the body (default 65536)
+'     NetRedact          As Boolean  *default True* whether to hide secrets
 '     AddRedactHeader(name) / ClearRedactHeaders()
-'     NetDetailUriFilter As String   詳細を取る URL の部分一致 (空なら全部)
+'     NetDetailUriFilter As String   substring match of URLs to take detail for (all if empty)
 '     NetDetailCount     As Long
-'     NetDetailDropped   As Long     ★溢れて捨てた件数★ (黙って切らない)
-'     NetDetailLine(i)   As String   seq/メソッド/URL/バイト数/切った/種類
-'     NetDetailHeaders(i) As String  ヘッダ (伏せ字を適用して返す)
-'     NetDetailBody(i)   As String   ボディ本文 (テキストのときだけ中身)
-'     NetDetail(i)       As Boolean  1 本を Wv2Log へ出す
-'     NetDetailAll()     As Long     全部出す
+'     NetDetailDropped   As Long     *number dropped on overflow* (not cut silently)
+'     NetDetailLine(i)   As String   seq/method/URL/bytes/truncated/kind
+'     NetDetailHeaders(i) As String  headers (returned with redaction applied)
+'     NetDetailBody(i)   As String   body text (contents only when it is text)
+'     NetDetail(i)       As Boolean  output one entry to Wv2Log
+'     NetDetailAll()     As Long     output all
 '     NetDetailClear()
 '
-'   ■ vtable index (★tools/vtable.py で確定★、設計原則115)
-'       ICoreWebView2WebResourceRequest::get_Content  →IStream**   7
+'   # vtable index (*settled with tools/vtable.py*, design principle 115)
+'       ICoreWebView2WebResourceRequest::get_Content  ->IStream**   7
 '       ICoreWebView2WebResourceRequest::get_Headers                9
 '       ICoreWebView2HttpRequestHeaders::GetIterator                8
 '       ...HttpHeadersCollectionIterator::GetCurrentHeader          3
 '       ...::get_HasCurrentHeader / ::MoveNext                    4 / 5
-'       IStream::Read / Seek        (Windows SDK objidl.h より)   3 / 5
+'       IStream::Read / Seek        (from Windows SDK objidl.h)   3 / 5
 ' ============================================================
 
 
 ' ============================================================
-' NetDetailOn (N-2) - 詳細 (ヘッダとボディ) を取るか
-'   ★既定 False★ 一覧だけなら N-1 のまま軽い。
+' NetDetailOn (N-2) - whether to take the detail (headers and body)
+'   *Default False* With the list alone it stays as light as N-1.
 ' ============================================================
 Public Property Get NetDetailOn() As Boolean
     NetDetailOn = m_detOn
@@ -6597,15 +6635,15 @@ End Property
 Public Property Let NetDetailOn(ByVal onOff As Boolean)
     m_detOn = onOff
     Wv2Log.LogD "Wv2Pane.NetDetailOn = " & onOff & _
-                IIf(onOff, " (ヘッダとボディも読む)", " (一覧だけ)")
+                IIf(onOff, " (headers and body are read too)", " (list only)")
 End Property
 
 
 ' ============================================================
-' NetDetailCapacity (N-2) - 詳細リングの容量 (件)
-'   ★一覧とは別のリング (論点5 案S)★ 一覧は「順番と全体像」、詳細は
-'   「これを再現したい 1 本」で用途が違う。詳細のために一覧を削らない。
-'   ★変えると中身は捨てられる★
+' NetDetailCapacity (N-2) - capacity of the detail ring (entries)
+'   *A ring separate from the list (issue 5, option S)* The list is for "order and the overall picture", the detail is
+'   for "the one request I want to reproduce"; the uses differ. The list is not cut down for the detail.
+'   *Changing it discards the contents*
 ' ============================================================
 Public Property Get NetDetailCapacity() As Long
     NetDetailCapacity = m_detCap
@@ -6614,20 +6652,20 @@ End Property
 Public Property Let NetDetailCapacity(ByVal n As Long)
     If n < 1 Then n = 1
     If n > NET_DET_CAP_MAX Then
-        Wv2Log.LogW "Wv2Pane.NetDetailCapacity: " & n & " は上限 " & _
-                    NET_DET_CAP_MAX & " を超えるので丸める"
+        Wv2Log.LogW "Wv2Pane.NetDetailCapacity: " & n & " exceeds the upper limit " & _
+                    NET_DET_CAP_MAX & ", so rounding"
         n = NET_DET_CAP_MAX
     End If
     m_detCap = n
     NetDetailRingAlloc
-    Wv2Log.LogD "Wv2Pane.NetDetailCapacity = " & m_detCap & " (中身は作り直したので空)"
+    Wv2Log.LogD "Wv2Pane.NetDetailCapacity = " & m_detCap & " (contents were rebuilt, so empty)"
 End Property
 
 
 ' ============================================================
-' NetBodyMaxBytes (N-2) - ボディを読む上限 (バイト)
-'   ★ハンドラの中で同期的に読む★ ので、青天井にすると通信が詰まる。
-'   上限で切ったことは NetDetailLine の「切った」欄に出る (黙って切らない)。
+' NetBodyMaxBytes (N-2) - upper limit for reading the body (bytes)
+'   *It is read synchronously inside the handler* so leaving it unbounded would jam the traffic.
+'   That it was cut at the limit appears in the "truncated" column of NetDetailLine (not cut silently).
 ' ============================================================
 Public Property Get NetBodyMaxBytes() As Long
     NetBodyMaxBytes = m_detBodyMax
@@ -6642,9 +6680,9 @@ End Property
 
 
 ' ============================================================
-' NetRedact (N-2) - 秘密のヘッダを伏せるか
-'   ★既定 True★ Cookie / Authorization などをログに平文で残さない。
-'   ★リング上には生のまま持っている★ ので、False にすればその場で見られる。
+' NetRedact (N-2) - whether to hide secret headers
+'   *Default True* Cookie / Authorization and the like are not left in plain text in the log.
+'   *They are held raw on the ring* so setting False lets you see them on the spot.
 ' ============================================================
 Public Property Get NetRedact() As Boolean
     NetRedact = m_detRedact
@@ -6653,18 +6691,18 @@ End Property
 Public Property Let NetRedact(ByVal onOff As Boolean)
     m_detRedact = onOff
     If Not onOff Then
-        Wv2Log.LogW "Wv2Pane.NetRedact = False ★Cookie などがログに平文で残る★ " & _
-                    "ログを人に渡す前に必ず確かめること。"
+        Wv2Log.LogW "Wv2Pane.NetRedact = False *Cookie etc. will be left in plain text in the log* " & _
+                    "Always check before handing the log to anyone."
     Else
-        Wv2Log.LogD "Wv2Pane.NetRedact = True (秘密のヘッダは伏せる)"
+        Wv2Log.LogD "Wv2Pane.NetRedact = True (secret headers are hidden)"
     End If
 End Property
 
 
 ' ============================================================
 ' AddRedactHeader / ClearRedactHeaders (N-2)
-'   伏せる対象を足す / 既定リストごと空にする。名前は大小を問わない。
-'   既定リストは NetRedactDefaults 参照。
+'   Add to the targets to hide / empty including the default list. Names are case-insensitive.
+'   For the default list see NetRedactDefaults.
 ' ============================================================
 Public Sub AddRedactHeader(ByVal headerName As String)
     Dim t As String
@@ -6677,15 +6715,15 @@ End Sub
 
 Public Sub ClearRedactHeaders()
     m_detRedactList = "|"
-    Wv2Log.LogW "Wv2Pane.ClearRedactHeaders: ★伏せる対象が 1 つも無くなった★ " & _
-                "Cookie も平文で出る。"
+    Wv2Log.LogW "Wv2Pane.ClearRedactHeaders: *there are no targets left to hide* " & _
+                "Cookie will also be output in plain text."
 End Sub
 
 
 ' ============================================================
-' NetDetailUriFilter (N-2) - 詳細を取る URL の部分一致
-'   空なら全部。★ヘッダのイテレータは安くない★ ので、狙いが決まっているなら
-'   ここで絞ると軽い。
+' NetDetailUriFilter (N-2) - substring match of URLs to take detail for
+'   All if empty. *Header iteration is not cheap* so if the target is decided,
+'   narrowing here keeps it light.
 ' ============================================================
 Public Property Get NetDetailUriFilter() As String
     NetDetailUriFilter = m_detUriFilter
@@ -6694,12 +6732,12 @@ End Property
 Public Property Let NetDetailUriFilter(ByVal pattern As String)
     m_detUriFilter = pattern
     Wv2Log.LogD "Wv2Pane.NetDetailUriFilter = [" & pattern & "]" & _
-                IIf(LenB(pattern) = 0, " (絞らない)", "")
+                IIf(LenB(pattern) = 0, " (not narrowed)", "")
 End Property
 
 
 ' ============================================================
-' NetDetailCount (N-2) - 今リングに入っている詳細の件数
+' NetDetailCount (N-2) - number of details currently in the ring
 ' ============================================================
 Public Property Get NetDetailCount() As Long
     NetDetailCount = m_detCount
@@ -6707,9 +6745,9 @@ End Property
 
 
 ' ============================================================
-' NetDetailDropped (N-2) - 詳細リングから溢れて捨てた件数
-'   ★黙って切らない★ 一覧の NetLogDropped と同じ役目。
-'   NetDetailClear / NetDetailCapacity の変更で 0 に戻る。
+' NetDetailDropped (N-2) - number discarded by overflowing the detail ring
+'   *Not cut silently* The same role as the list's NetLogDropped.
+'   Returns to 0 with NetDetailClear / a change of NetDetailCapacity.
 ' ============================================================
 Public Property Get NetDetailDropped() As Long
     NetDetailDropped = m_detDropped
@@ -6717,10 +6755,10 @@ End Property
 
 
 ' ============================================================
-' NetDetailLine (N-2) - 詳細 1 本の見出しを読む (古い順・1 起点)
-'   vbTab 区切りで 6 項目:
-'     通し番号 / メソッド / URL / ボディのバイト数 / 切ったか / Content-Type
-'   ★ヘッダとボディの中身は含まない★ (NetDetailHeaders / NetDetailBody で取る)
+' NetDetailLine (N-2) - read the heading of one detail (oldest first, 1-based)
+'   6 items separated by vbTab:
+'     serial number / method / URL / body bytes / truncated or not / Content-Type
+'   *The contents of headers and body are not included* (get them with NetDetailHeaders / NetDetailBody)
 ' ============================================================
 Public Property Get NetDetailLine(ByVal idx As Long) As String
     Dim k As Long
@@ -6734,8 +6772,8 @@ End Property
 
 
 ' ============================================================
-' NetDetailHeaders (N-2) - 詳細 1 本のヘッダを読む
-'   1 行 1 ヘッダで vbLf 区切り。★NetRedact = True なら秘密は伏せて返す★
+' NetDetailHeaders (N-2) - read the headers of one detail
+'   One header per line, separated by vbLf. *If NetRedact = True, secrets are hidden in the return*
 ' ============================================================
 Public Property Get NetDetailHeaders(ByVal idx As Long) As String
     Dim k As Long
@@ -6747,9 +6785,9 @@ End Property
 
 
 ' ============================================================
-' NetDetailBody (N-2) - 詳細 1 本のボディを読む
-'   ★テキストと判定できたときだけ中身が入る★ (論点4 案P)。
-'   バイナリなら空文字。バイト数は NetDetailLine の 4 項目目を見ること。
+' NetDetailBody (N-2) - read the body of one detail
+'   *Contents are filled in only when judged to be text* (issue 4, option P).
+'   An empty string for binary. For the byte count, look at the 4th item of NetDetailLine.
 ' ============================================================
 Public Property Get NetDetailBody(ByVal idx As Long) As String
     Dim k As Long
@@ -6761,10 +6799,10 @@ End Property
 
 
 ' ============================================================
-' NetDetail (N-2) - 詳細 1 本を Wv2Log へ出す
-'   ★一覧 (NetLogDrain) には混ぜない (論点6 案V)★ 1 要求で数十行になるので、
-'   混ぜると一覧が読めなくなる (設計原則105 の趣旨)。
-'   戻り値: True なら出した。
+' NetDetail (N-2) - output one detail to Wv2Log
+'   *Not mixed into the list (NetLogDrain) (issue 6, option V)* One request becomes tens of lines, so
+'   mixing would make the list unreadable (in the spirit of design principle 105).
+'   Return value: True if output.
 ' ============================================================
 Public Function NetDetail(ByVal idx As Long) As Boolean
     Dim k As Long
@@ -6774,56 +6812,56 @@ Public Function NetDetail(ByVal idx As Long) As Boolean
     k = NetDetailRingIndex(idx)
     If k < 0 Then Exit Function
 
-    Wv2Log.LogI "  --- 詳細 #" & m_detSeq(k) & " ---"
+    Wv2Log.LogI "  --- detail #" & m_detSeq(k) & " ---"
     Wv2Log.LogI "      " & m_detMethod(k) & " " & m_detUri(k)
 
     If LenB(m_detHeaders(k)) > 0 Then
         lines = Split(NetRedactApply(m_detHeaders(k)), vbLf)
-        Wv2Log.LogI "      [ヘッダ " & (UBound(lines) - LBound(lines) + 1) & " 個]"
+        Wv2Log.LogI "      [headers: " & (UBound(lines) - LBound(lines) + 1) & "]"
         For i = LBound(lines) To UBound(lines)
             Wv2Log.LogI "        " & lines(i)
         Next i
     Else
-        Wv2Log.LogI "      [ヘッダ] 取れていない"
+        Wv2Log.LogI "      [headers] could not be obtained"
     End If
 
     If m_detBytes(k) = 0 Then
-        Wv2Log.LogI "      [ボディ] 無し"
+        Wv2Log.LogI "      [body] none"
     ElseIf m_detIsText(k) Then
-        Wv2Log.LogI "      [ボディ] " & m_detBytes(k) & " バイト (テキスト" & _
-                    IIf(m_detTrunc(k), "・★上限で切った★", "") & ")"
+        Wv2Log.LogI "      [body] " & m_detBytes(k) & " bytes (text" & _
+                    IIf(m_detTrunc(k), ", *cut at the limit*", "") & ")"
         lines = Split(Replace$(m_detBody(k), vbCrLf, vbLf), vbLf)
         For i = LBound(lines) To UBound(lines)
             Wv2Log.LogI "        " & lines(i)
         Next i
     Else
-        Wv2Log.LogI "      [ボディ] " & m_detBytes(k) & " バイト (バイナリ" & _
-                    IIf(m_detTrunc(k), "・★上限で切った★", "") & _
-                    ") 先頭: " & m_detHex(k)
+        Wv2Log.LogI "      [body] " & m_detBytes(k) & " bytes (binary" & _
+                    IIf(m_detTrunc(k), ", *cut at the limit*", "") & _
+                    ") head: " & m_detHex(k)
     End If
 
-    ' --- N-3 / N-4: 応答 ---
+    ' --- N-3 / N-4: response ---
     If m_detStatus(k) = 0 Then
-        Wv2Log.LogI "      [応答] まだ来ていない"
+        Wv2Log.LogI "      [response] not arrived yet"
     Else
-        Wv2Log.LogI "      [応答] " & NetStatusText(m_detStatus(k)) & " " & m_detReason(k)
+        Wv2Log.LogI "      [response] " & NetStatusText(m_detStatus(k)) & " " & m_detReason(k)
         If LenB(m_detRespHeaders(k)) > 0 Then
             lines = Split(NetRedactApply(m_detRespHeaders(k)), vbLf)
-            Wv2Log.LogI "      [応答ヘッダ " & (UBound(lines) - LBound(lines) + 1) & " 個]"
+            Wv2Log.LogI "      [response headers: " & (UBound(lines) - LBound(lines) + 1) & "]"
             For i = LBound(lines) To UBound(lines)
                 Wv2Log.LogI "        " & lines(i)
             Next i
         End If
 
-        ' --- N-4: レスポンス本文 ---
-        '   ★encoding と先頭 hex を必ず出す★ (論点2 案P')
-        '   圧縮されていれば hex の先頭で分かる (gzip なら 1F 8B)。
+        ' --- N-4: response body ---
+        '   *Always output the encoding and the leading hex* (issue 2, option P')
+        '   If it is compressed, the head of the hex shows it (1F 8B for gzip).
         If m_detRespBytes(k) > 0 Or LenB(m_detRespEnc(k)) > 0 Then
-            Wv2Log.LogI "      [応答本文] " & m_detRespBytes(k) & " バイト" & _
-                        IIf(m_detRespTrunc(k), " ★上限で切った★", "") & _
+            Wv2Log.LogI "      [response body] " & m_detRespBytes(k) & " bytes" & _
+                        IIf(m_detRespTrunc(k), " *cut at the limit*", "") & _
                         IIf(LenB(m_detRespEnc(k)) > 0, " encoding=" & m_detRespEnc(k), "") & _
-                        IIf(m_detRespIsText(k), " (テキスト)", " (バイナリ)")
-            Wv2Log.LogI "        先頭: " & m_detRespHex(k)
+                        IIf(m_detRespIsText(k), " (text)", " (binary)")
+            Wv2Log.LogI "        head: " & m_detRespHex(k)
             If LenB(m_detRespBody(k)) > 0 Then
                 lines = Split(Replace$(Left$(m_detRespBody(k), 2000), vbCrLf, vbLf), vbLf)
                 For i = LBound(lines) To UBound(lines)
@@ -6838,22 +6876,22 @@ End Function
 
 
 ' ============================================================
-' NetDetailAll (N-2) - 溜まっている詳細を全部 Wv2Log へ出す
-'   ★明示的に呼んだときだけ★ 出る。戻り値は出した件数。
-'   ★出しても消えない★ (NetLogDrain と違う。判定に使いたいので残す)
+' NetDetailAll (N-2) - output all accumulated details to Wv2Log
+'   Output *only when called explicitly*. The return value is the number output.
+'   *They do not disappear after output* (unlike NetLogDrain. Kept because we want to use them for judgement)
 ' ============================================================
 Public Function NetDetailAll() As Long
     Dim i As Long
 
     If m_detCount = 0 Then
-        Wv2Log.LogI "  --- 詳細: 溜まっていない ---"
+        Wv2Log.LogI "  --- details: none accumulated ---"
         Exit Function
     End If
 
-    Wv2Log.LogI "  --- 詳細 " & m_detCount & " 件 ---"
+    Wv2Log.LogI "  --- details " & m_detCount & " ---"
     If m_detDropped > 0 Then
-        Wv2Log.LogW "  ★詳細リングから溢れて捨てたものが " & m_detDropped & " 件ある★ " & _
-                    "NetDetailCapacity を増やすか、NetDetailUriFilter で絞ること。"
+        Wv2Log.LogW "  *" & m_detDropped & " entries overflowed from the detail ring and were discarded* " & _
+                    "Increase NetDetailCapacity or narrow with NetDetailUriFilter."
     End If
     For i = 1 To m_detCount
         NetDetail i
@@ -6863,7 +6901,7 @@ End Function
 
 
 ' ============================================================
-' NetDetailClear (N-2) - 詳細リングを空にする
+' NetDetailClear (N-2) - empty the detail ring
 ' ============================================================
 Public Sub NetDetailClear()
     NetDetailRingAlloc
@@ -6871,15 +6909,15 @@ End Sub
 
 
 ' ============================================================
-' NetReadHeaders (N-2、Private) - 要求のヘッダを 1 本の文字列にする
+' NetReadHeaders (N-2, Private) - make the request headers into one string
 '
-'   ICoreWebView2HttpRequestHeaders::GetIterator (8) でイテレータを取り、
-'   GetCurrentHeader (3) / get_HasCurrentHeader (4) / MoveNext (5) で回す。
+'   Gets the iterator with ICoreWebView2HttpRequestHeaders::GetIterator (8)
+'   and iterates with GetCurrentHeader (3) / get_HasCurrentHeader (4) / MoveNext (5).
 '
-'   ★ハンドラの中で走る★ ので上限 (NET_HDR_MAX) で切る。
-'   ★GetCurrentHeader は LPWSTR を 2 本返す★ ので、どちらも CoTaskMemFree する。
+'   *Runs inside the handler* so it is cut at the limit (NET_HDR_MAX).
+'   *GetCurrentHeader returns two LPWSTRs* so CoTaskMemFree both.
 '
-'   戻り値: "name: value" を vbLf で繋いだもの。取れなければ空文字。
+'   Return value: "name: value" joined with vbLf. An empty string if none could be obtained.
 ' ============================================================
 Private Function NetReadHeaders(ByVal pReq As LongPtr) As String
     Dim pHeaders As LongPtr
@@ -6890,23 +6928,23 @@ Private Function NetReadHeaders(ByVal pReq As LongPtr) As String
     hr = dcf(pReq, 9, "", VarPtr(pHeaders))          ' request.get_Headers
     If hr <> 0 Or pHeaders = 0 Then Exit Function
 
-    ' ★要求側の GetIterator は 8★ (応答側は 7。並びが違う ― 設計原則115)
+    ' *GetIterator on the request side is 8* (7 on the response side. The order differs -- design principle 115)
     NetReadHeaders = NetReadHeadersIter(pHeaders, 8)
     ComRelease pHeaders
 End Function
 
 
 ' ============================================================
-' NetReadHeadersIter (N-3、Private) - ヘッダのコレクションを 1 本の文字列にする
+' NetReadHeadersIter (N-3, Private) - make a collection of headers into one string
 '
-'   要求側と応答側で共通の中身。★違うのは GetIterator の index だけ★ なので
-'   そこを引数にした (要求側 8 / 応答側 7)。
-'   イテレータの型はどちらも ICoreWebView2HttpHeadersCollectionIterator。
+'   The common content for the request side and the response side. *The only difference is the GetIterator index* so
+'   that was made an argument (request side 8 / response side 7).
+'   The iterator type is ICoreWebView2HttpHeadersCollectionIterator for both.
 '     3 = GetCurrentHeader(LPWSTR* name, LPWSTR* value)
 '     4 = get_HasCurrentHeader(BOOL*)   5 = MoveNext(BOOL*)
 '
-'   ★ハンドラの中で走る★ ので上限 (NET_HDR_MAX) で切る。
-'   ★GetCurrentHeader は LPWSTR を 2 本返す★ ので、どちらも CoTaskMemFree する。
+'   *Runs inside the handler* so it is cut at the limit (NET_HDR_MAX).
+'   *GetCurrentHeader returns two LPWSTRs* so CoTaskMemFree both.
 ' ============================================================
 Private Function NetReadHeadersIter(ByVal pHeaders As LongPtr, _
                                     ByVal iterIndex As Long) As String
@@ -6918,22 +6956,22 @@ Private Function NetReadHeadersIter(ByVal pHeaders As LongPtr, _
     Dim moreFlag As Long
     Dim sb       As String
 
-    ' ★空で返さず理由を残す (N-3b)★
-    '   ハンドラの中なのでログは撃てない。どこで空になったのかが
-    '   分からないと、実機 1 往復ぶん無駄になる (設計原則111)。
+    ' *Do not return empty; leave the reason (N-3b)*
+    '   Since we are inside the handler, we cannot fire the log. If we do not know
+    '   where it became empty, a real-machine round trip is wasted (design principle 111).
     If pHeaders = 0 Then
-        NetReadHeadersIter = "(診断: ヘッダのコレクションが 0)"
+        NetReadHeadersIter = "(diagnosis: the header collection is 0)"
         Exit Function
     End If
 
     hr = dcf(pHeaders, iterIndex, "", VarPtr(pIter))   ' GetIterator
     If hr <> 0 Then
-        NetReadHeadersIter = "(診断: GetIterator が失敗 hr=&H" & Hex(hr) & _
+        NetReadHeadersIter = "(diagnosis: GetIterator failed hr=&H" & Hex(hr) & _
                              " index=" & iterIndex & ")"
         Exit Function
     End If
     If pIter = 0 Then
-        NetReadHeadersIter = "(診断: GetIterator は S_OK だが iter が 0 index=" & _
+        NetReadHeadersIter = "(diagnosis: GetIterator is S_OK but iter is 0 index=" & _
                              iterIndex & ")"
         Exit Function
     End If
@@ -6959,11 +6997,11 @@ Private Function NetReadHeadersIter(ByVal pHeaders As LongPtr, _
     Loop
 
     If n >= NET_HDR_MAX Then
-        sb = sb & vbLf & "(★" & NET_HDR_MAX & " 個で打ち切った★)"
+        sb = sb & vbLf & "(*cut off at " & NET_HDR_MAX & "*)"
     End If
     If n = 0 Then
-        ' ★イテレータは取れたのに 1 個も無い★
-        sb = "(診断: ヘッダが 0 個。HasCurrentHeader が最初から False" & _
+        ' *The iterator was obtained but there is not even one*
+        sb = "(diagnosis: 0 headers. HasCurrentHeader is False from the start" & _
              " index=" & iterIndex & ")"
     End If
 
@@ -6973,22 +7011,22 @@ End Function
 
 
 ' ============================================================
-' NetReadBody (N-2、Private) - 要求のボディを読む
+' NetReadBody (N-2, Private) - read the request body
 '
-'   ICoreWebView2WebResourceRequest::get_Content (7) が返す IStream を
-'   IStream::Read (3) で読み、★読み終わったら Seek (5) で先頭へ戻す★。
+'   Reads the IStream returned by ICoreWebView2WebResourceRequest::get_Content (7)
+'   with IStream::Read (3), and *after reading rewinds to the start with Seek (5)*.
 '
-'   ★戻さないと通信が壊れる (論点2)★
-'     IStream は位置を持つ。読んだままにすると、そのあと WebView2 が
-'     同じストリームから送るときに★空のボディが飛ぶ★。
+'   *If not rewound, the traffic breaks (issue 2)*
+'     IStream has a position. If left as read, when WebView2 later sends from
+'     the same stream, *an empty body goes out*.
 '
-'   引数 (すべて出力):
-'     outBytes  : 読めたバイト数 (上限で切られていれば上限値)
-'     outTrunc  : 上限で切ったか
-'     outBuf()  : 読んだバイト列 (0 起点、outBytes 個が有効)
+'   Arguments (all outputs):
+'     outBytes  : number of bytes read (the limit value if cut at the limit)
+'     outTrunc  : whether cut at the limit
+'     outBuf()  : the byte sequence read (0-based, outBytes entries valid)
 '
-'   戻り値: True ならストリームがあって読み終えた (0 バイトでも True)。
-'           False は「ボディが無い」(GET など) か取得に失敗した。
+'   Return value: True if there was a stream and it was read to the end (True even for 0 bytes).
+'           False means "there is no body" (GET etc.) or the retrieval failed.
 ' ============================================================
 Private Function NetReadBody(ByVal pReq As LongPtr, _
                              ByRef outBytes As Long, _
@@ -7007,31 +7045,31 @@ Private Function NetReadBody(ByVal pReq As LongPtr, _
     If pReq = 0 Then Exit Function
 
     hr = dcf(pReq, 7, "", VarPtr(pStream))           ' get_Content
-    If hr <> 0 Or pStream = 0 Then Exit Function     ' ボディ無し (GET など)
+    If hr <> 0 Or pStream = 0 Then Exit Function     ' no body (GET etc.)
 
     cap = m_detBodyMax
     If cap < 1 Then
-        ' 上限 0 = 読まない。それでも位置は動かしていないので戻す必要はない。
+        ' Limit 0 = do not read. Even so the position has not been moved, so there is no need to rewind.
         ComRelease pStream
         NetReadBody = True
         Exit Function
     End If
 
-    ' ★読むところは NetReadStream に切り出した (N-4)★
-    '   レスポンス本文も同じ読み方をするので共通にした。違うのは
-    '   ★こちらは読んだ後 Seek(0) で戻す必要がある★ ことだけ。
+    ' *The reading part was split out into NetReadStream (N-4)*
+    '   The response body is read the same way, so it was shared. The only difference is
+    '   *this side must rewind with Seek(0) after reading*.
     If Not NetReadStream(pStream, cap, got, outTrunc, outBuf) Then
         ComRelease pStream
         Exit Function
     End If
 
-    ' ★★ 読んだぶんを必ず戻す ★★ (論点2 案X)
+    ' ** Always rewind what was read ** (issue 2, option X)
     '   Seek(LARGE_INTEGER dlibMove, DWORD dwOrigin, ULARGE_INTEGER* plibNewPosition)
-    '   dlibMove は 8 バイトの値渡し、dwOrigin は 4 バイト、最後は NULL 可。
+    '   dlibMove is an 8-byte by-value, dwOrigin is 4 bytes, and the last may be NULL.
     hr = dcf(pStream, 5, "", 0^, STREAM_SEEK_SET, 0^)
     If hr <> 0 Then
-        ' ★戻せなかった★ これは通信を壊した可能性があるので黙って進まない。
-        ' ハンドラの中なのでログは撃たず、ボディの中身に印を残す。
+        ' *Could not rewind* This may have broken the traffic, so do not proceed silently.
+        ' Since we are inside the handler we do not fire the log; leave a mark in the body contents.
         outTrunc = True
         outBytes = got
         ComRelease pStream
@@ -7046,16 +7084,16 @@ End Function
 
 
 ' ============================================================
-' NetReadStream (N-4、Private) - IStream を上限まで読む
+' NetReadStream (N-4, Private) - read an IStream up to the limit
 '
-'   ★位置は動かしたまま返す★ 戻す必要があるかは呼び出し側の都合。
-'     ・要求ボディ (N-2) … ★戻さないと通信が壊れる★ ので呼び出し側で Seek(0)
-'     ・応答本文 (N-4)   … 応答のコピーなので戻す必要が無い
+'   *Returned with the position left moved* Whether to rewind is the caller's concern.
+'     *request body (N-2) ... *the traffic breaks if not rewound* so the caller does Seek(0)
+'     *response body (N-4) ... it is a copy of the response so no need to rewind
 '
-'   ★上限に達したら 1 バイトだけ余分に読んで「まだ残っているか」を確かめる★
-'   これをしないと「ちょうど上限ぴったり」と「切られた」を区別できない。
+'   *When the limit is reached, read one extra byte to check "whether more remains"*
+'   Without this, "exactly at the limit" and "was cut" cannot be distinguished.
 '
-'   戻り値: True なら読み終えた (0 バイトでも True)。
+'   Return value: True if read to the end (True even for 0 bytes).
 ' ============================================================
 Private Function NetReadStream(ByVal pStream As LongPtr, _
                                ByVal cap As Long, _
@@ -7083,7 +7121,7 @@ Private Function NetReadStream(ByVal pStream As LongPtr, _
         got = got + cbRead
     Loop
 
-    ' ★まだ残っているか★ を 1 バイトだけ試して確かめる (黙って切らないため)
+    ' Try a single byte to confirm *whether more remains* (so as not to cut silently)
     If got >= cap Then
         Dim probe(0 To 0) As Byte
         cbRead = 0
@@ -7097,8 +7135,8 @@ End Function
 
 
 ' ============================================================
-' NetDetailPush (N-2、Private) - 詳細を 1 件リングに置く
-'   ★溢れたら古いものを上書きする★ (一覧と同じ作法)。
+' NetDetailPush (N-2, Private) - put one detail on the ring
+'   *If it overflows, overwrite the oldest* (same convention as the list).
 ' ============================================================
 Private Sub NetDetailPush(ByVal seqNo As Long, _
                           ByVal mth As String, _
@@ -7120,11 +7158,11 @@ Private Sub NetDetailPush(ByVal seqNo As Long, _
     m_detIsText(m_detHead) = isText
     m_detBody(m_detHead) = bodyText
     m_detHex(m_detHead) = hexHead
-    ' N-3: 応答はまだ来ていない (使い回すスロットなので必ず消す)
+    ' N-3: the response has not arrived yet (this slot is reused, so always clear it)
     m_detStatus(m_detHead) = 0
     m_detReason(m_detHead) = ""
     m_detRespHeaders(m_detHead) = ""
-    ' N-4: 本文もまだ来ていない (使い回すスロットなので必ず消す)
+    ' N-4: the body has not arrived yet either (this slot is reused, so always clear it)
     m_detRespBody(m_detHead) = ""
     m_detRespBytes(m_detHead) = 0
     m_detRespTrunc(m_detHead) = False
@@ -7144,7 +7182,7 @@ End Sub
 
 
 ' ============================================================
-' NetDetailRingAlloc / NetDetailRingIndex (N-2、Private)
+' NetDetailRingAlloc / NetDetailRingIndex (N-2, Private)
 ' ============================================================
 Private Sub NetDetailRingAlloc()
     If m_detCap < 1 Then m_detCap = NET_DET_CAP_DEFAULT
@@ -7192,9 +7230,9 @@ End Function
 
 
 ' ============================================================
-' NetRedactApply (N-2、Private) - 秘密のヘッダを伏せる
-'   ★出すときに伏せる★ リング上は生のまま持っているので、
-'   NetRedact = False にすればその場で見られる (論点3 案M)。
+' NetRedactApply (N-2, Private) - hide secret headers
+'   *Hidden at output time* The ring holds them raw, so
+'   setting NetRedact = False lets you see them on the spot (issue 3, option M).
 ' ============================================================
 Private Function NetRedactApply(ByVal headers As String) As String
     Dim lines As Variant
@@ -7215,8 +7253,8 @@ Private Function NetRedactApply(ByVal headers As String) As String
         If p > 1 Then
             nm = LCase$(Trim$(Left$(CStr(lines(i)), p - 1)))
             If InStr(1, m_detRedactList, "|" & nm & "|") > 0 Then
-                lines(i) = Left$(CStr(lines(i)), p) & " <伏せた " & _
-                           (Len(CStr(lines(i))) - p - 1) & " 文字>"
+                lines(i) = Left$(CStr(lines(i)), p) & " <redacted " & _
+                           (Len(CStr(lines(i))) - p - 1) & " chars>"
             End If
         End If
         If LenB(out) > 0 Then out = out & vbLf
@@ -7228,11 +7266,11 @@ End Function
 
 
 ' ============================================================
-' NetIsTextType (N-2、Private) - Content-Type がテキスト系か
-'   ★判定できないときは False (バイナリ扱い)★ 安全側。
-'   Content-Type が無いときは、フォーム送信の既定である
-'   application/x-www-form-urlencoded とみなさず False にする
-'   (それらしい値を書き残さない = 設計原則111)。
+' NetIsTextType (N-2, Private) - whether Content-Type is text-like
+'   *False (treated as binary) when it cannot be determined* The safe side.
+'   When there is no Content-Type, it is not regarded as the form-submission default
+'   application/x-www-form-urlencoded but False
+'   (do not leave behind a plausible-looking value = design principle 111).
 ' ============================================================
 Private Function NetIsTextType(ByVal cType As String) As Boolean
     Dim t As String
@@ -7249,7 +7287,7 @@ End Function
 
 
 ' ============================================================
-' NetHexHead (N-2、Private) - バイナリの先頭を 16 進で見せる
+' NetHexHead (N-2, Private) - show the head of binary data in hex
 ' ============================================================
 Private Function NetHexHead(ByRef b() As Byte, ByVal cb As Long) As String
     Dim i As Long
@@ -7267,8 +7305,8 @@ End Function
 
 
 ' ============================================================
-' NetHeaderValue (N-2、Private) - 読んだヘッダから 1 つ取り出す
-'   名前は大小を問わない。無ければ空文字。
+' NetHeaderValue (N-2, Private) - pick one out of the headers read
+'   Names are case-insensitive. An empty string if absent.
 ' ============================================================
 Private Function NetHeaderValue(ByVal headers As String, ByVal headerName As String) As String
     Dim lines As Variant
@@ -7293,8 +7331,8 @@ End Function
 
 
 ' ============================================================
-' NetRedactDefaults (N-2、Private) - 既定で伏せるヘッダ
-'   ★ここに無いものは平文で出る★ 足したいときは AddRedactHeader。
+' NetRedactDefaults (N-2, Private) - headers hidden by default
+'   *Anything not here is output in plain text* To add, use AddRedactHeader.
 ' ============================================================
 Private Function NetRedactDefaults() As String
     NetRedactDefaults = "|cookie|set-cookie|authorization|proxy-authorization|" & _
@@ -7302,59 +7340,59 @@ Private Function NetRedactDefaults() As String
 End Function
 
 ' ============================================================
-' ★N-3 : レスポンスのステータスとヘッダ★
+' *N-3 : response status and headers*
 '
-'   N-1 の一覧に★結果★を、N-2 の詳細に★応答ヘッダ★を足す。
-'   一覧の 1 行が「いつ・何を・どう叩いて・どうなったか」で完結する。
+'   Add the *result* to the N-1 list and the *response headers* to the N-2 detail.
+'   One row of the list becomes self-contained as "when, what, how it was hit, and what happened".
 '
-'   ■ ★このイベントにはフィルタが無い (N-3 の中心問題)★
-'     ICoreWebView2_2 の vtable に AddWebResourceResponseReceivedFilter は
-'     存在しない (61/62 の次は NavigateWithWebResourceRequest)。つまり
-'     ★画像も CSS もフォントも全部来る★。しかも args が持つのは Request と
-'     Response だけで、★種別 (COREWEBVIEW2_WEB_RESOURCE_CONTEXT) が入っていない★
-'     ので種別で絞ることもできない。
+'   # *This event has no filter (the central problem of N-3)*
+'     AddWebResourceResponseReceivedFilter does not exist in the vtable of
+'     ICoreWebView2_2 (after 61/62 comes NavigateWithWebResourceRequest). That is,
+'     *images, CSS and fonts all come*. Moreover args holds only Request and
+'     Response, and *the kind (COREWEBVIEW2_WEB_RESOURCE_CONTEXT) is not included*
+'     so it cannot be narrowed by kind either.
 '
-'     そこで ★一覧に既に居る要求に対応するものだけ記録する (論点1 案A)★。
-'     N-1 の網が「見たいもの」を既に定義しているので、それに乗る。
-'     全部欲しくなったら NetCaptureStart "ALL" で一覧側を広げれば
-'     レスポンスも自動でついてくる。★絞り方を二重に持たない★
+'     So *we record only those that match a request already in the list (issue 1, option A)*.
+'     N-1's net already defines "what we want to see", so we ride on it.
+'     If you want everything, widen the list side with NetCaptureStart "ALL" and
+'     the responses follow automatically. *The narrowing is not kept in two places*
 '
-'   ■ 突き合わせ (論点2 案P / 論点6 案Y)
-'     args には NavigationId のような紐付けの手がかりが無いので、
-'     ★URI + メソッドで「まだ応答が付いていない★最古の★要求」に付ける★。
-'     ★同じ URL への同時並行要求は原理的に取り違える。しかも取り違えたことは
-'     検出できない★ ―― これは正直に言っておく。リダイレクト (301 → 200) は
-'     要求そのものが 2 回発火するので 1 対 1 で付く。
+'   # Matching (issue 2, option P / issue 6, option Y)
+'     args has no handle for association such as a NavigationId, so
+'     *we attach by URI + method to "the *oldest* request that has no response yet"*.
+'     *Concurrent requests to the same URL are in principle mixed up. Moreover, the mix-up
+'     cannot be detected* -- we state this honestly. A redirect (301 -> 200)
+'     fires the request itself twice, so it attaches one to one.
 '
-'   ■ ★まだ応答が来ていないときは空欄 (論点7 案α)★
-'     0 を入れると本物のステータスコードと見分けが付かず、後段 (人でも
-'     N-5 のコード生成でも) がそれを信じる (設計原則111)。
+'   # *Blank when no response has arrived yet (issue 7, option alpha)*
+'     Putting 0 is indistinguishable from a real status code, and later stages (whether a human or
+'     N-5's code generation) would believe it (design principle 111).
 '
-'   ■ 追加した Public メンバ
-'     NetLogStatus(i)        As Long    その行のステータス (0 = まだ来ていない)
-'     NetDetailRespHeaders(i) As String 応答ヘッダ (伏せ字を適用して返す)
-'     NetRespOn              As Boolean 応答イベントを拾えているか
-'     NetRespUnmatched       As Long    ★一覧に対応が無かった応答の数★
+'   # Added Public members
+'     NetLogStatus(i)        As Long    status of that row (0 = not arrived yet)
+'     NetDetailRespHeaders(i) As String response headers (returned with redaction applied)
+'     NetRespOn              As Boolean whether response events are being picked up
+'     NetRespUnmatched       As Long    *number of responses that had no counterpart in the list*
 '
-'   ■ vtable index (★tools/vtable.py で確定★、設計原則115)
+'   # vtable index (*settled with tools/vtable.py*, design principle 115)
 '       ICoreWebView2_2::add_WebResourceResponseReceived            61
 '       ICoreWebView2_2::remove_WebResourceResponseReceived         62
 '       ...ResponseReceivedEventArgs::get_Request / get_Response   3 / 4
 '       ICoreWebView2WebResourceResponseView::get_Headers            3
 '       ...::get_StatusCode (int*) / get_ReasonPhrase              4 / 5
-'       ★ICoreWebView2HttpResponseHeaders::GetIterator = 7★
+'       *ICoreWebView2HttpResponseHeaders::GetIterator = 7*
 '
-'   ★罠★ 要求側 ICoreWebView2HttpRequestHeaders::GetIterator は 8 だが、
-'   応答側 ICoreWebView2HttpResponseHeaders::GetIterator は ★7★。
-'   応答側には put_ 系が無く AppendHeader が先頭に来るので並びがずれる。
-'   「同じだろう」で流用すると 1 つずれて GetHeaders を呼ぶ (設計原則115)。
+'   *Trap* GetIterator of the request-side ICoreWebView2HttpRequestHeaders is 8, but
+'   GetIterator of the response-side ICoreWebView2HttpResponseHeaders is *7*.
+'   The response side has no put_ family and AppendHeader comes first, so the order is shifted.
+'   Reusing it with "they must be the same" shifts by one and calls GetHeaders (design principle 115).
 ' ============================================================
 
 
 ' ============================================================
-' NetLogStatus (N-3) - その行のステータスコード
-'   ★0 は「まだ応答が来ていない」★ 本物の 0 は無いので番兵に使える。
-'   表示 (NetLogLine / NetLogFormat) では 0 を空欄にする (論点7 案α)。
+' NetLogStatus (N-3) - status code of that row
+'   *0 means "no response has arrived yet"* There is no real 0, so it can be used as a sentinel.
+'   In the display (NetLogLine / NetLogFormat) 0 is made blank (issue 7, option alpha).
 ' ============================================================
 Public Property Get NetLogStatus(ByVal idx As Long) As Long
     Dim k As Long
@@ -7365,9 +7403,9 @@ End Property
 
 
 ' ============================================================
-' NetRespOn (N-3) - 応答イベントを拾えているか
-'   ★False なら一覧のステータス欄は永久に空欄★
-'   ICoreWebView2_2 が取れなかったときにそうなる。
+' NetRespOn (N-3) - whether response events are being picked up
+'   *If False, the status column of the list stays blank forever*
+'   That happens when ICoreWebView2_2 could not be obtained.
 ' ============================================================
 Public Property Get NetRespOn() As Boolean
     NetRespOn = m_netRespOn
@@ -7375,16 +7413,16 @@ End Property
 
 
 ' ============================================================
-' NetRespUnmatched (N-3) - 一覧に対応が無かった応答の数
+' NetRespUnmatched (N-3) - number of responses that had no counterpart in the list
 '
-'   ★大半は「捕捉対象外のもの」で正常★
-'     このイベントにはフィルタが無いので、画像や CSS の応答も全部来る。
-'     一覧が DOCUMENT / XHR / FETCH に絞られている以上、それ以外の応答は
-'     必ずここに数えられる。★大きい数が出るのは異常ではない★
+'   *Mostly "things outside the capture target", which is normal*
+'     This event has no filter, so responses for images and CSS all come too.
+'     Since the list is narrowed to DOCUMENT / XHR / FETCH, other responses
+'     are always counted here. *A large number is not abnormal*
 '
-'   ★取りこぼしの指標は NetLogDropped の方★
-'     一覧が溢れて消えた要求の応答もここに混ざるが、両者は区別できない。
-'     取りこぼしを疑うときは NetLogDropped を見ること。
+'   *The indicator of misses is NetLogDropped*
+'     Responses for requests that overflowed from the list and vanished also get mixed in here, but the two cannot be distinguished.
+'     When you suspect misses, look at NetLogDropped.
 ' ============================================================
 Public Property Get NetRespUnmatched() As Long
     NetRespUnmatched = m_netUnmatched
@@ -7392,9 +7430,9 @@ End Property
 
 
 ' ============================================================
-' NetDetailRespHeaders (N-3) - 詳細 1 本の応答ヘッダを読む
-'   1 行 1 ヘッダで vbLf 区切り。★NetRedact = True なら秘密は伏せて返す★
-'   (Set-Cookie は既定リストに入っている)
+' NetDetailRespHeaders (N-3) - read the response headers of one detail
+'   One header per line, separated by vbLf. *If NetRedact = True, secrets are hidden in the return*
+'   (Set-Cookie is in the default list)
 ' ============================================================
 Public Property Get NetDetailRespHeaders(ByVal idx As Long) As String
     Dim k As Long
@@ -7406,12 +7444,12 @@ End Property
 
 
 ' ============================================================
-' View2_AddWebResourceResponseReceived (N-3、ICoreWebView2_2 vtable 61)
+' View2_AddWebResourceResponseReceived (N-3, ICoreWebView2_2 vtable 61)
 '
-'   ★_2 IF のイベントなので m_pView2 で叩く★ (設計原則45)。
-'   実装は View2_AddDOMContentLoaded を逐語的な見本にしている。
+'   *An event of the _2 IF, so call through m_pView2* (design principle 45).
+'   The implementation uses View2_AddDOMContentLoaded as a verbatim model.
 '
-'   戻り値: HRESULT (S_OK = 0 で成功)
+'   Return value: HRESULT (S_OK = 0 means success)
 ' ============================================================
 Public Function View2_AddWebResourceResponseReceived() As Long
     If m_closed Then
@@ -7419,13 +7457,13 @@ Public Function View2_AddWebResourceResponseReceived() As Long
         Exit Function
     End If
     If Not EnsureView2() Then
-        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: EnsureView2 失敗"
+        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: EnsureView2 failed"
         View2_AddWebResourceResponseReceived = &H80004003
         Exit Function
     End If
 
     If Not (m_persistentHandlers(HK_WebResourceResponseReceived) Is Nothing) Then
-        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: 既に登録済み"
+        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: already registered"
         View2_AddWebResourceResponseReceived = 0
         Exit Function
     End If
@@ -7433,7 +7471,7 @@ Public Function View2_AddWebResourceResponseReceived() As Long
     Dim h As ComCallbackHandler
     Set h = AcquireHandlerFor(HK_WebResourceResponseReceived, Me)
     If h Is Nothing Then
-        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: Acquire に失敗"
+        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: Acquire failed"
         View2_AddWebResourceResponseReceived = &H8000FFFF   ' E_UNEXPECTED
         Exit Function
     End If
@@ -7447,7 +7485,8 @@ Public Function View2_AddWebResourceResponseReceived() As Long
              pVTableObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: 失敗 hr=&H" & Hex(hr)
+        Debug.Print "Wv2Pane.View2_AddWebResourceResponseReceived: failed hr=&H" & Hex(hr)
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork: return the slot (see Thunks_DiscardHandler)
         Set h = Nothing
         View2_AddWebResourceResponseReceived = hr
         Exit Function
@@ -7462,8 +7501,8 @@ End Function
 
 
 ' ============================================================
-' View2_RemoveWebResourceResponseReceived (N-3、vtable 62、m_pView2)
-'   未登録なら no-op (S_OK で返す)。
+' View2_RemoveWebResourceResponseReceived (N-3, vtable 62, m_pView2)
+'   If not registered, a no-op (returns S_OK).
 ' ============================================================
 Public Function View2_RemoveWebResourceResponseReceived() As Long
     If m_persistentHandlers(HK_WebResourceResponseReceived) Is Nothing Then
@@ -7476,10 +7515,10 @@ Public Function View2_RemoveWebResourceResponseReceived() As Long
         hr = dcf(m_pView2, 62, "View2.remove_WebResourceResponseReceived", _
                  m_persistentTokens(HK_WebResourceResponseReceived))
         If hr <> 0 Then
-            Debug.Print "Wv2Pane.View2_RemoveWebResourceResponseReceived: 解除失敗 hr=&H" & Hex(hr)
+            Debug.Print "Wv2Pane.View2_RemoveWebResourceResponseReceived: unregister failed hr=&H" & Hex(hr)
         End If
     Else
-        Debug.Print "Wv2Pane.View2_RemoveWebResourceResponseReceived: m_pView2 が 0 なので参照のみ解放"
+        Debug.Print "Wv2Pane.View2_RemoveWebResourceResponseReceived: m_pView2 is 0, so releasing the reference only"
     End If
 
     Set m_persistentHandlers(HK_WebResourceResponseReceived) = Nothing
@@ -7491,8 +7530,8 @@ End Function
 
 ' ============================================================
 ' View2_OnWebResourceResponseReceived (N-3)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。Public Sub 必須。
-'   ★N-1 の受け口と同じくエラーを再送出しない★ (通信の最中にダイアログを出さない)
+'   Called from ComCallbackHandler via dynamic binding. Public Sub is required.
+'   *Like N-1's receiver, the error is not re-raised* (do not show a dialog in the middle of traffic)
 ' ============================================================
 Public Sub View2_OnWebResourceResponseReceived(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Dim errNum As Long
@@ -7514,14 +7553,14 @@ End Sub
 
 
 ' ============================================================
-' View2_OnWebResourceResponseReceived_Core (N-3、Private)
+' View2_OnWebResourceResponseReceived_Core (N-3, Private)
 '
-'   ★記録だけしてすぐ返す★ (N-1 / N-2 と同じ)。ログも Debug.Print も撃たない。
-'   ★通信物には触らない★ 本文 (GetContent) は非同期なので N-4 の話。
-'   ここで読むのはステータス・理由句・応答ヘッダだけ。
+'   *Record only, then return immediately* (same as N-1 / N-2). Fire neither the log nor Debug.Print.
+'   *Do not touch the traffic itself* The body (GetContent) is asynchronous, so that is N-4's matter.
+'   What is read here is only the status, reason phrase and response headers.
 '
-'   args の vtable: 3 = get_Request、4 = get_Response
-'   ResponseView の vtable: 3 = get_Headers、4 = get_StatusCode、5 = get_ReasonPhrase
+'   vtable of args: 3 = get_Request, 4 = get_Response
+'   vtable of ResponseView: 3 = get_Headers, 4 = get_StatusCode, 5 = get_ReasonPhrase
 ' ============================================================
 Private Sub View2_OnWebResourceResponseReceived_Core(ByVal pSender As LongPtr, ByVal pArgs As LongPtr)
     Dim pReq  As LongPtr
@@ -7535,28 +7574,28 @@ Private Sub View2_OnWebResourceResponseReceived_Core(ByVal pSender As LongPtr, B
 
     If pArgs = 0 Then Exit Sub
 
-    ' --- どの要求への応答かを知るために Request を読む ---
+    ' --- Read the Request to learn which request this is the response to ---
     hr = dcf(pArgs, 3, "", VarPtr(pReq))             ' get_Request
     If hr <> 0 Or pReq = 0 Then Exit Sub
     uri = GetStringProperty(pReq, 3, "")             ' request.get_Uri
     mth = GetStringProperty(pReq, 5, "")             ' request.get_Method
     ComRelease pReq
 
-    ' --- 一覧の中から「まだ応答が付いていない最新の要求」を探す ---
-    '   ★見つからなければ数えて終わり (論点1 案A / 論点5 案W)★
-    '   このイベントにはフィルタが無いので、画像や CSS の応答もここへ来る。
-    '   それらは一覧に居ないので当然見つからない = 正常。
+    ' --- Look in the list for "the oldest request that has no response yet" ---
+    '   *If not found, count it and finish (issue 1 option A / issue 5 option W)*
+    '   This event has no filter, so responses for images and CSS come here too.
+    '   They are not in the list, so naturally they are not found = normal.
     k = NetMatchRequest(uri, mth)
     If k < 0 Then
         m_netUnmatched = m_netUnmatched + 1
         Exit Sub
     End If
 
-    ' --- Response を読む ---
+    ' --- Read the Response ---
     hr = dcf(pArgs, 4, "", VarPtr(pResp))            ' get_Response
     If hr <> 0 Or pResp = 0 Then
-        m_netStatus(k) = -1                          ' ★応答は来たが読めなかった★
-        m_netReason(k) = "(応答の取得に失敗)"
+        m_netStatus(k) = -1                          ' *the response came but could not be read*
+        m_netReason(k) = "(failed to get the response)"
         Exit Sub
     End If
 
@@ -7566,12 +7605,12 @@ Private Sub View2_OnWebResourceResponseReceived_Core(ByVal pSender As LongPtr, B
     m_netStatus(k) = st
     m_netReason(k) = reason
 
-    ' --- 応答ヘッダは詳細が ON のときだけ (論点4 案U) ---
+    ' --- Response headers only when the detail is ON (issue 4, option U) ---
     If m_detOn Then NetAttachRespHeaders m_netSeq(k), pResp, st, reason
 
-    ' --- N-4: 本文の取得を始める (★ここで撃つしかない★) ---
-    '   ResponseView は args の寿命に縛られるので、ハンドラの中で GetContent を
-    '   撃つ。呼び出し自体は即座に戻り、本文は後から完了ハンドラへ届く。
+    ' --- N-4: start fetching the body (*this is the only place to fire it*) ---
+    '   ResponseView is tied to the lifetime of args, so GetContent is fired inside the handler.
+    '   The call itself returns immediately, and the body reaches the completion handler later.
     If m_respBodyOn And m_detOn Then NetStartRespContent m_netSeq(k), pResp
 
     ComRelease pResp
@@ -7579,21 +7618,21 @@ End Sub
 
 
 ' ============================================================
-' NetMatchRequest (N-3、Private) - 応答を付ける相手を一覧から探す
+' NetMatchRequest (N-3, Private) - find from the list the one to attach a response to
 '
-'   ★URI + メソッドで「まだ応答が付いていない★最古の★要求」を探す★
-'   (論点2 案P / 論点6 案Y)。古い順に走査して最初に見つかったものを返す。
+'   *Find "the *oldest* request by URI + method that has no response yet"*
+'   (issue 2 option P / issue 6 option Y). Scan oldest first and return the first one found.
 '
-'   ★合意時は「最新」と言っていたが、実装前の検算で「最古」が正しいと分かった★
-'   同じ URL の要求が 2 本飛んでから応答が返る場面 (Req1 → Req2 → Resp → Resp)
-'   で、最新から探すと★ステータスが入れ替わる★。最古から探せば FIFO になり、
-'   順番に 1 往復ずつの場面でも結果は変わらない (つまり最古が常に同等以上)。
+'   *At agreement time we said "newest", but a check before implementation showed "oldest" is correct*
+'   In a scene where two requests to the same URL fly and then the responses come back (Req1 -> Req2 -> Resp -> Resp),
+'   searching from the newest *swaps the statuses*. Searching from the oldest gives FIFO,
+'   and in the one-round-trip-at-a-time scene the result is the same (so oldest is always equal or better).
 '
-'   ★弱点を正直に★ 同じ URL への同時並行要求は取り違える。しかも
-'   取り違えたことは検出できない。args に NavigationId のような紐付けの
-'   手がかりが無いので、これ以上は原理的に詰められない。
+'   *Honest about the weakness* Concurrent requests to the same URL are mixed up. Moreover,
+'   the mix-up cannot be detected. args has no handle for association such as a
+'   NavigationId, so it cannot in principle be pinned down any further.
 '
-'   戻り値: リング上の位置。見つからなければ -1。
+'   Return value: position on the ring. -1 if not found.
 ' ============================================================
 Private Function NetMatchRequest(ByVal uri As String, ByVal mth As String) As Long
     Dim i As Long
@@ -7602,11 +7641,11 @@ Private Function NetMatchRequest(ByVal uri As String, ByVal mth As String) As Lo
     NetMatchRequest = -1
     If m_netCount = 0 Then Exit Function
 
-    ' ★古い順 (i = 1 → m_netCount)★ = 先に出た要求に先に届いた応答を付ける
+    ' *Oldest first (i = 1 -> m_netCount)* = attach the response that arrived first to the request that went out first
     For i = 1 To m_netCount
         k = NetRingIndex(i)
         If k >= 0 Then
-            If m_netStatus(k) = 0 Then                       ' まだ応答が付いていない
+            If m_netStatus(k) = 0 Then                       ' no response attached yet
                 If m_netUri(k) = uri Then
                     If LenB(mth) = 0 Or m_netMethod(k) = mth Then
                         NetMatchRequest = k
@@ -7620,10 +7659,10 @@ End Function
 
 
 ' ============================================================
-' NetAttachRespHeaders (N-3、Private) - 応答ヘッダを詳細エントリに足す
+' NetAttachRespHeaders (N-3, Private) - add response headers to the detail entry
 '
-'   詳細リングの中から同じ通し番号のエントリを探して書き込む。
-'   ★見つからなければ何もしない★ (詳細を取っていない要求の応答なので正常)。
+'   Find the entry with the same serial number in the detail ring and write to it.
+'   *If not found, do nothing* (it is the response of a request whose detail was not taken, so normal).
 ' ============================================================
 Private Sub NetAttachRespHeaders(ByVal seqNo As Long, _
                                  ByVal pResp As LongPtr, _
@@ -7641,14 +7680,14 @@ Private Sub NetAttachRespHeaders(ByVal seqNo As Long, _
                 m_detStatus(k) = st
                 m_detReason(k) = reason
 
-                ' ResponseView.get_Headers (3) → ICoreWebView2HttpResponseHeaders
+                ' ResponseView.get_Headers (3) -> ICoreWebView2HttpResponseHeaders
                 hr = dcf(pResp, 3, "", VarPtr(pHeaders))
                 If hr <> 0 Then
-                    m_detRespHeaders(k) = "(診断: get_Headers が失敗 hr=&H" & Hex(hr) & ")"
+                    m_detRespHeaders(k) = "(diagnosis: get_Headers failed hr=&H" & Hex(hr) & ")"
                 ElseIf pHeaders = 0 Then
-                    m_detRespHeaders(k) = "(診断: get_Headers は S_OK だが 0 が返った)"
+                    m_detRespHeaders(k) = "(diagnosis: get_Headers was S_OK but 0 was returned)"
                 Else
-                    ' ★応答側の GetIterator は 7★ (要求側は 8。並びが違う)
+                    ' *GetIterator on the response side is 7* (8 on the request side. The order differs)
                     m_detRespHeaders(k) = NetReadHeadersIter(pHeaders, 7)
                     ComRelease pHeaders
                 End If
@@ -7660,53 +7699,53 @@ End Sub
 
 
 ' ============================================================
-' ★N-4 : レスポンス本文★
+' *N-4 : response body*
 '
-'   N-1～N-3 は「ハンドラの中で同期的に読む」だった。
-'   ★N-4 で初めて非同期になる★ ―― `GetContent` はハンドラを渡して即座に戻り、
-'   本文は後から `OnResponseContentCompleted` に届く。
+'   N-1 to N-3 were "read synchronously inside the handler".
+'   *N-4 is the first to be asynchronous* -- `GetContent` takes a handler and returns immediately, and
+'   the body reaches `OnResponseContentCompleted` later.
 '
-'   ■ ★N-2 と違って Seek(0) の心配は要らない★
-'     これは応答のコピーを読むだけで、通信物には手を入れない。
-'     設計原則118 (観測が対象に触れるとき別経路で数える) の出番が無い。
+'   # *Unlike N-2, there is no need to worry about Seek(0)*
+'     This only reads a copy of the response and does not touch the traffic itself.
+'     There is no occasion for design principle 118 (count by a separate path when observation touches the target).
 '
-'   ■ ★本文は別のスイッチ (論点1 案A)★
-'     ヘッダは数 KB、本文は数百 KB で桁が違う。同じスイッチに載せると
-'     NetDetailOn が気軽に使えなくなる。`NetRespBodyOn = True` で初めて取る。
-'     ★NetDetailOn も True でないと置き場が無い★ (本文は詳細エントリに入る)。
+'   # *The body has its own switch (issue 1, option A)*
+'     Headers are a few KB, bodies a few hundred KB; the orders of magnitude differ. Putting them on the same switch
+'     would make NetDetailOn hard to use casually. It is taken only with `NetRespBodyOn = True`.
+'     *NetDetailOn must also be True or there is nowhere to put it* (the body goes into the detail entry).
 '
-'   ■ ★圧縮は決めつけず観測する (論点2 案P')★
-'     応答には content-encoding: gzip / br / zstd が付く。GetContent が返すのが
-'     復号済みかどうかは SDK ヘッダに書かれていない。だから
-'     ・content-encoding を記録し
-'     ・★先頭 32 バイトの hex を必ず残す★ (gzip なら 1F 8B で一目で分かる)
-'     ・テキスト判定なら UTF-8 デコードも試みる
-'     の 3 つを全部残す。1 回の実機で答えが出る (設計原則117)。
+'   # *Do not assume compression; observe it (issue 2, option P')*
+'     Responses carry content-encoding: gzip / br / zstd. Whether what GetContent returns is
+'     already decoded is not written in the SDK header. So we keep all three:
+'     *record content-encoding
+'     **always keep the hex of the first 32 bytes* (for gzip, 1F 8B shows it at a glance)
+'     *if judged to be text, also try UTF-8 decoding
+'     One real-machine run gives the answer (design principle 117).
 '
-'   ■ ★ResponseView は完了まで保持する (論点5 案β)★
-'     「GetContent を呼んだ後 ResponseView を解放してよいか」は
-'     ヘッダに書かれていない。外した場合の現れ方が★解放済みオブジェクトへの
-'     アクセス = クラッシュ★ で、仕様事実20 によりデバッガも使えない。
-'     だから AddRef して m_respPending に持ち、完了時に Release する。
+'   # *ResponseView is held until completion (issue 5, option beta)*
+'     Whether "ResponseView may be released after calling GetContent" is
+'     not written in the header. If we guess wrong, it shows up as *access to a released object
+'     = crash*, and spec fact 20 means the debugger cannot be used either.
+'     So we AddRef it, hold it in m_respPending, and Release it on completion.
 '
-'   ■ 追加した Public メンバ
-'     NetRespBodyOn        As Boolean  ★既定 False★
-'     NetRespBodyMaxBytes  As Long     本文の上限 (既定 65536)
-'     NetRespBodyOrphan    As Long     置き場が無かった本文の数
-'     NetDetailRespBody(i) As String   本文 (テキストのときだけ中身)
-'     NetDetailRespLine(i) As String   バイト数 / 切った / 種類 / encoding / 先頭hex
+'   # Added Public members
+'     NetRespBodyOn        As Boolean  *default False*
+'     NetRespBodyMaxBytes  As Long     upper limit of the body (default 65536)
+'     NetRespBodyOrphan    As Long     number of bodies that had no place to go
+'     NetDetailRespBody(i) As String   body (contents only when it is text)
+'     NetDetailRespLine(i) As String   bytes / truncated / kind / encoding / head hex
 '
-'   ■ vtable index (★tools/vtable.py で確定★)
+'   # vtable index (*settled with tools/vtable.py*)
 '       ICoreWebView2WebResourceResponseView::GetContent(handler)   6
-'       完了ハンドラ Invoke(HRESULT, IStream*)                       3
+'       completion handler Invoke(HRESULT, IStream*)                       3
 '       IStream::Read                                                3
 ' ============================================================
 
 
 ' ============================================================
-' NetRespBodyOn (N-4) - レスポンス本文を取るか
-'   ★既定 False★ 本文はヘッダと桁が違う (数百 KB ～)。
-'   ★NetDetailOn も True でないと置き場が無い★ ので、そのときは知らせる。
+' NetRespBodyOn (N-4) - whether to take the response body
+'   *Default False* A body is an order of magnitude different from headers (a few hundred KB and up).
+'   *NetDetailOn must also be True or there is nowhere to put it* so we report that in that case.
 ' ============================================================
 Public Property Get NetRespBodyOn() As Boolean
     NetRespBodyOn = m_respBodyOn
@@ -7715,8 +7754,8 @@ End Property
 Public Property Let NetRespBodyOn(ByVal onOff As Boolean)
     m_respBodyOn = onOff
     If onOff And Not m_detOn Then
-        Wv2Log.LogW "Wv2Pane.NetRespBodyOn = True だが ★NetDetailOn が False★ なので " & _
-                    "本文の置き場が無く、1 件も取れない。NetDetailOn = True も要る。"
+        Wv2Log.LogW "Wv2Pane.NetRespBodyOn = True but *NetDetailOn is False* so " & _
+                    "there is nowhere to put the body and not a single one can be taken. NetDetailOn = True is needed too."
     Else
         Wv2Log.LogD "Wv2Pane.NetRespBodyOn = " & onOff
     End If
@@ -7724,8 +7763,8 @@ End Property
 
 
 ' ============================================================
-' NetRespBodyMaxBytes (N-4) - レスポンス本文の上限 (バイト)
-'   ★要求ボディとは別に持つ (論点3 案S)★ 適切な値が違う。
+' NetRespBodyMaxBytes (N-4) - upper limit of the response body (bytes)
+'   *Held separately from the request body (issue 3, option S)* The appropriate values differ.
 ' ============================================================
 Public Property Get NetRespBodyMaxBytes() As Long
     NetRespBodyMaxBytes = m_respBodyMax
@@ -7740,9 +7779,9 @@ End Property
 
 
 ' ============================================================
-' NetRespBodyOrphan (N-4) - 置き場が無かった本文の数
-'   ★完了が来たときに詳細エントリが消えていた★ ときに増える
-'   (リングから溢れた / NetDetailClear した後に届いた)。黙って捨てない。
+' NetRespBodyOrphan (N-4) - number of bodies that had no place to go
+'   *Increases when the detail entry had vanished by the time the completion arrived*
+'   (it overflowed from the ring / arrived after NetDetailClear). Not silently discarded.
 ' ============================================================
 Public Property Get NetRespBodyOrphan() As Long
     NetRespBodyOrphan = m_respBodyOrphan
@@ -7750,10 +7789,10 @@ End Property
 
 
 ' ============================================================
-' NetDetailRespBody (N-4) - 詳細 1 本のレスポンス本文
-'   ★テキストと判定できたときだけ中身が入る★ (N-2 のボディと同じ作法)。
-'   圧縮されていたら中身は当てにならないので NetDetailRespLine の
-'   encoding 欄と先頭 hex を見ること。
+' NetDetailRespBody (N-4) - response body of one detail
+'   *Contents are filled in only when judged to be text* (same convention as N-2's body).
+'   If it was compressed, the contents cannot be relied on, so look at the encoding column and the
+'   head hex of NetDetailRespLine.
 ' ============================================================
 Public Property Get NetDetailRespBody(ByVal idx As Long) As String
     Dim k As Long
@@ -7764,11 +7803,11 @@ End Property
 
 
 ' ============================================================
-' NetDetailRespLine (N-4) - レスポンス本文の素性
-'   vbTab 区切りで 6 項目:
-'     バイト数 / 切ったか / テキストか / content-encoding / 先頭 32 バイトの hex /
-'     ★届いたか★ (0 バイトの応答と「まだ来ていない」は別物)
-'   ★encoding と hex を必ず残す★ のが N-4 の眼目 (論点2 案P')。
+' NetDetailRespLine (N-4) - the profile of the response body
+'   6 items separated by vbTab:
+'     bytes / truncated or not / text or not / content-encoding / hex of the first 32 bytes /
+'     *arrived or not* (a 0-byte response and "not arrived yet" are different things)
+'   *Always keeping the encoding and hex* is the point of N-4 (issue 2, option P').
 ' ============================================================
 Public Property Get NetDetailRespLine(ByVal idx As Long) As String
     Dim k As Long
@@ -7782,15 +7821,15 @@ End Property
 
 
 ' ============================================================
-' NetStartRespContent (N-4、Private) - 本文の取得を始める
+' NetStartRespContent (N-4, Private) - start fetching the body
 '
-'   ★WebResourceResponseReceived のハンドラの中から呼ぶ★
-'   ResponseView は args の寿命に縛られるので、ここで GetContent を撃つしかない。
-'   GetContent 自体は即座に戻り、本文は後から完了ハンドラに届く。
+'   *Called from inside the WebResourceResponseReceived handler*
+'   ResponseView is tied to the lifetime of args, so GetContent is fired here and nowhere else.
+'   GetContent itself returns immediately, and the body reaches the completion handler later.
 '
-'   ★ResponseView を AddRef して保持する (論点5 案β)★
-'     完了までに解放してよいかは SDK に書かれていない。外したときの現れ方が
-'     クラッシュなので安全側に倒す。完了時 / 後始末で必ず Release する。
+'   *AddRef and hold the ResponseView (issue 5, option beta)*
+'     Whether it may be released before completion is not written in the SDK. If we guess wrong it shows up as
+'     a crash, so we fall to the safe side. It is always Released on completion / cleanup.
 ' ============================================================
 Private Sub NetStartRespContent(ByVal seqNo As Long, ByVal pResp As LongPtr)
     Dim h  As ComCallbackHandler
@@ -7799,12 +7838,12 @@ Private Sub NetStartRespContent(ByVal seqNo As Long, ByVal pResp As LongPtr)
 
     If pResp = 0 Then Exit Sub
 
-    ' ★置き場が無ければ撃たない★ 本文は詳細エントリに入るので、
-    '   詳細を取っていない要求の本文を取っても捨てるだけになる。
+    ' *Do not fire if there is no place to put it* The body goes into the detail entry, so
+    '   taking the body of a request whose detail was not taken would just be thrown away.
     If NetFindDetailBySeq(seqNo) < 0 Then Exit Sub
 
     ky = "r" & seqNo
-    ' 同じ seq で二重に撃たない (1 要求 1 応答のはずだが念のため)
+    ' Do not fire twice for the same seq (it should be one response per request, but just in case)
     On Error Resume Next
     Dim dummy As Variant
     dummy = m_respPending(ky)
@@ -7820,15 +7859,16 @@ Private Sub NetStartRespContent(ByVal seqNo As Long, ByVal pResp As LongPtr)
     If h Is Nothing Then Exit Sub
     h.callbackId = seqNo
 
-    ' ★完了まで ResponseView を生かす★
+    ' *Keep the ResponseView alive until completion*
     ComAddRef pResp
     m_respPending.Add pResp, ky
 
     hr = dcf(pResp, 6, "", h.Slot + VTABLE_OBJ_OFFSET)   ' GetContent
     If hr <> 0 Then
-        ' 撃てなかった。保持をほどく。
+        ' Could not fire. Undo the hold.
         ComRelease pResp
         m_respPending.Remove ky
+        Wv2Thunks.Thunks_DiscardHandler h   ' English fork
         Set h = Nothing
     End If
 End Sub
@@ -7836,11 +7876,11 @@ End Sub
 
 ' ============================================================
 ' OnResponseContentCompleted (N-4)
-'   ComCallbackHandler から動的バインディング経由で呼ばれる。Public Sub 必須。
-'   1 ショット系なので出自接頭辞なし (第9.6a 規約)。
+'   Called from ComCallbackHandler via dynamic binding. Public Sub is required.
+'   A one-shot family, so no origin prefix (9.6a convention).
 '
-'   ★IStream は Invoke の間しか有効でない★ ので同期的に読み切る。
-'   ★N-1 以降の受け口と同じくエラーを再送出しない★
+'   *IStream is valid only during Invoke* so read it to the end synchronously.
+'   *Like the receivers since N-1, the error is not re-raised*
 ' ============================================================
 Public Sub OnResponseContentCompleted(ByVal cbId As Long, _
                                       ByVal errorCode As Long, _
@@ -7872,7 +7912,7 @@ Private Sub OnResponseContentCompleted_Core(ByVal cbId As Long, _
     Dim cType   As String
     Dim ky      As String
 
-    ' --- 保持していた ResponseView をほどく (論点5 案β の後始末) ---
+    ' --- Release the held ResponseView (cleanup for issue 5, option beta) ---
     ky = "r" & cbId
     On Error Resume Next
     Dim pKept As LongPtr
@@ -7884,46 +7924,46 @@ Private Sub OnResponseContentCompleted_Core(ByVal cbId As Long, _
     Err.Clear
     On Error GoTo 0
 
-    ' --- 置き場を探す ---
+    ' --- Look for the place to put it ---
     k = NetFindDetailBySeq(cbId)
     If k < 0 Then
-        ' ★完了までに詳細エントリが消えていた★ (溢れた / Clear した)
+        ' *The detail entry had vanished by completion* (overflowed / cleared)
         m_respBodyOrphan = m_respBodyOrphan + 1
         Exit Sub
     End If
 
-    ' ★ここまで来たら「届いた」★ 0 バイトでも失敗でも、未着とは区別する
+    ' *If we got this far, it "arrived"* Even for 0 bytes or a failure, distinguish it from not arrived
     m_detRespGot(k) = True
 
     If errorCode = E_NO_DATA Then
-        ' ★本文が無い応答 (204 など)★ 失敗ではない。0 バイトのまま残す。
+        ' *A response with no body (204 etc.)* is not a failure. Leave it as 0 bytes.
         m_detRespBody(k) = ""
         m_detRespBytes(k) = 0
         Exit Sub
     ElseIf errorCode <> 0 Then
         m_detRespBody(k) = ""
-        m_detRespEnc(k) = "(取得失敗 hr=&H" & Hex(errorCode) & ")"
+        m_detRespEnc(k) = "(fetch failed hr=&H" & Hex(errorCode) & ")"
         Exit Sub
     End If
 
     If pStream = 0 Then
-        ' ★本文が無い応答★ (204 / 304 など)。0 バイトとして残す。
+        ' *A response with no body* (204 / 304 etc.). Leave it as 0 bytes.
         m_detRespBytes(k) = 0
         Exit Sub
     End If
 
-    ' --- 読む (★Seek で戻す必要は無い★ 応答のコピーなので) ---
+    ' --- Read (*no need to rewind with Seek* since it is a copy of the response) ---
     If Not NetReadStream(pStream, m_respBodyMax, nBytes, trunc, buf) Then Exit Sub
 
     m_detRespBytes(k) = nBytes
     m_detRespTrunc(k) = trunc
     If nBytes <= 0 Then Exit Sub
 
-    ' --- ★何が来たのかを決めつけず、全部残す (論点2 案P')★ ---
+    ' --- *Do not assume what came; keep everything (issue 2, option P')* ---
     enc = NetHeaderValue(m_detRespHeaders(k), "content-encoding")
     cType = NetHeaderValue(m_detRespHeaders(k), "content-type")
     m_detRespEnc(k) = enc
-    m_detRespHex(k) = NetHexHead(buf, nBytes)     ' ★常に残す★
+    m_detRespHex(k) = NetHexHead(buf, nBytes)     ' *always kept*
     m_detRespIsText(k) = NetIsTextType(cType)
     If m_detRespIsText(k) Then
         m_detRespBody(k) = Utf8BytesToString(buf, nBytes)
@@ -7932,8 +7972,8 @@ End Sub
 
 
 ' ============================================================
-' NetFindDetailBySeq (N-4、Private) - 通し番号から詳細リングの位置を探す
-'   見つからなければ -1。N-3 の NetAttachRespHeaders と同じ探し方。
+' NetFindDetailBySeq (N-4, Private) - find the position in the detail ring from a serial number
+'   -1 if not found. The same lookup as N-3's NetAttachRespHeaders.
 ' ============================================================
 Private Function NetFindDetailBySeq(ByVal seqNo As Long) As Long
     Dim i As Long
@@ -7953,9 +7993,9 @@ End Function
 
 
 ' ============================================================
-' NetRespPendingClear (N-4、Private) - 保持中の ResponseView を全部ほどく
-'   ★完了が来ないまま終わることがある★ (捕捉をやめた / Pane を閉じた)。
-'   漏らさないためにここでまとめて Release する。
+' NetRespPendingClear (N-4, Private) - release all held ResponseViews
+'   *It may end without the completion ever arriving* (capture stopped / Pane closed).
+'   To avoid leaking, Release them all together here.
 ' ============================================================
 Private Sub NetRespPendingClear()
     Dim v As Variant

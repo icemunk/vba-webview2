@@ -1,184 +1,184 @@
 Attribute VB_Name = "Wv2Maps"
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Maps.bas  K-4d 段階 (MapsOpen の各段階に時刻を刻む) ---
+' --- Wv2Maps.bas  stage K-4d (stamp the time at each step of MapsOpen) ---
 '
-'   ★ロジックは 1 行も変えていない。ログ行を足しただけ。★
+'   *Not one line of logic was changed. Only log lines were added.*
 '
-'   なぜ要るか: MapsOpen は実測 17 秒かかるのに、Wv2Tests 側で中身を
-'   段階的に再現すると ★3.9 秒で終わる★。1/4 しか再現できていない。
-'   ★13 秒をどこで使っているのかが分からない★ ので、本物を直接測る。
+'   Why it is needed: MapsOpen measurably takes 17 seconds, yet when the Wv2Tests side reproduces its contents
+'   step by step, it *finishes in 3.9 seconds*. We could only reproduce 1/4.
+'   *We do not know where the 13 seconds are spent*, so we measure the real thing directly.
 '
-'   これは 2 つの現象の共通の入口:
-'     現象1 MapsOpen がのんびり待っている (17 秒)
-'     現象2 MapsOpen の後だとフォームを閉じるのが遅い (5 秒)
-'   ★Test_K4_Step の再現では現象2 が一度も出なかった★ ので、
-'   本物との差がそのまま原因に繋がっている見込みが高い。
+'   This is the common entrance of 2 phenomena:
+'     Phenomenon 1: MapsOpen is leisurely waiting (17 seconds)
+'     Phenomenon 2: after MapsOpen, closing the form is slow (5 seconds)
+'   *Phenomenon 2 never appeared in the Test_K4_Step reproduction*, so
+'   the difference from the real thing is highly likely to lead directly to the cause.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Maps.bas  D-7d 段階 (実用: 住所 → 座標 / 進捗と中断) ---
+' --- Wv2Maps.bas  stage D-7d (practical use: address -> coordinates / progress and abort) ---
 '
-'   ★D 軸で作った部品を、業務でそのまま使える形に畳んだ最初の例。★
-'   D-4d で Google Maps の住所検索が実サイトで通ることを実証したので、
-'   その手順を 1 本の関数にした。
+'   *The first example of folding the parts built on the D axis into a form usable in business as is.*
+'   D-4d demonstrated that Google Maps address search works on the real site,
+'   so that procedure was made into a single function.
 '
-'   ■ D-7 で足したもの (進捗と中断)
-'     MapsCancel    … 中断を要求する / 今の要求を読む (Property Get / Let)
-'     MapsCanceled  … 直前の呼び出しが中断で終わったか (読み取り専用)
-'     MapsCountRows … 処理する行数を先に数える (分母を出す口)
+'   # What D-7 added (progress and abort)
+'     MapsCancel    ... request an abort / read the current request (Property Get / Let)
+'     MapsCanceled  ... whether the previous call ended by abort (read-only)
+'     MapsCountRows ... count the rows to process first (an entry that gives the denominator)
 '
-'     ★バッチ実行中に Esc を押すと止まる★
-'     進捗は Application.StatusBar に出す。
+'     *Pressing Esc during a batch run stops it*
+'     Progress is shown in Application.StatusBar.
 '
-'   ■ ★ステータスバーの戻し方 (D-7d の実測)★
-'     ★Application.StatusBar = False では戻らない★ 文字列 "FALSE" が
-'     表示されたまま残る (画面にも FALSE と出る)。実測:
+'   # *How to restore the status bar (measured in D-7d)*
+'     *Application.StatusBar = False does not restore it.* The string "FALSE" stays
+'     displayed (FALSE also appears on screen). Measured:
 '
-'       False        → [FALSE] 型=String    ← 値として文字列化される
-'       Empty        → [False] 型=Boolean   ← ★これが正解★
-'       空文字 ""     → [False] 型=Boolean
-'       vbNullString → [False] 型=Boolean
-'       CVar(False)  → [FALSE] 型=String
+'       False        -> [FALSE] type=String    <- stringified as a value
+'       Empty        -> [False] type=Boolean   <- *this is the right answer*
+'       empty string "" -> [False] type=Boolean
+'       vbNullString -> [False] type=Boolean
+'       CVar(False)  -> [FALSE] type=String
 '
-'     よく言われる「False を入れれば Excel に制御が戻る」は★この環境では逆★。
-'     Test_D7_StatusBar が同じ測定をいつでも再現できる。
+'     The commonly said "putting in False returns control to Excel" is *the opposite in this environment*.
+'     Test_D7_StatusBar can reproduce the same measurement at any time.
 '
-'   ■ ★Esc をどう捕まえるか (D-7 → D-7b → D-7c と 2 回作り直した)★
+'   # *How to catch Esc (remade twice: D-7 -> D-7b -> D-7c)*
 '
-'     ★実機で 2 回とも前提が外れた。経緯を残す。★
+'     *The premise was wrong both times on the real machine. The history is kept.*
 '
-'     D-7  : GetAsyncKeyState だけで見た → ★一度も発火しなかった★。
-'            VBA ランタイムの Esc は焦点に依存せず届くので、こちらが読むより先に
-'            「コードの実行が中断されました」で止まっていた。
-'     D-7b : EnableCancelKey = xlErrorHandler にして Esc をエラー18 で受けた
-'            → ★ハンドラに届かなかった★。エラー18 が発生するのは主に
-'            ★WebView2 の COM コールバック (View_On*) の中★で、そこは呼び出し元が
-'            VBA ではない (サンク経由) ため On Error GoTo に遡らない。
-'            Wv2Pane のガードが再送出し、COM 境界で未処理ダイアログになった。
-'     D-7c : ★EnableCancelKey = xlDisabled★ にして、エラー18 自体を発生させない。
-'            実行は止まらないので、次に MapsPump が回ったとき
-'            ★GetAsyncKeyState が拾う★。経路が 1 本になる。
+'     D-7  : Looked only with GetAsyncKeyState -> *it never fired*.
+'            The VBA runtime's Esc arrives regardless of focus, so before we could read it
+'            execution had already stopped at "Code execution has been interrupted".
+'     D-7b : Set EnableCancelKey = xlErrorHandler and received Esc as error 18
+'            -> *it did not reach the handler*. Error 18 mostly occurs
+'            *inside WebView2 COM callbacks (View_On*)*, where the caller is not
+'            VBA (via a thunk), so it does not trace back to On Error GoTo.
+'            The Wv2Pane guard re-raised it, and it became an unhandled dialog at the COM boundary.
+'     D-7c : *EnableCancelKey = xlDisabled* so that error 18 itself is not raised.
+'            Execution does not stop, so the next time MapsPump runs
+'            *GetAsyncKeyState picks it up*. The path becomes a single one.
 '
-'     ★なぜ break を避けたいのか★ 仕様事実20 のクラッシュ窓そのものだから。
-'     WebView2 のイベントが動いている最中の break は AV になりうる。
-'     使いやすさだけでなく安全の問題でもある。
+'     *Why we want to avoid a break*: because it is exactly the crash window of spec fact 20.
+'     A break while WebView2 events are running can become an AV.
+'     It is a matter of safety, not only of ease of use.
 '
-'     ★失うもの★ バッチ実行中は Excel の Esc / Ctrl+Break が効かない。
-'     ただし待ちはすべてタイムアウトを持ち (EvalSync / WaitFor / WaitSettled)、
-'     MapsPump は 0.2～0.3 秒ごとに必ず回るので、無限には固まらない。
+'     *What is lost*: during a batch run, Excel's Esc / Ctrl+Break do not work.
+'     However every wait has a timeout (EvalSync / WaitFor / WaitSettled), and
+'     MapsPump always runs every 0.2-0.3 seconds, so it does not freeze forever.
 '
-'     ★戻し忘れると Excel 全体で Esc が効かなくなる★ ので、すべての出口で戻す。
-'     そのために MapsOpen / MapsGeocode は「ラッパ + Core」の形にしてある
-'     (Core は出口が多いので、後始末はラッパが 1 箇所で引き受ける)。
+'     *If it is not restored, Esc stops working in the whole of Excel*, so it is restored at every exit.
+'     For that, MapsOpen / MapsGeocode are made in the form "wrapper + Core"
+'     (Core has many exits, so the wrapper takes the cleanup in one place).
 '
-'   ■ 使い方
+'   # Usage
 '     Dim p As Wv2Pane, lat As Double, lng As Double, nm As String
 '     Set p = Wv2Maps.MapsOpen(UserForm1.CurrentBrowser)
-'     If Wv2Maps.MapsGeocode(p, "東京都千代田区丸の内1-9-1", lat, lng, nm) Then
+'     If Wv2Maps.MapsGeocode(p, "1-9-1 Marunouchi, Chiyoda-ku, Tokyo", lat, lng, nm) Then
 '         Debug.Print lat & "," & lng & " " & nm
 '     Else
-'         Debug.Print "失敗: " & Wv2Maps.MapsLastError
+'         Debug.Print "Failed: " & Wv2Maps.MapsLastError
 '     End If
 '
-'     ★同じ Pane を使い回せる★ ので、住所を次々に処理できる (バッチ)。
-'     タブを開き直すより速い。
+'     *The same Pane can be reused*, so addresses can be processed one after another (batch).
+'     This is faster than reopening a tab.
 '
-'   ■ なぜ Maps 固有の知識をここに隔離するか
-'     セレクタも URL の形も★Google の都合で予告なく変わる★ (設計原則75)。
-'     製品コア (Wv2Pane / Wv2Element) に混ぜると、壊れたときにどこを直せばよいか
-'     分からなくなる。**変わるものは 1 箇所に閉じ込める。**
+'   # Why Maps-specific knowledge is isolated here
+'     Both the selectors and the URL shape *change without notice at Google's convenience* (design principle 75).
+'     If mixed into the product core (Wv2Pane / Wv2Element), it becomes unclear where to fix
+'     when it breaks. **Things that change are confined to one place.**
 '
-'   ■ ★完了の判定に何を使っているか★
-'     `ArmUrlSignal` は使わない。2 件目以降は既に /place/ にいるので、
-'     arm した瞬間に当たってしまう (D-4c で文書化した罠)。代わりに
-'     ★検索前の URL を覚えておき、/place/ と !3d を含む別の URL になるまで待つ★。
-'     「URL が変わったら完了」では早すぎる (最初は /search/ に変わるだけで、
-'     座標は前の場所のまま)。詳しくは MapsWaitPlace のコメント。
-'     URL の取得は COM 経由 (View_GetSource) なので EvalSync を使わず軽い。
-'     URL が変わったあとで WaitSettled を掛け、DOM が落ち着くのを待つ。
+'   # *What is used to judge completion*
+'     `ArmUrlSignal` is not used. From the 2nd item on we are already on /place/, so
+'     it hits the moment we arm (a trap documented in D-4c). Instead
+'     *remember the URL before the search and wait until it becomes a different URL containing /place/ and !3d*.
+'     "Done when the URL changes" is too early (at first it only changes to /search/,
+'     and the coordinates are still those of the previous place). See the comment of MapsWaitPlace for details.
+'     Getting the URL is via COM (View_GetSource), so it is light without EvalSync.
+'     After the URL changes, WaitSettled is applied to wait for the DOM to settle.
 '
-'   ■ 座標をどこから取るか
-'     URL の !3d<緯度>!4d<経度> を第一候補にする (★場所そのものの座標★)。
-'     無ければ /@<緯度>,<経度>,<ズーム> (地図の中心) に落とす。
-'     ★Val を使う★ CDbl はロケール依存で、小数点が , の環境で壊れる。
-'     Val は常に . を小数点として読み、数字でない文字で止まる。
+'   # Where the coordinates are taken from
+'     The !3d<latitude>!4d<longitude> in the URL is the first candidate (*the coordinates of the place itself*).
+'     If absent, fall back to /@<latitude>,<longitude>,<zoom> (the center of the map).
+'     *Use Val*: CDbl is locale-dependent and breaks in environments where the decimal point is ",".
+'     Val always reads "." as the decimal point and stops at a non-digit character.
 '
-'   ■ 戻り値の規約 (設計原則93 を踏襲)
-'     True                       … /place/ に着いた = 1 件に確定した
-'     False + MapsLastError      … 理由:
-'       no-pane / no-searchbox / no-search-trigger … 構造が変わった (要 Test_D4_Dom)
-'       timeout-url              … 時間内に URL が変わらなかった
-'       not-found                … 見つからなかった (★検索しても地図が動かない★)。
-'                                  ★このとき座標は返さない★ 前の検索の残りかすなので
-'       ambiguous                … ★候補が複数★ (/search/ に着いたが地図は動いた)。
-'                                  ★pickFirstIfAmbiguous:=True なら候補の 1 件目に
-'                                  入って確定させる (MapsLastPicked = True になる)★
-'                                  このとき outLat / outLng には地図の中心が入る
-'       no-coords                … URL から座標を読めなかった
-'       canceled                 … ★Esc または MapsCancel で中断された★ (D-7)
+'   # Return value convention (following design principle 93)
+'     True                       ... arrived at /place/ = settled to 1 result
+'     False + MapsLastError      ... reason:
+'       no-pane / no-searchbox / no-search-trigger ... the structure changed (Test_D4_Dom needed)
+'       timeout-url              ... the URL did not change within the time
+'       not-found                ... not found (*the map does not move even after searching*).
+'                                  *No coordinates are returned in this case* since they are leftovers from the previous search
+'       ambiguous                ... *multiple candidates* (arrived at /search/ but the map moved).
+'                                  *With pickFirstIfAmbiguous:=True, it enters the first of the candidates
+'                                  and settles on it (MapsLastPicked = True)*
+'                                  In this case outLat / outLng hold the center of the map
+'       no-coords                ... could not read the coordinates from the URL
+'       canceled                 ... *aborted by Esc or MapsCancel* (D-7)
 ''''''''''''''''''''''''''''''''''
 Option Explicit
 
 
-' --- 直前の失敗理由 ---
+' --- Reason for the previous failure ---
 Private m_lastError As String
 
-' --- D-6b: 直前の結果が★候補一覧から選んだもの★かどうか ---
-'   ★確定と「候補から選んだ」を同じ顔で並べない★ (設計原則111 と同じ筋)。
-'   精度が違うものが同じ ok として混ざると、後から見分けられなくなる。
+' --- D-6b: whether the previous result was *picked from the candidate list* ---
+'   *Do not line up "settled" and "picked from candidates" with the same face* (the same line of thought as design principle 111).
+'   If things of different precision get mixed in as the same ok, they can no longer be told apart afterwards.
 Private m_lastPicked As Boolean
 
-' --- D-7: 中断 (Esc) と進捗 ---
-'   ★フォーカスに依存しない手段を選ぶ★ Application.EnableCancelKey (Esc /
-'   Ctrl+Break) は Excel に焦点が無いと届かない。バッチ中の焦点は WebView2 側に
-'   あるので、キーの状態を直接読む GetAsyncKeyState を使う。
+' --- D-7: abort (Esc) and progress ---
+'   *Choose a means that does not depend on focus* Application.EnableCancelKey (Esc /
+'   Ctrl+Break) does not arrive unless Excel has focus. During a batch the focus is on the
+'   WebView2 side, so we use GetAsyncKeyState, which reads the key state directly.
 Private Declare PtrSafe Function GetAsyncKeyState Lib "user32" ( _
     ByVal vKey As Long) As Integer
 
 Private Const MAPS_VK_ESCAPE As Long = &H1B&
 
-' 中断が要求されたか。★外から立てることもできる★ (Wv2Maps.MapsCancel = True)
+' Whether an abort was requested. *It can also be raised from outside* (Wv2Maps.MapsCancel = True)
 Private m_cancel As Boolean
 
-' 直前の呼び出しが中断で終わったか
+' Whether the previous call ended by abort
 Private m_canceled As Boolean
 
-' バッチ (MapsGeocodeSheet) の実行中か。
-'   ★入口で中断状態を捨てるのは「一番外側」だけ★ 単発の MapsGeocode も入口で
-'   捨てるので、これが無いと 1 行処理するたびに要求が消えてバッチが止まらない。
+' Whether a batch (MapsGeocodeSheet) is running.
+'   *Discarding the abort state at the entrance is done only by "the outermost"* A single MapsGeocode also
+'   discards it at its entrance, so without this the request vanishes after each row and the batch does not stop.
 Private m_inBatch As Boolean
 
-' D-7d: MapsCheckCancel が呼ばれた回数。★数えられるものは数える★ (設計原則112)
-'   Esc を拾えないとき、原因が「呼ばれていない」のか「呼んでも見えない」のかは
-'   推測では分けられない。1 回のバッチで何回ポーリングできているかを実測する。
+' D-7d: the number of times MapsCheckCancel was called. *Count what can be counted* (design principle 112)
+'   When Esc cannot be picked up, whether the cause is "it is not being called" or "it is called but cannot see"
+'   cannot be separated by guessing. Measure how many times we can poll in one batch.
 Private m_checkCount As Long
 
-' D-7b: arm する前の Application.EnableCancelKey。★必ず戻す★
-'   xlDisabled は 0 なので「保存していない」と見分けが付かないが、
-'   0 のときは xlInterrupt (既定) に戻す ― 砦を戻す方が安全なので。
+' D-7b: Application.EnableCancelKey before arming. *Always restore it*
+'   xlDisabled is 0 so it cannot be told apart from "not saved",
+'   but when it is 0 we return it to xlInterrupt (the default) - restoring the fortress is safer.
 Private m_savedCancelKey As Long
 
-' 候補一覧のリンクの候補 (D-6b)。★href で拾うのを先に★ class は変わりやすい。
+' Candidates for links in the candidate list (D-6b). *Pick by href first* because class changes easily.
 Private Const MAPS_CAND_SELECTORS As String = _
     "a[href*='/maps/place/']" & vbLf & "div[role='feed'] a[href*='/place/']" & vbLf & "a.hfpxzc"
 
-' 検索ボックスの候補。★id は自動生成に変わりうる (仕様事実59)★ ので name / 構造を先に。
-'   ★区切りは vbLf★ Const では Chr$() が使えない (定数式でないため)。
-'   CSS セレクタに改行は現れないので衝突しない。
+' Candidates for the search box. *id may change to an auto-generated one (spec fact 59)*, so name / structure first.
+'   *The delimiter is vbLf* Chr$() cannot be used in Const (it is not a constant expression).
+'   A newline does not appear in a CSS selector, so there is no collision.
 Private Const MAPS_BOX_SELECTORS As String = _
     "input[name='q']" & vbLf & "#searchboxinput" & vbLf & "form input[type='text']"
 
-' 検索実行の候補。aria-label は UI 言語で変わるので英語も並べる。
+' Candidates for running the search. aria-label changes with the UI language, so English is lined up too.
 Private Const MAPS_GO_SELECTORS As String = _
-    "button[aria-label='検索']" & vbLf & "#searchbox-searchbutton" & vbLf & "button[aria-label='Search']"
+    ("button[aria-label='" & ChrW(&H691C&) & ChrW(&H7D22&) & "']") & vbLf & "#searchbox-searchbutton" & vbLf & "button[aria-label='Search']"
 
 
 ' ============================================================
-' MapsOpen - Google マップのタブを開いて、操作できる状態まで待つ
+' MapsOpen - Open a Google Maps tab and wait until it is operable
 '
-'   戻り値: 使える Wv2Pane。失敗したら Nothing (理由は MapsLastError)
+'   Return value: a usable Wv2Pane. Nothing on failure (the reason is in MapsLastError)
 '
-'   ★タブを開いた直後は EvalSync が no-view で失敗する★ ので、
-'   先に JS が通るようになるまで待つ (D-4d の教訓)。
+'   *Right after opening the tab EvalSync fails with no-view*, so
+'   first wait until JS passes (lesson of D-4d).
 ' ============================================================
 Public Function MapsOpen(ByVal b As Wv2Browser, _
                          Optional ByVal timeoutSec As Single = 30) As Wv2Pane
@@ -188,7 +188,7 @@ Public Function MapsOpen(ByVal b As Wv2Browser, _
     Dim errDesc As String
     Dim errSrc As String
 
-    ' --- D-7b: 単発で呼ばれたときだけ arm する (バッチ側が既に arm 済み) ---
+    ' --- D-7b: arm only when called standalone (the batch side has already armed) ---
     solo = Not m_inBatch
     If solo Then
         MapsResetCancel
@@ -205,34 +205,34 @@ Cleanup:
     On Error GoTo 0
 
     If errNo = 18 Then
-        ' D-7c: xlDisabled にしたので通常は来ない。arm する前後の窓のために残す。
+        ' D-7c: xlDisabled was set so this normally does not come. Left for the window before/after arming.
         Set p = Nothing
         m_cancel = True
         m_canceled = True
         m_lastError = "canceled"
-        Wv2Log.LogW "Wv2Maps.MapsOpen: ★Esc で中断された★"
+        Wv2Log.LogW "Wv2Maps.MapsOpen: *aborted by Esc*"
         errNo = 0
     End If
 
     If solo Then MapsDisarmCancelKey
     Set MapsOpen = p
 
-    ' ★他のエラーは握り潰さない★ 後始末だけしてそのまま上げる
+    ' *Other errors are not swallowed* Only cleanup is done and it is raised as is
     If errNo <> 0 Then Err.Raise errNo, errSrc, errDesc
 End Function
 
 
 ' ============================================================
-' MapsOpenCore (D-7b、Private) - MapsOpen の中身
-'   ★出口が多いので、EnableCancelKey の後始末はラッパに任せる★
+' MapsOpenCore (D-7b, Private) - the body of MapsOpen
+'   *There are many exits, so the cleanup of EnableCancelKey is left to the wrapper*
 ' ============================================================
 Private Function MapsOpenCore(ByVal b As Wv2Browser, _
                               ByVal timeoutSec As Single) As Wv2Pane
     Dim p As Wv2Pane
     Dim el As Wv2Element
     Dim t0 As Single
-    Dim tStep As Single      ' K-4d: 段階ごとの計測用
-    Dim evalTries As Long    ' K-4d: EvalSync を何回撃ったか
+    Dim tStep As Single      ' K-4d: for measuring each step
+    Dim evalTries As Long    ' K-4d: how many times EvalSync was fired
 
     m_lastError = ""
 
@@ -243,14 +243,14 @@ Private Function MapsOpenCore(ByVal b As Wv2Browser, _
 
     tStep = Timer
     Set p = b.AddTabWithUrl("https://www.google.com/maps")
-    Wv2Log.LogD "[MapsOpen] AddTabWithUrl … " & _
-                Format$(MapsElapsed(tStep), "0.00") & " 秒"   ' K-4d
+    Wv2Log.LogD "[MapsOpen] AddTabWithUrl ... " & _
+                Format$(MapsElapsed(tStep), "0.00") & " s"   ' K-4d
     If p Is Nothing Then
         m_lastError = "no-pane"
         Exit Function
     End If
 
-    ' --- JS が通るようになるまで待つ ---
+    ' --- Wait until JS passes ---
     t0 = Timer
     tStep = Timer
     Do
@@ -268,66 +268,66 @@ Private Function MapsOpenCore(ByVal b As Wv2Browser, _
         End If
         MapsPump 0.3
     Loop
-    Wv2Log.LogD "[MapsOpen] JS が通るまで … " & _
-                Format$(MapsElapsed(tStep), "0.00") & " 秒 (EvalSync " & _
-                evalTries & " 回)"   ' K-4d
+    Wv2Log.LogD "[MapsOpen] until JS passes ... " & _
+                Format$(MapsElapsed(tStep), "0.00") & " s (EvalSync " & _
+                evalTries & " times)"   ' K-4d
 
-    ' --- 検索ボックスが出るまで待つ ---
+    ' --- Wait until the search box appears ---
     tStep = Timer
     Set el = MapsFindFirst(p, MAPS_BOX_SELECTORS, timeoutSec)
-    Wv2Log.LogD "[MapsOpen] 検索ボックス待ち … " & _
-                Format$(MapsElapsed(tStep), "0.00") & " 秒 " & _
-                IIf(el Is Nothing, "(外れ)", "(当たり)") & _
-                " レジストリ " & p.ElementCount & " 個"   ' K-4d
+    Wv2Log.LogD "[MapsOpen] waiting for search box ... " & _
+                Format$(MapsElapsed(tStep), "0.00") & " s " & _
+                IIf(el Is Nothing, "(miss)", "(hit)") & _
+                " registry " & p.ElementCount & " items"   ' K-4d
     If el Is Nothing Then
         m_lastError = "no-searchbox"
         Exit Function
     End If
 
-    ' --- ★地図が位置を持つまで待つ★ ---
-    '   開いた直後の URL は https://www.google.com/maps で座標を含まない。
-    '   MapsGeocode は「検索して地図が動いたか」で見つかったかを判定するので、
-    '   ★比較の基準になる座標が無いと判定できない★。1～2 秒で /@ が付くので待つ。
-    '   付かなくても致命的ではない (その場合は保守的に not-found 扱いになる)。
+    ' --- *Wait until the map has a position* ---
+    '   The URL right after opening is https://www.google.com/maps and has no coordinates.
+    '   MapsGeocode judges whether it was found by "whether the map moved after searching", so
+    '   *without a baseline coordinate to compare against it cannot judge*. A /@ is attached in 1-2 seconds, so we wait.
+    '   It is not fatal if it is not attached (in that case it is conservatively treated as not-found).
     t0 = Timer
     tStep = Timer
     Do
         If InStr(1, p.View_GetSource(), "/@") > 0 Then Exit Do
-        If MapsCheckCancel() Then Exit Do   ' D-7 (致命的ではないので抜けるだけ)
+        If MapsCheckCancel() Then Exit Do   ' D-7 (not fatal, so just break out)
         If MapsElapsed(t0) >= 8 Then
-            Wv2Log.LogW "Wv2Maps.MapsOpen: URL に座標が入らない (" & _
+            Wv2Log.LogW "Wv2Maps.MapsOpen: coordinates did not enter the URL (" & _
                         p.View_GetSource() & ")"
             Exit Do
         End If
         MapsPump 0.3
     Loop
 
-    ' --- ★Maps 固有の知識をここで効かせる★ ---
-    '   検索は /search?tbm=map を開いたまま結果を流し続ける (仕様事実58)。
-    '   静穏判定から外さないと、1 件ごとに StaleInflightMs (既定 10 秒) を
-    '   丸ごと待つことになる。名指しで外せば 1 秒で落ち着く。
-    '   ★これが「変わるものを 1 箇所に閉じ込める」ことの利得★
-    Wv2Log.LogD "[MapsOpen] /@ 待ち … " & _
-                Format$(MapsElapsed(tStep), "0.00") & " 秒"   ' K-4d
+    ' --- *Apply Maps-specific knowledge here* ---
+    '   The search keeps streaming results with /search?tbm=map left open (spec fact 58).
+    '   If it is not excluded from the quiescence check, we would wait the whole StaleInflightMs (default 10 seconds)
+    '   for every single item. Excluding it by name settles in 1 second.
+    '   *This is the gain of "confining things that change to one place"*
+    Wv2Log.LogD "[MapsOpen] waiting for /@ ... " & _
+                Format$(MapsElapsed(tStep), "0.00") & " s"   ' K-4d
 
     p.AddIgnoreNetwork "/search?tbm=map"
 
-    Wv2Log.LogI "Wv2Maps.MapsOpen: 準備できた (" & p.View_GetSource() & ")"
+    Wv2Log.LogI "Wv2Maps.MapsOpen: ready (" & p.View_GetSource() & ")"
     Set MapsOpenCore = p
 End Function
 
 
 ' ============================================================
-' MapsGeocode - 住所を検索して座標を取る
+' MapsGeocode - Search an address and get the coordinates
 '
-'   引数:
-'     p           : MapsOpen が返した Pane (使い回せる)
-'     addressText : 検索する住所
-'     outLat / outLng : 緯度・経度
-'     outName     : Maps が返した正規化後の名前 (例 〒100-0005 東京都千代田区…)
-'     timeoutSec  : URL が変わるのを待つ上限
+'   Arguments:
+'     p           : the Pane returned by MapsOpen (can be reused)
+'     addressText : the address to search
+'     outLat / outLng : latitude / longitude
+'     outName     : the normalized name returned by Maps (e.g. the postcode and the full Japanese address)
+'     timeoutSec  : the upper limit for waiting for the URL to change
 '
-'   戻り値: True = 1 件に確定した / False = 理由は MapsLastError
+'   Return value: True = settled to 1 result / False = the reason is in MapsLastError
 ' ============================================================
 Public Function MapsGeocode(ByVal p As Wv2Pane, _
                             ByVal addressText As String, _
@@ -342,9 +342,9 @@ Public Function MapsGeocode(ByVal p As Wv2Pane, _
     Dim errDesc As String
     Dim errSrc As String
 
-    ' --- D-7b: 単発で呼ばれたときだけ arm する (バッチ側が既に arm 済み) ---
-    '   ★入口で中断状態を捨てる★ のも単発のときだけ (設計原則106)。
-    '   バッチの中で捨てると 1 行ごとに要求が消えて止まらなくなる。
+    ' --- D-7b: arm only when called standalone (the batch side has already armed) ---
+    '   *Discarding the abort state at the entrance* is also only for the standalone case (design principle 106).
+    '   If discarded inside a batch, the request vanishes after each row and it can no longer stop.
     solo = Not m_inBatch
     If solo Then
         MapsResetCancel
@@ -362,8 +362,8 @@ Cleanup:
     On Error GoTo 0
 
     If errNo = 18 Then
-        ' D-7c: xlDisabled にしたので通常は来ない。arm する前後の窓のために残す。
-        '   判定できない値は書き残さない (設計原則111)。
+        ' D-7c: xlDisabled was set so this normally does not come. Left for the window before/after arming.
+        '   Values that cannot be judged are not written down (design principle 111).
         r = False
         outLat = 0
         outLng = 0
@@ -371,21 +371,21 @@ Cleanup:
         m_cancel = True
         m_canceled = True
         m_lastError = "canceled"
-        Wv2Log.LogW "Wv2Maps.MapsGeocode: ★Esc で中断された★ (" & addressText & ")"
+        Wv2Log.LogW "Wv2Maps.MapsGeocode: *aborted by Esc* (" & addressText & ")"
         errNo = 0
     End If
 
     If solo Then MapsDisarmCancelKey
     MapsGeocode = r
 
-    ' ★他のエラーは握り潰さない★ 後始末だけしてそのまま上げる
+    ' *Other errors are not swallowed* Only cleanup is done and it is raised as is
     If errNo <> 0 Then Err.Raise errNo, errSrc, errDesc
 End Function
 
 
 ' ============================================================
-' MapsGeocodeCore (D-7b、Private) - MapsGeocode の中身
-'   ★出口が多いので、EnableCancelKey の後始末はラッパに任せる★
+' MapsGeocodeCore (D-7b, Private) - the body of MapsGeocode
+'   *There are many exits, so the cleanup of EnableCancelKey is left to the wrapper*
 ' ============================================================
 Private Function MapsGeocodeCore(ByVal p As Wv2Pane, _
                                  ByVal addressText As String, _
@@ -412,7 +412,7 @@ Private Function MapsGeocodeCore(ByVal p As Wv2Pane, _
 
     prevUrl = p.View_GetSource()
 
-    ' --- 住所を書き込む (D-3。★ネイティブ setter 経由なので SPA に伝わる★) ---
+    ' --- Write the address (D-3. *It goes through the native setter so it reaches the SPA*) ---
     Set el = MapsFindFirst(p, MAPS_BOX_SELECTORS, 10)
     If MapsCheckCancel() Then GoTo Canceled     ' D-7
     If el Is Nothing Then
@@ -426,10 +426,10 @@ Private Function MapsGeocodeCore(ByVal p As Wv2Pane, _
         Exit Function
     End If
 
-    ' --- 検索を実行する ---
+    ' --- Run the search ---
     Set el = MapsFindFirst(p, MAPS_GO_SELECTORS, 3)
     If el Is Nothing Then
-        ' ボタンが無ければ Enter を合成する
+        ' If there is no button, synthesize Enter
         p.EvalSync "(function(){var e=document.querySelector('input[name=""q""]');" & _
                    "if(!e){return 0;}e.focus();" & _
                    "e.dispatchEvent(new KeyboardEvent('keydown'," & _
@@ -446,17 +446,17 @@ Private Function MapsGeocodeCore(ByVal p As Wv2Pane, _
         End If
     End If
 
-    ' --- ★場所が確定するまで待つ★ (arm を使わない理由はヘッダー参照) ---
+    ' --- *Wait until the place is settled* (see the header for why arm is not used) ---
     If Not MapsWaitPlace(p, prevUrl, timeoutSec, newUrl) Then
-        ' --- 確定しなかった ---
-        '   ★候補一覧が出ているかを直接数える★ (D-6 の QuerySelectorAll)
-        '     0 件      … 何も見つからなかった。座標は返さない
-        '     1 件以上  … 候補が複数。中心座標には意味がある
-        '   ★以前は「検索して地図が動いたか」で見ていたが、同じ検索語を続けて
-        '     引くと地図が動かず、候補が出ているのに not-found になった★
-        '     (D-6b の実機検証で発覚)。間接的な推測をやめて直接数える。
+        ' --- It did not settle ---
+        '   *Directly count whether the candidate list is shown* (QuerySelectorAll of D-6)
+        '     0 items      ... nothing was found. No coordinates are returned
+        '     1 or more    ... multiple candidates. The center coordinates are meaningful
+        '   *Previously we looked at "whether the map moved after searching", but when the same search term is
+        '     searched consecutively the map does not move, and it became not-found even though candidates were shown*
+        '     (found in the D-6b real-machine test). Stop indirect guessing and count directly.
 
-        ' ★中断は「見つからなかった」より先に見る★ (D-7)
+        ' *Check abort before "not found"* (D-7)
         If MapsCheckCancel() Then GoTo Canceled
 
         If InStr(1, newUrl, "/@") = 0 Then
@@ -465,12 +465,12 @@ Private Function MapsGeocodeCore(ByVal p As Wv2Pane, _
         End If
 
         Set cands = MapsFindCandidates(p)
-        Wv2Log.LogI "Wv2Maps.MapsGeocode: 候補リンク " & cands.Count & " 件"
+        Wv2Log.LogI "Wv2Maps.MapsGeocode: candidate links " & cands.Count & " items"
 
         If cands.Count = 0 Then
             m_lastError = "not-found"
-            Wv2Log.LogW "Wv2Maps.MapsGeocode: 見つからない (" & addressText & _
-                        ") 候補一覧も出ていないので座標は返さない"
+            Wv2Log.LogW "Wv2Maps.MapsGeocode: not found (" & addressText & _
+                        ") no candidate list is shown either, so no coordinates are returned"
             Exit Function
         End If
 
@@ -478,27 +478,27 @@ Private Function MapsGeocodeCore(ByVal p As Wv2Pane, _
             If MapsPickFirst(p, cands, timeoutSec, newUrl) Then
                 m_lastPicked = True
                 m_lastError = ""
-                Wv2Log.LogI "Wv2Maps.MapsGeocode: ★候補の 1 件目を採った★ (" & _
+                Wv2Log.LogI "Wv2Maps.MapsGeocode: *took the first candidate* (" & _
                             addressText & ")"
                 GoTo Resolved
             End If
-            Wv2Log.LogW "Wv2Maps.MapsGeocode: 候補を選べなかった (" & addressText & ")"
+            Wv2Log.LogW "Wv2Maps.MapsGeocode: could not pick a candidate (" & addressText & ")"
             If MapsCheckCancel() Then GoTo Canceled     ' D-7
         End If
 
         MapsExtractLatLng newUrl, outLat, outLng
         outName = MapsTitleOf(p)
         m_lastError = "ambiguous"
-        Wv2Log.LogW "Wv2Maps.MapsGeocode: 候補が複数 (" & addressText & _
-                    ") 中心座標を返す"
+        Wv2Log.LogW "Wv2Maps.MapsGeocode: multiple candidates (" & addressText & _
+                    ") returning the center coordinates"
         Exit Function
     End If
 
-' ★確定した★ ここから先は「最初から確定していた場合」と
-' 「候補の 1 件目に入った場合」で同じ処理をする。
+' *Settled* From here on, the same processing is done for "it was settled from the start" and
+' "it entered the first candidate".
 Resolved:
 
-    ' --- DOM が落ち着くのを待つ (D-4。居座る要求は既定で足切りされる) ---
+    ' --- Wait for the DOM to settle (D-4. Lingering requests are cut off by default) ---
     p.WaitSettled 10
     Wv2Log.LogD "Wv2Maps.MapsGeocode: " & p.LastSettleInfo
 
@@ -512,21 +512,21 @@ Resolved:
     MapsGeocodeCore = True
     Exit Function
 
-' --- D-7: ★中断された★ ---
-'   ★判定できない値は書き残さない★ (設計原則111)。座標も名前も空のまま返す。
+' --- D-7: *aborted* ---
+'   *Values that cannot be judged are not written down* (design principle 111). Both coordinates and name are returned empty.
 Canceled:
     outLat = 0
     outLng = 0
     outName = ""
     m_lastError = "canceled"
     m_canceled = True
-    Wv2Log.LogW "Wv2Maps.MapsGeocodeCore: ★中断された★ (" & addressText & ")"
+    Wv2Log.LogW "Wv2Maps.MapsGeocodeCore: *aborted* (" & addressText & ")"
 End Function
 
 
 ' ============================================================
-' MapsTitleOf (Private) - タイトルから ' - Google マップ' を落とす
-'   ★正規化後の住所が手に入る★ 表記ゆれの整形にも使える。
+' MapsTitleOf (Private) - Drop ' - Google Maps' from the title
+'   *The normalized address is obtained* It can also be used for tidying notation variations.
 ' ============================================================
 Private Function MapsTitleOf(ByVal p As Wv2Pane) As String
     Dim t As String
@@ -541,11 +541,11 @@ End Function
 
 
 ' ============================================================
-' MapsLastPicked (D-6b) - 直前の結果が候補一覧から選んだものか
+' MapsLastPicked (D-6b) - whether the previous result was picked from the candidate list
 '
-'   ★True なら「その住所そのもの」ではなく「候補の 1 件目」★
-'   確定 (True + MapsLastPicked = False) と精度が違うので、記録に残すときは
-'   区別できるようにすること。MapsGeocodeSheet は状態欄に ok(候補1) と書く。
+'   *If True, it is not "that address itself" but "the first of the candidates"*
+'   Its precision differs from a settled one (True + MapsLastPicked = False), so when recording it
+'   make it distinguishable. MapsGeocodeSheet writes ok(candidate 1) in the status column.
 ' ============================================================
 Public Property Get MapsLastPicked() As Boolean
     MapsLastPicked = m_lastPicked
@@ -553,11 +553,11 @@ End Property
 
 
 ' ============================================================
-' MapsFindCandidates (D-6b、Private) - 候補一覧のリンクを掴む
+' MapsFindCandidates (D-6b, Private) - grab the links of the candidate list
 '
-'   ★候補が「出ているかどうか」を直接数えるための口★
-'   0 件なら「何も見つからなかった」、1 件以上なら「候補が複数」。
-'   セレクタは候補方式 (設計原則107)。href で拾うものを先に置く。
+'   *An entry for directly counting "whether candidates are shown"*
+'   0 items means "nothing was found", 1 or more means "multiple candidates".
+'   The selectors are the candidate method (design principle 107). Those picked by href are placed first.
 ' ============================================================
 Private Function MapsFindCandidates(ByVal p As Wv2Pane) As Collection
     Dim sels As Variant
@@ -571,7 +571,7 @@ Private Function MapsFindCandidates(ByVal p As Wv2Pane) As Collection
         Set els = p.QuerySelectorAll(CStr(sels(i)), 20)
         If els.Count > 0 Then
             Wv2Log.LogD "Wv2Maps.MapsFindCandidates: " & els.Count & _
-                        " 件 [" & sels(i) & "]"
+                        " items [" & sels(i) & "]"
             Set MapsFindCandidates = els
             Exit Function
         End If
@@ -580,12 +580,12 @@ End Function
 
 
 ' ============================================================
-' MapsPickFirst (D-6b、Private) - 候補一覧の 1 件目に入る
+' MapsPickFirst (D-6b, Private) - enter the first of the candidate list
 '
-'   ★D-6 の QuerySelectorAll がここで効く★ 候補のリンクをまとめて掴み、
-'   文書順の 1 件目をクリックして、場所が確定するまで待つ。
+'   *The QuerySelectorAll of D-6 pays off here* Grab the candidate links together,
+'   click the first in document order, and wait until the place is settled.
 '
-'   戻り値: True = 確定した (outUrl に確定後の URL)
+'   Return value: True = settled (outUrl holds the URL after settling)
 ' ============================================================
 Private Function MapsPickFirst(ByVal p As Wv2Pane, _
                                ByVal cands As Collection, _
@@ -598,10 +598,10 @@ Private Function MapsPickFirst(ByVal p As Wv2Pane, _
     If cands.Count = 0 Then Exit Function
 
     prevUrl = p.View_GetSource()
-    Set el = cands(1)   ' ★文書順の 1 件目★ (D-6 で順序が保たれることを確認済み)
+    Set el = cands(1)   ' *The first in document order* (confirmed in D-6 that the order is preserved)
 
     If Not el.Click() Then
-        Wv2Log.LogW "Wv2Maps.MapsPickFirst: クリックできない err=" & el.LastError
+        Wv2Log.LogW "Wv2Maps.MapsPickFirst: cannot click err=" & el.LastError
         Exit Function
     End If
 
@@ -610,7 +610,7 @@ End Function
 
 
 ' ============================================================
-' MapsLastError - 直前の失敗理由
+' MapsLastError - the reason for the previous failure
 ' ============================================================
 Public Property Get MapsLastError() As String
     MapsLastError = m_lastError
@@ -618,22 +618,22 @@ End Property
 
 
 ' ============================================================
-' MapsWaitPlace (Private) - ★場所が確定するまで★ 待つ
+' MapsWaitPlace (Private) - wait *until the place is settled*
 '
-'   ★「URL が変わったら完了」では早すぎる★ (D-5 の実機検証で踏んだ)
-'   Maps は検索を押すとまず /maps/search/<検索語>/@<前の中心> に変わり、
-'   そのあとで /maps/place/<名前>/@<新座標>/data=!3d<緯度>!4d<経度> に落ち着く。
-'   最初の変化で掴むと、★名前は新しいのに座標は前のまま★ という一件ずれになる。
-'   実際 3 件続けて検索したら 2 件目と 3 件目の座標が 1 つ前のものになった。
+'   *"Done when the URL changes" is too early* (stepped on in the D-5 real-machine test)
+'   When search is pressed, Maps first changes to /maps/search/<search term>/@<previous center>,
+'   and then settles at /maps/place/<name>/@<new coordinates>/data=!3d<latitude>!4d<longitude>.
+'   If grabbed at the first change, you get a one-item shift where *the name is new but the coordinates are still the previous ones*.
+'   In fact when 3 searches were run in a row, the coordinates of the 2nd and 3rd were those of the one before.
 '
-'   したがって待つのは ★/place/ と !3d の両方を含む URL★。
-'   !3d<緯度>!4d<経度> は場所が確定して初めて付く。
+'   Therefore what we wait for is *a URL containing both /place/ and !3d*.
+'   !3d<latitude>!4d<longitude> is attached only after the place is settled.
 '
-'   戻り値: True = 確定した (outUrl にその URL)
-'           False = 時間切れ (outUrl には現在の URL。呼び出し側が候補複数か判断する)
+'   Return value: True = settled (outUrl holds that URL)
+'           False = timed out (outUrl holds the current URL. The caller judges whether there are multiple candidates)
 '
-'   ★同じ住所を 2 回続けて検索した場合★ URL が変わらないので時間切れになるが、
-'   その時点で既に /place/ + !3d なら確定として扱う (前回の結果と同じで正しい)。
+'   *When the same address is searched twice in a row* the URL does not change so it times out,
+'   but if it is already /place/ + !3d at that point, it is treated as settled (same as the previous result, so correct).
 ' ============================================================
 Private Function MapsWaitPlace(ByVal p As Wv2Pane, _
                                ByVal prevUrl As String, _
@@ -646,7 +646,7 @@ Private Function MapsWaitPlace(ByVal p As Wv2Pane, _
     Do
         u = p.View_GetSource()
 
-        ' D-7: 中断されたら待たない。False で返して呼び出し側に判断させる。
+        ' D-7: do not wait if aborted. Return False and let the caller judge.
         If MapsCheckCancel() Then
             outUrl = u
             Exit Function
@@ -660,7 +660,7 @@ Private Function MapsWaitPlace(ByVal p As Wv2Pane, _
 
         If MapsElapsed(t0) >= timeoutSec Then
             outUrl = u
-            ' 同じ住所を引き直した場合はここに来る。確定形ならそれでよい。
+            ' If the same address was searched again we come here. If it is in the settled form, that is fine.
             MapsWaitPlace = MapsIsPlaceUrl(u)
             Exit Function
         End If
@@ -676,13 +676,13 @@ Private Function MapsIsPlaceUrl(ByVal u As String) As Boolean
 End Function
 
 ' ============================================================
-' MapsExtractLatLng (Private) - URL から座標を抜く
+' MapsExtractLatLng (Private) - Pull the coordinates from the URL
 '
-'   第一候補: !3d<緯度>!4d<経度>   ★場所そのものの座標★
-'   第二候補: /@<緯度>,<経度>      地図の中心
+'   First candidate: !3d<latitude>!4d<longitude>   *the coordinates of the place itself*
+'   Second candidate: /@<latitude>,<longitude>      the center of the map
 '
-'   ★Val を使う★ CDbl はロケール依存。Val は常に . を小数点として読み、
-'   数字でない文字 (! や ,) で止まる。
+'   *Use Val* CDbl is locale-dependent. Val always reads "." as the decimal point and
+'   stops at a non-digit character (such as ! or ,).
 ' ============================================================
 Private Function MapsExtractLatLng(ByVal url As String, _
                                    ByRef outLat As Double, _
@@ -725,9 +725,9 @@ End Function
 
 
 ' ============================================================
-' MapsFindFirst (Private) - 候補セレクタを順に試す
-'   ★実サイトのセレクタは推測で書かない (設計原則107)★
-'   当たったものをログに残すので、次に壊れたとき何が変わったか分かる。
+' MapsFindFirst (Private) - Try the candidate selectors in order
+'   *Do not write real-site selectors by guessing (design principle 107)*
+'   The one that hit is left in the log, so the next time it breaks we can tell what changed.
 ' ============================================================
 Private Function MapsFindFirst(ByVal p As Wv2Pane, _
                                ByVal selectorList As String, _
@@ -751,14 +751,14 @@ Private Function MapsFindFirst(ByVal p As Wv2Pane, _
         End If
     Next i
 
-    Wv2Log.LogW "Wv2Maps.MapsFindFirst: どの候補も外れた [" & _
+    Wv2Log.LogW "Wv2Maps.MapsFindFirst: none of the candidates hit [" & _
                 Replace$(selectorList, vbLf, " / ") & "]"
 End Function
 
 
 ' ============================================================
 ' MapsPump / MapsElapsed (Private)
-'   ★Timer は深夜 0 時に 0 へ戻る (仕様事実53)★ ので経過は補正して測る。
+'   *Timer returns to 0 at midnight (spec fact 53)*, so elapsed time is measured with correction.
 ' ============================================================
 Private Sub MapsPump(ByVal waitSec As Single)
     Dim t0 As Single
@@ -766,8 +766,8 @@ Private Sub MapsPump(ByVal waitSec As Single)
     t0 = Timer
     Do
         DoEvents
-        ' ★D-7: 中断の検知はここ 1 箇所に置く★ すべての待ちがここを通るので、
-        '   待ちループごとに書き足さなくてよい。抜けたあとの判断は呼び出し側。
+        ' *D-7: abort detection is placed in this one spot* All waits pass through here,
+        '   so it need not be added to each wait loop. The judgment after breaking out is up to the caller.
         If MapsCheckCancel() Then Exit Do
         If MapsElapsed(t0) >= waitSec Then Exit Do
     Loop
@@ -782,14 +782,14 @@ Private Function MapsElapsed(ByVal sinceTimer As Single) As Single
 End Function
 
 ' ============================================================
-' MapsCancel (D-7) - 中断を要求する / 今の要求を読む
+' MapsCancel (D-7) - request an abort / read the current request
 '
-'   ★Esc でも止まるが、外から立てる口も残す★ (イミディエイトから止めたいとき、
-'   将来フォームに中止ボタンを付けるとき)。DoEvents が回っているので届く。
+'   *It also stops with Esc, but an entry that can be raised from outside is left too* (when you want to stop it from the Immediate window,
+'   or when a cancel button is added to the form in the future). It arrives because DoEvents is running.
 '     Wv2Maps.MapsCancel = True
 '
-'   ★立てっぱなしにしても次回の実行は殺さない★ 次の MapsOpen / MapsGeocode /
-'   MapsGeocodeSheet の入口で捨てられる (設計原則106: 前の状態を残さない)。
+'   *Even if left raised, it does not kill the next run* It is discarded at the entrance of the next MapsOpen / MapsGeocode /
+'   MapsGeocodeSheet (design principle 106: do not leave the previous state).
 ' ============================================================
 Public Property Get MapsCancel() As Boolean
     MapsCancel = m_cancel
@@ -801,11 +801,11 @@ End Property
 
 
 ' ============================================================
-' MapsCanceled (D-7) - 直前の呼び出しが中断で終わったか
+' MapsCanceled (D-7) - whether the previous call ended by abort
 '
-'   ★戻り値の意味は変えない★ MapsGeocodeSheet は今までどおり
-'   「ok になった行数」を返す。中断したかどうかはこちらで見る
-'   (MapsLastError も "canceled" になる)。
+'   *The meaning of the return value is not changed* MapsGeocodeSheet still returns
+'   "the number of rows that became ok". Whether it was aborted is looked at here
+'   (MapsLastError also becomes "canceled").
 ' ============================================================
 Public Property Get MapsCanceled() As Boolean
     MapsCanceled = m_canceled
@@ -813,11 +813,11 @@ End Property
 
 
 ' ============================================================
-' MapsCountRows (D-7) - 処理する行数を先に数える
+' MapsCountRows (D-7) - count the rows to process first
 '
-'   ★分母が要る★ 本体は「空セルが出たら終わり」なので、同じ規則で 1 回走査する。
-'   セルを読むだけなので速い。0 件ならタブを開かずに帰れる。
-'   呼び出し側が自前で進捗を出したいときのために Public にしてある。
+'   *The denominator is needed* The body is "finish when an empty cell appears", so scan once with the same rule.
+'   It only reads cells so it is fast. If 0 items, we can return without opening a tab.
+'   Made Public for when the caller wants to show its own progress.
 ' ============================================================
 Public Function MapsCountRows(ByVal targetSheet As Object, _
                               Optional ByVal firstRow As Long = 2, _
@@ -839,23 +839,23 @@ End Function
 
 
 ' ============================================================
-' MapsCheckCancel / MapsResetCancel (D-7、Private)
+' MapsCheckCancel / MapsResetCancel (D-7, Private)
 '
-'   ★bit15 (今押されている) と bit0 (前回以降に押された) の OR で見る★
-'   押しっぱなし判定だけだと、WaitSettled のように MapsPump が回らない数秒の
-'   空白で取りこぼす。bit0 があれば、その空白の間に押した 1 回も拾える。
-'   GetAsyncKeyState はどちらのビットも返すので、0 でなければ中断とみなす。
+'   *Look at the OR of bit15 (currently pressed) and bit0 (pressed since last time)*
+'   With a held-down check alone, it is missed during the few seconds' gap in which MapsPump does not run,
+'   such as WaitSettled. With bit0, even a single press made during that gap is picked up.
+'   GetAsyncKeyState returns both bits, so anything nonzero is regarded as an abort.
 '
-'   ★開始時に 1 回読み捨てる★ さもないと直前の押下 (検証を打つ前に押した Esc
-'   など) を持ち越して、始まった瞬間に中断する。
+'   *Read and discard once at the start* Otherwise a previous press (an Esc pressed
+'   before typing the verification, etc.) is carried over and it aborts the moment it starts.
 '
-'   ★副作用★ Esc はブラウザ操作でも押されるキー。バッチ実行中に押せば止まる。
-'   無人で回す前提なので実害は小さいと判断した (D-7 論点3)。
+'   *Side effect* Esc is also a key pressed in browser operation. Pressing it during a batch run stops it.
+'   Since it is premised on running unattended, the real harm was judged small (D-7 point 3).
 ' ============================================================
 Private Function MapsCheckCancel() As Boolean
     Dim k As Integer
 
-    m_checkCount = m_checkCount + 1   ' D-7d: 実測用
+    m_checkCount = m_checkCount + 1   ' D-7d: for measurement
 
     If m_cancel Then
         MapsCheckCancel = True
@@ -866,7 +866,7 @@ Private Function MapsCheckCancel() As Boolean
     If k <> 0 Then
         m_cancel = True
         MapsCheckCancel = True
-        Wv2Log.LogI "Wv2Maps: ★Esc で中断が要求された★"
+        Wv2Log.LogI "Wv2Maps: *abort requested by Esc*"
     End If
 End Function
 
@@ -876,27 +876,27 @@ Private Sub MapsResetCancel()
     m_cancel = False
     m_canceled = False
     m_checkCount = 0
-    k = GetAsyncKeyState(MAPS_VK_ESCAPE)   ' ★直前の押下を読み捨てる★
+    k = GetAsyncKeyState(MAPS_VK_ESCAPE)   ' *Read and discard the previous press*
 End Sub
 
 
 ' ============================================================
-' MapsArmCancelKey / MapsDisarmCancelKey (D-7b、Private)
+' MapsArmCancelKey / MapsDisarmCancelKey (D-7b, Private)
 '
-'   ★Wv2Maps に入っている間だけ VBA ランタイムの Esc を止める★
-'   これをしないと、VBA が先に Esc を掴んで break する (D-7 の実機で確認)。
-'   ★break は仕様事実20 のクラッシュ窓★ でもあるので、塞ぐ価値は二重にある。
+'   *Stop the VBA runtime's Esc only while inside Wv2Maps*
+'   Without this, VBA grabs Esc first and breaks (confirmed on the D-7 real machine).
+'   *A break is also the crash window of spec fact 20*, so the value of blocking it is double.
 '
-'   ★なぜ xlErrorHandler ではなく xlDisabled なのか (D-7c)★
-'   xlErrorHandler だと Esc はエラー18 になるが、★発生場所が主に
-'   WebView2 の COM コールバックの中★ で、そこは呼び出し元が VBA ではないので
-'   こちらの On Error GoTo に遡らない (D-7b の実機で確認)。
-'   xlDisabled ならエラー自体が起きず、実行が止まらないので、
-'   ★次に MapsPump が回ったときに GetAsyncKeyState が拾える★。
+'   *Why xlDisabled rather than xlErrorHandler (D-7c)*
+'   With xlErrorHandler Esc becomes error 18, but *it occurs mainly inside
+'   WebView2 COM callbacks*, where the caller is not VBA, so it does not trace back
+'   to our On Error GoTo (confirmed on the D-7b real machine).
+'   With xlDisabled the error itself does not occur and execution does not stop, so
+'   *GetAsyncKeyState can pick it up the next time MapsPump runs*.
 '
-'   ★必ず戻す★ 戻し忘れると Excel 全体で Esc も Ctrl+Break も効かなくなる。
-'   入れ子で arm すると保存値が xlDisabled になってしまうが、
-'   m_inBatch で「一番外側だけが arm する」ことを保証しているので起きない。
+'   *Always restore it* If forgotten, neither Esc nor Ctrl+Break works in the whole of Excel.
+'   Arming nested would make the saved value xlDisabled,
+'   but m_inBatch guarantees that "only the outermost arms", so it does not happen.
 ' ============================================================
 Private Sub MapsArmCancelKey()
     m_savedCancelKey = Application.EnableCancelKey
@@ -904,7 +904,7 @@ Private Sub MapsArmCancelKey()
 End Sub
 
 Private Sub MapsDisarmCancelKey()
-    ' 保存値が xlDisabled (0) でも xlInterrupt に戻す ― 砦を戻す方が安全
+    ' Even if the saved value is xlDisabled (0), return to xlInterrupt - restoring the fortress is safer
     If m_savedCancelKey = 0 Then m_savedCancelKey = xlInterrupt
     Application.EnableCancelKey = m_savedCancelKey
     m_savedCancelKey = 0
@@ -912,10 +912,10 @@ End Sub
 
 
 ' ============================================================
-' MapsCheckCount (D-7d) - 直前のバッチで中断検知を何回呼べたか
+' MapsCheckCount (D-7d) - how many times abort detection could be called in the previous batch
 '
-'   ★1 件 15 秒に対してこれが数十回しかないなら、待ちの大半は Wv2Pane 側の
-'   ループ (EvalSync / WaitFor / WaitSettled) で、そこに検知点が無いということ。★
+'   *If this is only a few dozen against 15 seconds per item, most of the waiting is in Wv2Pane's
+'   loops (EvalSync / WaitFor / WaitSettled), and there is no detection point there.*
 ' ============================================================
 Public Property Get MapsCheckCount() As Long
     MapsCheckCount = m_checkCount
@@ -923,12 +923,12 @@ End Property
 
 
 ' ============================================================
-' MapsRawEscState (D-7d) - GetAsyncKeyState の生の値
+' MapsRawEscState (D-7d) - the raw value of GetAsyncKeyState
 '
-'   ★宣言を 1 箇所に保つための観測口★ 検証側で同じ Declare を書くと
-'   宣言が 2 つになる。プローブ (Test_D7_Key) はここを叩く。
-'   戻り値: 0 = 押されていない / それ以外は生のビット
-'           &H8000 相当 (負の値) = 今押されている / 1 = 前回以降に押された
+'   *An observation entry to keep the declaration in one place* If the verification side writes the same Declare,
+'   there would be two declarations. The probe (Test_D7_Key) hits this.
+'   Return value: 0 = not pressed / anything else is the raw bits
+'           equivalent to &H8000 (negative value) = currently pressed / 1 = pressed since last time
 ' ============================================================
 Public Function MapsRawEscState() As Long
     MapsRawEscState = GetAsyncKeyState(MAPS_VK_ESCAPE)
@@ -936,59 +936,59 @@ End Function
 
 
 ' ============================================================
-' MapsProgress (D-7、Private) - 進捗をステータスバーに出す
+' MapsProgress (D-7, Private) - show progress in the status bar
 '
-'   ★シートは処理中に埋まっていくが、分母と残りが見えない★ ので、
-'   件数と中止の手段をステータスバーに出す。終わったら必ず False で戻す。
+'   *The sheet fills up during processing, but the denominator and remainder are not visible*, so
+'   the count and the means to stop are shown in the status bar. When done it is always restored with False.
 ' ============================================================
 Private Sub MapsProgress(ByVal doneRows As Long, ByVal totalRows As Long, _
                          ByVal okRows As Long, ByVal ngRows As Long)
-    Application.StatusBar = "住所→座標 " & doneRows & "/" & totalRows & _
-                           " (ok " & okRows & " / 失敗 " & ngRows & ")" & _
-                           "  ―  中止は Esc"
+    Application.StatusBar = "Address -> coordinates " & doneRows & "/" & totalRows & _
+                           " (ok " & okRows & " / failed " & ngRows & ")" & _
+                           "  -  press Esc to stop"
 End Sub
 
 
 ' ============================================================
-' MapsGeocodeSheet (D-5b) - シートの住所列をまとめて座標にする
+' MapsGeocodeSheet (D-5b) - Turn the address column of a sheet into coordinates in bulk
 '
-'   引数:
-'     targetSheet : 対象のワークシート
-'     firstRow    : 開始行 (既定 2。1 行目は見出しの想定)
-'     addrCol     : 住所の列番号 (既定 1 = A 列)
-'     outCol      : 書き出す先頭列 (既定 2 = B 列)
-'     skipDone    : 状態が ok で始まる行を飛ばすか (既定 True)
-'     pickFirst   : 候補が複数のとき 1 件目を採るか (既定 False)
+'   Arguments:
+'     targetSheet : the target worksheet
+'     firstRow    : starting row (default 2. Row 1 is assumed to be the header)
+'     addrCol     : column number of the address (default 1 = column A)
+'     outCol      : first column to write out to (default 2 = column B)
+'     skipDone    : whether to skip rows whose status starts with ok (default True)
+'     pickFirst   : whether to take the first one when there are multiple candidates (default False)
 '
-'   書き出す並び (outCol から 4 列):
-'     outCol   : 緯度
-'     outCol+1 : 経度
-'     outCol+2 : 正規化後の住所 (Maps が返した名前)
-'     outCol+3 : 状態 (ok / ★ok(候補1)★ / ambiguous / not-found / timeout-url ...)
-'                ★ok(候補1) は「候補一覧の 1 件目を採った」★ 確定より精度が落ちる
+'   Layout written out (4 columns from outCol):
+'     outCol   : latitude
+'     outCol+1 : longitude
+'     outCol+2 : normalized address (the name Maps returned)
+'     outCol+3 : status (ok / *ok(candidate 1)* / ambiguous / not-found / timeout-url ...)
+'                *ok(candidate 1) means "took the first of the candidate list"*, which has lower precision than settled
 '
-'   戻り値: ★ok になった行数★ (処理した行数ではない)
+'   Return value: *the number of rows that became ok* (not the number of rows processed)
 '
-'   ■ ★候補が複数 (ambiguous) のときの扱い★
-'     **中心座標を書いたうえで状態欄に ambiguous と記す。**
-'     黙って飛ばすと「処理したのに空」の理由が分からず、黙って確定扱いにすると
-'     ★間違った座標が混ざる★。データは残して人が判断できる形にした。
+'   # *Handling when there are multiple candidates (ambiguous)*
+'     **Write the center coordinates and note ambiguous in the status column.**
+'     If silently skipped, the reason for "processed but empty" is not understood, and if silently treated as settled,
+'     *wrong coordinates get mixed in*. The data is kept in a form a person can judge.
 '
-'   ■ ★途中で止めても続きから再開できる★
-'     skipDone = True なら状態が ok の行を飛ばす。100 件の途中で止めても
-'     もう一度呼べば残りだけを処理する。やり直したいときは状態列を消す。
+'   # *Even if stopped midway it can resume from where it left off*
+'     With skipDone = True, rows whose status is ok are skipped. Even if stopped partway through 100 items,
+'     calling again processes only the remainder. To redo, clear the status column.
 '
-'   ■ 進捗と中断 (D-7)
-'     1 行ごとに書き込んで DoEvents を回すので、★処理中の画面で埋まっていく★。
-'     ログにも 1 行ずつ残る。加えて★ステータスバーに 12/100 の形で出す★。
-'     ★止めたくなったら Esc を押す★ (押しっぱなしでなくてよい)。
-'     中断は★行の境界で効く★ので、書きかけの行は残らない。
-'     中断したかどうかは MapsCanceled で分かる (MapsLastError も canceled)。
-'     ★中断した行には何も書かないので、skipDone のまま呼び直せば続きから進む★。
+'   # Progress and abort (D-7)
+'     It writes row by row and runs DoEvents, so *the screen fills up during processing*.
+'     A line is also left in the log for each. In addition *it is shown in the status bar in the form 12/100*.
+'     *Press Esc when you want to stop* (no need to hold it down).
+'     The abort takes effect *at a row boundary*, so no half-written row remains.
+'     Whether it was aborted can be known with MapsCanceled (MapsLastError is also canceled).
+'     *Nothing is written to the aborted row, so calling again with skipDone as is continues from there.*
 '
-'   使用例:
+'   Usage example:
 '     Wv2Maps.MapsGeocodeSheet ActiveSheet
-'     Wv2Maps.MapsGeocodeSheet Sheets("住所録"), 3, 2, 5   ' 3 行目から、B 列の住所を E 列以降へ
+'     Wv2Maps.MapsGeocodeSheet Sheets("Addresses"), 3, 2, 5   ' From row 3, the addresses in column B, results to column E onward
 ' ============================================================
 Public Function MapsGeocodeSheet(ByVal targetSheet As Object, _
                                  Optional ByVal firstRow As Long = 2, _
@@ -1019,37 +1019,37 @@ Public Function MapsGeocodeSheet(ByVal targetSheet As Object, _
         Exit Function
     End If
 
-    ' --- D-7: ★一番外側なのでここで中断状態を捨てる★ ---
+    ' --- D-7: *this is the outermost, so discard the abort state here* ---
     MapsResetCancel
 
-    ' --- D-7: ★分母を先に数える★ 0 件ならタブを開かずに帰る ---
+    ' --- D-7: *count the denominator first* If 0 items, return without opening a tab ---
     totalRows = MapsCountRows(targetSheet, firstRow, addrCol)
     If totalRows = 0 Then
         m_lastError = "no-rows"
-        Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: 処理する行が無い"
+        Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: no rows to process"
         Exit Function
     End If
-    Wv2Log.LogI "Wv2Maps.MapsGeocodeSheet: ★全 " & totalRows & " 件★ (中止は Esc)"
+    Wv2Log.LogI "Wv2Maps.MapsGeocodeSheet: *all " & totalRows & " items* (press Esc to stop)"
 
-    ' --- D-7b: ★ここから先はすべて Cleanup を通る★ ---
-    '   m_inBatch は MapsOpen より前に立てる (MapsOpen 側で arm させないため)。
+    ' --- D-7b: *from here on everything goes through Cleanup* ---
+    '   m_inBatch is raised before MapsOpen (so that MapsOpen does not arm).
     m_inBatch = True
     MapsArmCancelKey
     On Error GoTo Cleanup
 
     Set p = MapsOpen(UserForm1.CurrentBrowser)
     If p Is Nothing Then
-        Wv2Log.LogE "Wv2Maps.MapsGeocodeSheet: Maps を開けない (" & m_lastError & ")"
+        Wv2Log.LogE "Wv2Maps.MapsGeocodeSheet: cannot open Maps (" & m_lastError & ")"
         GoTo Cleanup
     End If
 
     r = firstRow
     Do
-        ' --- D-7: ★中断は行の境界で効かせる★ 書きかけの行を残さない ---
+        ' --- D-7: *make the abort take effect at a row boundary* Do not leave a half-written row ---
         If MapsCheckCancel() Then
             m_canceled = True
-            Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: ★中断された★ (" & _
-                        r & " 行目の手前まで)"
+            Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: *aborted* (just before row " & _
+                        r & ")"
             Exit Do
         End If
 
@@ -1060,18 +1060,18 @@ Public Function MapsGeocodeSheet(ByVal targetSheet As Object, _
         MapsProgress total, totalRows, doneCount, (total - 1) - doneCount
 
         If skipDone And Left$(CStr(targetSheet.Cells(r, outCol + 3).value), 2) = "ok" Then
-            Wv2Log.LogI "  [" & r & "] 済みなので飛ばす: " & addr
+            Wv2Log.LogI "  [" & r & "] already done, skipping: " & addr
             doneCount = doneCount + 1
         Else
             ok = MapsGeocode(p, addr, lat, lng, nm, 20, pickFirst)
 
-            ' --- D-7: ★中断された行には何も書かない★ (設計原則111) ---
-            '   状態欄に canceled と書くと、後から見て「そういう結果だった」
-            '   ように読める。処理していないのだから空のままにする。
+            ' --- D-7: *write nothing to an aborted row* (design principle 111) ---
+            '   If canceled were written to the status column, afterwards it would read
+            '   as if "that was the result". It was not processed, so leave it empty.
             If m_canceled Then
                 total = total - 1
-                Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: ★中断された★ (" & _
-                            r & " 行目の処理中)"
+                Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: *aborted* (while processing row " & _
+                            r & ")"
                 Exit Do
             End If
 
@@ -1079,16 +1079,16 @@ Public Function MapsGeocodeSheet(ByVal targetSheet As Object, _
                 targetSheet.Cells(r, outCol).value = lat
                 targetSheet.Cells(r, outCol + 1).value = lng
                 targetSheet.Cells(r, outCol + 2).value = nm
-                ' ★確定と「候補から選んだ」を書き分ける★ (精度が違うものを同じ顔で
-                '   並べない)。再開時の判定は Left$(..., 2) = "ok" で見る。
+                ' *Write "settled" and "picked from candidates" differently* (do not line up things of different precision
+                '   with the same face). The check on resume is done with Left$(..., 2) = "ok".
                 If MapsLastPicked Then
-                    targetSheet.Cells(r, outCol + 3).value = "ok(候補1)"
+                    targetSheet.Cells(r, outCol + 3).value = "ok(candidate 1)"
                 Else
                     targetSheet.Cells(r, outCol + 3).value = "ok"
                 End If
                 doneCount = doneCount + 1
             Else
-                ' ★候補が複数のときも座標 (地図の中心) は書き残す★
+                ' *Even with multiple candidates the coordinates (center of the map) are left written*
                 If lat <> 0 Or lng <> 0 Then
                     targetSheet.Cells(r, outCol).value = lat
                     targetSheet.Cells(r, outCol + 1).value = lng
@@ -1097,15 +1097,15 @@ Public Function MapsGeocodeSheet(ByVal targetSheet As Object, _
                 targetSheet.Cells(r, outCol + 3).value = MapsLastError
             End If
 
-            Wv2Log.LogI "  [" & r & "] " & addr & " → " & _
-                        IIf(ok, lat & "," & lng, "★" & MapsLastError & "★")
+            Wv2Log.LogI "  [" & r & "] " & addr & " -> " & _
+                        IIf(ok, lat & "," & lng, "*" & MapsLastError & "*")
         End If
 
         DoEvents
         r = r + 1
     Loop
 
-' --- D-7b: ★ここが唯一の出口★ 正常終了もエラーもここを通る ---
+' --- D-7b: *this is the only exit* Both normal termination and errors pass through here ---
 Cleanup:
     errNo = Err.Number
     errDesc = Err.Description
@@ -1113,35 +1113,35 @@ Cleanup:
     On Error GoTo 0
 
     If errNo = 18 Then
-        ' D-7c: xlDisabled にしたので通常は来ない。arm する前後の窓のために残す。
+        ' D-7c: xlDisabled was set so this normally does not come. Left for the window before/after arming.
         m_cancel = True
         m_canceled = True
-        Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: ★Esc で中断された★ (" & _
-                    r & " 行目の処理中)"
+        Wv2Log.LogW "Wv2Maps.MapsGeocodeSheet: *aborted by Esc* (while processing row " & _
+                    r & ")"
         errNo = 0
     End If
 
-    ' --- ★必ず戻す★ ステータスバーも EnableCancelKey も残すと Excel 全体が汚れる ---
+    ' --- *Always restore* Leaving the status bar or EnableCancelKey would pollute the whole of Excel ---
     MapsDisarmCancelKey
     m_inBatch = False
 
-    ' ★D-7d: False ではなく Empty★ False だと "FALSE" と表示されたまま残る
+    ' *D-7d: Empty, not False* With False, "FALSE" stays displayed
     Application.StatusBar = Empty
     If m_canceled Then m_lastError = "canceled"
 
-    Wv2Log.LogD "Wv2Maps.MapsGeocodeSheet: StatusBar 復帰後 = [" & _
-                CStr(Application.StatusBar) & "] 型=" & _
+    Wv2Log.LogD "Wv2Maps.MapsGeocodeSheet: after StatusBar restore = [" & _
+                CStr(Application.StatusBar) & "] type=" & _
                 TypeName(Application.StatusBar)
 
-    ' ★D-7d: 中断検知を何回呼べたか★ 拾えない原因の切り分け材料 (設計原則112)
-    Wv2Log.LogI "Wv2Maps.MapsGeocodeSheet: ★中断検知 " & m_checkCount & " 回 / " & _
-                Format$(MapsElapsed(tStart), "0.0") & " 秒★"
+    ' *D-7d: how many times abort detection could be called* Material for isolating why it cannot be picked up (design principle 112)
+    Wv2Log.LogI "Wv2Maps.MapsGeocodeSheet: *abort detection " & m_checkCount & " times / " & _
+                Format$(MapsElapsed(tStart), "0.0") & " s*"
 
-    Wv2Log.LogI "Wv2Maps.MapsGeocodeSheet: " & total & " 行中 " & _
-                doneCount & " 行が ok" & IIf(m_canceled, " ★中断した★", "")
+    Wv2Log.LogI "Wv2Maps.MapsGeocodeSheet: " & total & " rows, " & _
+                doneCount & " ok" & IIf(m_canceled, " *aborted*", "")
     MapsGeocodeSheet = doneCount
 
-    ' ★他のエラーは握り潰さない★
+    ' *Other errors are not swallowed* Only cleanup is done and it is raised as is
     If errNo <> 0 Then Err.Raise errNo, errSrc, errDesc
 End Function
 

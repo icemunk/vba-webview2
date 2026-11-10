@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-check_book.py -- ブック内部に格納されている VBA の実体を直接検査する
+check_book.py -- directly inspects the VBA stored inside the workbook
 
-    python tools/check_book.py                    # book/ の .xlsm
+    python tools/check_book.py                    # the .xlsm in book/
     python tools/check_book.py path\to\book.xlsm
 
-★なぜ COM ではなくブックを直接読むのか★
-    VBIDE の CodeModule.Lines は ★Attribute 行を一切返さない★。
-    そのため COM 経由では、属性行がコードとして露出していても検出できない。
-    K-2 で実際にこれを踏んだ:
+**Why read the workbook directly instead of using COM**
+    VBIDE's CodeModule.Lines **never returns Attribute lines**.
+    So via COM, an attribute line exposed as code cannot be detected.
+    K-2 actually stepped on this:
 
       Private WithEvents m_newTabTimer As SafeTimer
-      Attribute m_newTabTimer.VB_VarHelpID = -1    <- VBE が持つ本物 (非表示)
-      Attribute m_newTabTimer.VB_VarHelpID = -1    <- AddFromString が入れた重複 (露出)
+      Attribute m_newTabTimer.VB_VarHelpID = -1    <- the genuine one held by the VBE (hidden)
+      Attribute m_newTabTimer.VB_VarHelpID = -1    <- a duplicate inserted by AddFromString (exposed)
 
-    重複した方は VBE のコードペインに現れ、コンパイルエラーになる。
-    しかし CodeModule 経由では両方とも見えないので「異常なし」と嘘をつく。
+    The duplicate appears in the VBE code pane and causes a compile error.
+    But neither is visible via CodeModule, so it lies "no problems".
 
-    olevba でブック内部のモジュールストリームを読めば実体が分かる。
+    Reading the module streams inside the workbook with olevba reveals the real content.
 
-見るもの:
-    ・メンバー属性行 (Attribute <名前>.<属性>) の重複
-    ・宣言行の直後にないメンバー属性行
-    ・VB_VarHelpID 以外のメンバー属性 (VBE が自動生成しないので import で失われる)
+What it looks at:
+    - duplicates of member attribute lines (Attribute <name>.<attribute>)
+    - member attribute lines that are not immediately after a declaration line
+    - member attributes other than VB_VarHelpID (the VBE does not generate them, so they are lost on import)
 
-前提: pip install oletools
+Prerequisite: pip install oletools
 
-終了コード: 0 = 問題なし / 1 = 問題あり
+Exit code: 0 = no problems / 1 = problems found
 """
 
 import os
@@ -41,7 +41,7 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 try:
     from oletools.olevba import VBA_Parser
 except ImportError:
-    print("oletools が要る:  pip install oletools")
+    print("oletools is required:  pip install oletools")
     sys.exit(1)
 
 MEMBER_ATTR = re.compile(r"^Attribute\s+(\w+)\.(\w+)\s*=")
@@ -66,31 +66,31 @@ def check(path):
             rows.append((vba_name, len(hits), dup))
 
             if dup:
-                problems.append("%s : メンバー属性行が %d 本 重複している "
-                                "(片方が VBE でコードとして露出する)" % (vba_name, dup))
+                problems.append("%s : member attribute line is duplicated %d time(s) "
+                                "(one of them is exposed as code in the VBE)" % (vba_name, dup))
                 seen = set()
                 for i, text, name, attr in hits:
                     if text in seen:
-                        problems.append("    %d 行目: %s  <- 重複" % (i, text))
+                        problems.append("    line %d: %s  <- duplicate" % (i, text))
                     seen.add(text)
 
             for i, text, name, attr in hits:
                 prev = lines[i - 2] if i >= 2 else ""
                 if not re.search(r"\b" + re.escape(name) + r"\b", prev):
                     if text not in [h[1] for h in hits[:hits.index((i, text, name, attr))]]:
-                        problems.append("%s : %d 行目の %s が宣言行の直後にない"
+                        problems.append("%s : line %d: %s is not immediately after a declaration line"
                                         % (vba_name, i, text))
                 if attr != "VB_VarHelpID":
-                    problems.append("%s : %d 行目の %s は VBE が自動生成しない属性。"
-                                    "import で失われる可能性がある" % (vba_name, i, text))
+                    problems.append("%s : line %d: %s is an attribute the VBE does not generate. "
+                                    "It may be lost on import" % (vba_name, i, text))
 
-        print("%-24s %8s %8s" % ("モジュール", "属性行", "重複"))
+        print("%-24s %8s %8s" % ("Module", "Attr lines", "Dups"))
         print("-" * 44)
         for nm, cnt, dup in rows:
             mark = "  ★" if dup else ""
             print("%-24s %8d %8d%s" % (nm, cnt, dup, mark))
         if not rows:
-            print("(メンバー属性を持つモジュールなし)")
+            print("(no modules with member attributes)")
         print()
     finally:
         vp.close()
@@ -104,7 +104,7 @@ def main(argv):
     else:
         books = sorted(glob.glob(os.path.join(repo, "book", "*.xlsm")))
     if not books:
-        print("検査対象の .xlsm が見つからない")
+        print("No .xlsm to inspect was found")
         return 1
 
     total = 0
@@ -112,19 +112,19 @@ def main(argv):
         print("=== %s ===" % os.path.basename(b))
         problems = check(b)
         if problems:
-            print("★問題★")
+            print("**Problems**")
             for p in problems:
                 print("  " + p)
             total += len(problems)
         else:
-            print("問題なし")
+            print("No problems")
         print()
 
     if total:
-        print("★合計 %d 件★" % total)
+        print("**Total %d**" % total)
         print()
-        print("重複の直し方: CodeModule からは見えないので DeleteLines では消せない。")
-        print("  tools/repair_book.ps1 でコンポーネントを削除して Import し直す。")
+        print("How to fix duplicates: they are invisible from CodeModule, so DeleteLines cannot remove them.")
+        print("  Delete the component with tools/repair_book.ps1 and Import it again.")
         return 1
     return 0
 

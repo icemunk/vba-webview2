@@ -7,143 +7,143 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
-' --- Wv2Element.cls  D-3 段階 (書き込みと操作) ---
+' --- Wv2Element.cls  Stage D-3 (writing and operations) ---
 '
-'   D-3 で増えた公開メンバは 4 つ:
+'   D-3 adds 4 public members:
 '
-'     Value = v                  Property Let  値を書き込む (★戻り値が無い★)
-'     Click()             As Boolean           クリックする
-'     SetAttribute(n, v)  As Boolean           属性を書き込む
-'     LastInfo            As String            直前の操作が選んだ経路の名前
+'     Value = v                  Property Let  writes the value (**has no return value**)
+'     Click()             As Boolean           clicks
+'     SetAttribute(n, v)  As Boolean           writes an attribute
+'     LastInfo            As String            name of the route chosen by the last operation
 '
-'   ■ 成否の見方 (D-2 の LastOk / LastError 規約をそのまま踏襲、論点8)
-'     Click / SetAttribute … 戻り値 (Boolean) で足りる。理由が要るときは LastError。
-'     Value =              … ★Property Let は戻り値を返せない★ ので、
-'                            書き込みが通ったかは★必ず LastOk を見る★。
+'   # How to check success (follows the D-2 LastOk / LastError convention as is, issue 8)
+'     Click / SetAttribute ... the return value (Boolean) is enough. Use LastError when you need the reason.
+'     Value =              ... **a Property Let cannot return a value**, so
+'                            **always check LastOk** to see whether the write went through.
 '
 '       el.Value = "abc"
 '       If Not el.LastOk Then Debug.Print el.LastError
 '
-'     LastError に入る値は D-2 と同じ (stale / no-pane / in-callback / timeout(n s) /
-'     JS の例外メッセージ)。
+'     The values placed in LastError are the same as in D-2 (stale / no-pane / in-callback / timeout(n s) /
+'     the JS exception message).
 '
-'   ■ ★成功は「JS が例外なく走った」であって「意図した効果が出た」ではない★
-'     disabled なボタンを Click しても例外は出ないので True が返る。readonly な
-'     input への書き込みも同じ。効果が要るときは★読み戻して確かめる★こと。
+'   # **Success means "the JS ran without an exception", not "the intended effect happened"**
+'     Clicking a disabled button raises no exception, so True is returned. Writing to a readonly
+'     input is the same. When the effect matters, **read it back to confirm**.
 '
-'   ■ Value = がやっていること (論点6: ★SPA 対応の核心★)
-'     素直に e.value = x とすると、React / Vue などのフレームワークは
-'     値の変更に★気づかない★。フレームワークは要素インスタンスに独自の
-'     value setter (value tracker) を被せていて、そこを通った代入は
-'     「自分が知っている値」として記録されてしまうため。
+'   # What Value = does (issue 6: **the core of SPA support**)
+'     With a plain e.value = x, frameworks such as React / Vue **do not notice**
+'     the value change. The framework overlays its own value setter (value tracker) on the
+'     element instance, and an assignment that goes through it is recorded as
+'     "a value I already know".
 '
-'     そこで D-3 は次の順で撃つ:
-'       (1) e.constructor.prototype から value の★ネイティブ setter★ を取り出し、
-'           あればそれを e に対して呼ぶ (= tracker を迂回する)。LastInfo = 'setter'
-'           取り出せない要素なら素の代入に落とす。            LastInfo = 'direct'
-'       (2) input イベントを発火 (React 系がこれを見る)
-'       (3) change イベントを発火 (jQuery 系がこれを見る)
-'     ★両方撃つ★のが論点6 の合意。素の HTML では change が 1 回余分に飛ぶが、
-'     実害よりも「反応しないページがある」事故の方が高くつくと判断した。
+'     So D-3 fires in this order:
+'       (1) take the **native setter** of value from e.constructor.prototype and,
+'           if there is one, call it on e (= bypassing the tracker). LastInfo = 'setter'
+'           For an element where it cannot be obtained, fall back to a plain assignment.  LastInfo = 'direct'
+'       (2) fire the input event (React-style frameworks watch this)
+'       (3) fire the change event (jQuery-style code watches this)
+'     **Firing both** is the agreement of issue 6. On plain HTML one extra change fires, but we judged that
+'     the accident of "some pages do not react" costs more than the actual harm.
 '
-'   ■ Click の形 (論点7 案A)
-'     e.click() があればそれを使う (LastInfo = 'click')。無ければ
-'     MouseEvent('click') を bubbles つきで dispatch する (LastInfo = 'dispatch')。
-'     ★mousedown / mouseup は撃たない★ ドラッグ系 UI が要るようになってから考える。
-'     なお発火するイベントの isTrusted は false になる (JS から作った合成イベント
-'     なので原理的にそうなる)。isTrusted を見て弾くページには効かない。
+'   # Shape of Click (issue 7, plan A)
+'     If e.click() exists, use it (LastInfo = 'click'). Otherwise
+'     dispatch a MouseEvent('click') with bubbles (LastInfo = 'dispatch').
+'     **mousedown / mouseup are not fired**; we will think about it when drag-style UIs are needed.
+'     Note that the fired events have isTrusted = false (they are synthetic events
+'     made from JS, so this is inevitable). It does not work on pages that reject events by looking at isTrusted.
 '
-'   ■ 使用例
+'   # Usage example
 '     Dim p As Wv2Pane, el As Wv2Element
 '     Set p = UserForm1.GetActivePane
 '     Set el = p.QuerySelector("input[name='q']")
-'     el.Value = "検索語"
+'     el.Value = "search term"
 '     If el.LastOk Then p.QuerySelector("button[type='submit']").Click
 '
-'   ★D-3 の時点では「変化し終わるのを待つ」手段はまだ無い★
-'     Click の後に DOM が書き変わるのを待つ WaitFor / WaitGone は、
-'     論点3 の前提を実測してから入れる (Wv2Tests.Test_D3_Probe_Promise)。
+'   **As of D-3 there is still no way to "wait until the change finishes"**
+'     WaitFor / WaitGone, which wait for the DOM to be rewritten after a Click, will be added after
+'     measuring the premise of issue 3 (Wv2Tests.Test_D3_Probe_Promise).
 '''''''''''''''''''''''''''''''''''
-' --- Wv2Element.cls  D-2 段階 (要素ハンドルの読み取り操作) ---
+' --- Wv2Element.cls  Stage D-2 (read operations on an element handle) ---
 '
-'   ★D 軸 (DOM / ページ自動制御) の中核クラス。D-2 で新規追加。★
+'   **The core class of the D axis (DOM / page automation). Newly added in D-2.**
 '
-'   ■ 役割
-'     JS 側のレジストリ (window.__wv2.els) に登録された 1 個の DOM 要素を、
-'     VBA 側から読み取るためのハンドル。実体は次の 3 つだけを持つ:
+'   # Role
+'     A handle for reading, from the VBA side, one DOM element registered in the JS-side
+'     registry (window.__wv2.els). It holds only these three things:
 '
-'       m_pane   … どの Wv2Pane (= どのタブ) の要素か
-'       m_handle … JS 側 window.__wv2.els[] の添字
-'       m_gen    … 取得したときのレジストリ世代 (JS が発行した文字列)
+'       m_pane   ... which Wv2Pane (= which tab) the element belongs to
+'       m_handle ... index into the JS-side window.__wv2.els[]
+'       m_gen    ... registry generation at acquisition time (a string issued by JS)
 '
-'     ★DOM の実体は保持しない。★ 値が要るたびに JS へ問い合わせる。
-'     したがって 1 プロパティの読み取りにつき ExecuteScript が 1 往復する。
-'     ループで大量に読むと遅いので、まとめて取りたい場合は
-'     Wv2Pane.EvalSync で JS 式を 1 本書いた方が速い (D-2 の設計上の割り切り)。
+'     **It does not hold the DOM object itself.** It asks JS each time a value is needed.
+'     So reading one property costs one ExecuteScript round trip.
+'     Reading a lot in a loop is slow, so to fetch many at once it is faster to
+'     write one JS expression with Wv2Pane.EvalSync (a design trade-off accepted in D-2).
 '
-'   ■ 生成方法
-'     ★New で作らない。★ Wv2Pane.GetElementById / Wv2Pane.QuerySelector が返す。
-'     直接 New しても m_pane が Nothing なので何も読めない。
+'   # How to create one
+'     **Do not create with New.** It is returned by Wv2Pane.GetElementById / Wv2Pane.QuerySelector.
+'     If you New it directly, m_pane is Nothing and nothing can be read.
 '
-'   ■ 公開メンバ (D-2 は★読み取りのみ★。書き込みと Click は D-3)
-'     TagName            As String   要素のタグ名 (大文字。例: INPUT)
-'     InnerText          As String   表示されるテキスト
-'     InnerHTML          As String   内側の HTML (仕様事実30 の \u003C を復号済み)
-'     Value              As String   input / textarea / select の値。無ければ空文字
-'     GetAttribute(name) As String   属性値。属性が無ければ空文字
-'     IsStale            As Boolean  ハンドルが無効になっていないか (往復 1 回)
-'     Handle             As Long     JS 側の添字 (デバッグ用)
-'     Generation         As String   取得時の世代 (デバッグ用)
-'     LastOk             As Boolean  直前の読み取りが成功したか
-'     LastError          As String   直前の失敗理由
+'   # Public members (D-2 is **read-only**. Writing and Click are D-3)
+'     TagName            As String   tag name of the element (upper case. e.g. INPUT)
+'     InnerText          As String   the displayed text
+'     InnerHTML          As String   inner HTML (< of spec fact 30 already decoded)
+'     Value              As String   value of input / textarea / select. Empty string if none
+'     GetAttribute(name) As String   attribute value. Empty string if the attribute is absent
+'     IsStale            As Boolean  whether the handle has become invalid (one round trip)
+'     Handle             As Long     JS-side index (for debugging)
+'     Generation         As String   generation at acquisition (for debugging)
+'     LastOk             As Boolean  whether the last read succeeded
+'     LastError          As String   reason for the last failure
 '
-'   ■ 「空文字が返った」の読み方 (★重要★)
-'     読み取り系は失敗しても空文字を返すので、空文字の意味は LastOk で分ける:
+'   # How to read "an empty string came back" (**important**)
+'     Read-type members return an empty string even on failure, so distinguish the meaning by LastOk:
 '
-'       LastOk = True   … ★正常★ 本当に空だった (テキストが無い / 属性が無い)
-'       LastOk = False  … ★失敗★ 理由は LastError:
-'                           stale        レジストリが作り直された (ページ遷移等)
-'                           no-pane      Pane 参照が無い (New で作った場合)
-'                           in-callback  イベントハンドラ内から呼ばれた (仕様事実14)
-'                           timeout(n s) JS が返らなかった (仕様事実32)
-'                           その他        EvalSync の LastEvalError がそのまま入る
+'       LastOk = True   ... **normal** it really was empty (no text / no attribute)
+'       LastOk = False  ... **failure** the reason is in LastError:
+'                           stale        the registry was rebuilt (page navigation etc.)
+'                           no-pane      no Pane reference (created with New)
+'                           in-callback  called from inside an event handler (spec fact 14)
+'                           timeout(n s) JS did not return (spec fact 32)
+'                           other        EvalSync's LastEvalError is stored as is
 '
-'   ■ 世代 (Generation) の考え方 (D-2 論点2 案b)
-'     世代は★JS が発行する★ (window.__wv2.gen)。ページ遷移で JS の実行環境ごと
-'     消えるので、次のアクセスでレジストリが作り直され、必ず別の世代になる。
-'     VBA 側でナビゲーションイベントを数える方式 (案a) は、SPA の pushState では
-'     DOM が残るのにイベントは飛び、逆にページ内 JS が要素を差し替えても
-'     イベントは飛ばないため、実態とズレる。よって★判定の権威は常に JS 側★に置く。
+'   # The idea of generation (Generation) (D-2 issue 2, plan b)
+'     The generation is **issued by JS** (window.__wv2.gen). A page navigation wipes out
+'     the whole JS execution environment, so on the next access the registry is rebuilt and the generation is always different.
+'     The approach of counting navigation events on the VBA side (plan a) drifts from reality: with SPA pushState
+'     the DOM remains yet an event fires, and conversely when in-page JS swaps elements
+'     no event fires. So **the authority for the verdict is always on the JS side**.
 '
-'     Wv2Pane が持つ世代キャッシュ (CurrentDomGen) は「往復する前に stale と
-'     分かる場合だけ省く」高速パスにしか使わない。キャッシュが古い場合は
-'     必ず JS に問い合わせる側に倒れるので、誤判定は起きない。
+'     The generation cache that Wv2Pane holds (CurrentDomGen) is used only as a fast path that
+'     "skips the round trip only when it is already known to be stale". If the cache is old it
+'     always falls toward asking JS, so no misjudgment occurs.
 '
-'   ■ 寿命
-'     ★Class_Terminate では何もしない。★ JS 側スロットの解放はしない (D-2 論点3)。
-'     Terminate がいつ・どの文脈で走るかを制御できないため、そこから EvalSync を
-'     撃つと D-1 の in-callback ガードや Ctrl_Close 済みの Pane を踏みやすい。
-'     レジストリはページ遷移でまるごと消えるので、実害は「同一ページ内で
-'     大量に検索すると JS 側の配列が伸びる」だけ。手動で捨てたいときは
-'     Wv2Pane.ClearElementRegistry を呼ぶ。本格的な寿命管理は D-4 で扱う。
+'   # Lifetime
+'     **Class_Terminate does nothing.** It does not release the JS-side slot (D-2 issue 3).
+'     We cannot control when and in what context Terminate runs, so firing EvalSync from there
+'     easily steps on D-1's in-callback guard or on a Pane already closed by Ctrl_Close.
+'     The registry vanishes entirely on page navigation, so the only real harm is that
+'     "searching a lot within the same page makes the JS-side array grow". To discard manually,
+'     call Wv2Pane.ClearElementRegistry. Proper lifetime management is handled in D-4.
 ''''''''''''''''''''''''''''''''''
 Option Explicit
 
 
-' --- 内部状態 ---
-'   m_pane   : 所属する Wv2Pane への参照 (Wv2Pane 側は Wv2Element を保持しないので
-'              循環参照にはならない)
-'   m_handle : JS 側 window.__wv2.els[] の添字 (0 始まり)
-'   m_gen    : 取得時のレジストリ世代 (JS が発行した文字列)
+' --- Internal state ---
+'   m_pane   : reference to the owning Wv2Pane (Wv2Pane does not hold Wv2Element, so
+'              there is no circular reference)
+'   m_handle : index into the JS-side window.__wv2.els[] (0-based)
+'   m_gen    : registry generation at acquisition (a string issued by JS)
 Private m_pane   As Wv2Pane
 Private m_handle As Long
 Private m_gen    As String
 
-' --- 直前の読み取り結果 (D-1 の LastEvalOk / LastEvalError と同じ流儀) ---
+' --- Result of the last read (same style as D-1's LastEvalOk / LastEvalError) ---
 Private m_lastOk    As Boolean
 Private m_lastError As String
 
-' --- 直前の★操作★が選んだ経路の名前 (D-3。'setter' / 'direct' / 'click' 等) ---
+' --- Name of the route chosen by the last **operation** (D-3. 'setter' / 'direct' / 'click' etc.) ---
 Private m_lastInfo  As String
 
 
@@ -158,15 +158,15 @@ End Sub
 
 
 Private Sub Class_Terminate()
-    ' ★意図的に何もしない★ (D-2 論点3 案a)。上のヘッダーコメントを参照。
+    ' **Deliberately does nothing** (D-2 issue 3, plan a). See the header comment above.
     Set m_pane = Nothing
 End Sub
 
 
 ' ============================================================
-' InitElement (Friend、Wv2Pane からのみ呼ばれる)
-'   Wv2Pane.GetElementById / QuerySelector が、JS から受け取った
-'   ハンドルと世代を流し込むための唯一の入口。
+' InitElement (Friend, called only from Wv2Pane)
+'   The only entry point through which Wv2Pane.GetElementById / QuerySelector
+'   pour in the handle and generation received from JS.
 ' ============================================================
 Friend Sub InitElement(ByVal ownerPane As Wv2Pane, _
                        ByVal elemHandle As Long, _
@@ -181,7 +181,7 @@ End Sub
 
 
 ' ============================================================
-' Handle / Generation (デバッグ用の素の値)
+' Handle / Generation (plain values for debugging)
 ' ============================================================
 Public Property Get Handle() As Long
     Handle = m_handle
@@ -193,11 +193,11 @@ End Property
 
 
 ' ============================================================
-' LastOk / LastError (直前の読み取りの成否)
+' LastOk / LastError (success or failure of the last read)
 '
-'   ★空文字が返ったときの解釈に必ず使う★
-'     LastOk = True  → 本当に空だった (正常)
-'     LastOk = False → 失敗。LastError に理由が入る
+'   **Always use it to interpret an empty string result**
+'     LastOk = True  -> it really was empty (normal)
+'     LastOk = False -> failure. The reason is in LastError
 ' ============================================================
 Public Property Get LastOk() As Boolean
     LastOk = m_lastOk
@@ -209,15 +209,15 @@ End Property
 
 
 ' ============================================================
-' LastInfo (D-3) - 直前の★操作★が選んだ経路の名前
+' LastInfo (D-3) - name of the route chosen by the last **operation**
 '
-'   Value =      : 'setter' (ネイティブ setter 経由) / 'direct' (素の代入)
-'   Click        : 'click'  (e.click())             / 'dispatch' (合成イベント)
+'   Value =      : 'setter' (via the native setter) / 'direct' (plain assignment)
+'   Click        : 'click'  (e.click())             / 'dispatch' (synthetic event)
 '   SetAttribute : 'ok'
 '
-'   ★読み取り系 (TagName 等) を呼ぶと空文字に戻る★ 「直前の操作」の記録なので、
-'   書き込みの経路を見たいときは★書いた直後に★読むこと。
-'   診断用であって、成否の判定には使わない (それは LastOk / 戻り値の役目)。
+'   **Calling a read-type member (TagName etc.) resets it to an empty string.** It is a record of "the last operation",
+'   so to see the route of a write, read it **right after writing**.
+'   It is for diagnostics and is not used to judge success (that is the job of LastOk / the return value).
 ' ============================================================
 Public Property Get LastInfo() As String
     LastInfo = m_lastInfo
@@ -225,16 +225,16 @@ End Property
 
 
 ' ============================================================
-' TagName / InnerText / InnerHTML / Value (D-2 の読み取り 4 種)
+' TagName / InnerText / InnerHTML / Value (the 4 read types of D-2)
 '
-'   いずれも 1 回の呼び出しにつき ExecuteScript が 1 往復する。
+'   Each costs one ExecuteScript round trip per call.
 '
-'   ★InnerHTML は仕様事実30 (< が \u003C で届く) を必ず踏む★
-'     Wv2Json.JsonUnescape が復号するので、VBA 側では素の HTML が得られる。
+'   **InnerHTML always runs into spec fact 30 (< arrives as <)**
+'     Wv2Json.JsonUnescape decodes it, so plain HTML is obtained on the VBA side.
 '
-'   ★Value は input / textarea / select 以外では空文字★
-'     それらの要素以外に value プロパティは無く、JS 側で undefined になるため。
-'     このとき LastOk は True (エラーではない)。
+'   **Value is an empty string for anything other than input / textarea / select**
+'     Other elements have no value property, so it is undefined on the JS side.
+'     In that case LastOk is True (it is not an error).
 ' ============================================================
 Public Property Get TagName() As String
     TagName = ReadProp("e.tagName")
@@ -255,17 +255,17 @@ End Property
 
 ' ============================================================
 ' GetAttribute (D-2)
-'   属性値を取り出す。属性が無ければ空文字 + LastOk = True。
+'   Fetches an attribute value. If the attribute is absent: empty string + LastOk = True.
 '
-'   使用例:
+'   Usage example:
 '     el.GetAttribute("href")
 '     el.GetAttribute("data-id")
 '
-'   ★getAttribute と .value の違い★
-'     <input value="初期値"> をユーザーが書き換えたあと、
-'       .Value               → 現在の値 (書き換え後)
-'       .GetAttribute("value") → 属性の値 (初期値のまま)
-'     になる。用途で使い分けること。
+'   **Difference between getAttribute and .value**
+'     After the user rewrites <input value="initial">,
+'       .Value               -> the current value (after rewriting)
+'       .GetAttribute("value") -> the attribute value (still the initial value)
+'     Use them according to purpose.
 ' ============================================================
 Public Function GetAttribute(ByVal attrName As String) As String
     If m_pane Is Nothing Then
@@ -279,21 +279,21 @@ End Function
 
 
 ' ============================================================
-' Value (D-3、Property Let) - 値を書き込む
+' Value (D-3, Property Let) - writes the value
 '
-'   ★Property Let なので戻り値が無い★ 成否は必ず LastOk を見ること (論点8)。
-'   ★フレームワークに気づかせるための 3 手順★ (ヘッダー参照):
-'     ネイティブ setter ← input イベント ← change イベント の順に撃つ
+'   **Being a Property Let it has no return value** Always check LastOk for success (issue 8).
+'   **3 steps to make the framework notice** (see the header):
+'     fire in the order native setter -> input event -> change event
 '
-'   使用例:
-'     el.Value = "検索語"
-'     If Not el.LastOk Then Debug.Print "書き込み失敗: " & el.LastError
+'   Usage example:
+'     el.Value = "search term"
+'     If Not el.LastOk Then Debug.Print "write failed: " & el.LastError
 '
-'   ★input / textarea / select 以外に撃つとどうなるか★
-'     div などは value プロパティを持たないので、ネイティブ setter が取れず
-'     素の代入に落ちる (LastInfo = 'direct')。JS 的には独自プロパティが 1 個
-'     生えるだけで例外にはならないので、★LastOk は True になる★。
-'     「効果が出たか」は読み戻して確かめること。
+'   **What happens when fired at something other than input / textarea / select**
+'     A div etc. has no value property, so the native setter cannot be obtained and it falls back to
+'     a plain assignment (LastInfo = 'direct'). In JS terms it just grows one custom property
+'     and raises no exception, so **LastOk becomes True**.
+'     Confirm "whether the effect appeared" by reading it back.
 ' ============================================================
 Public Property Let value(ByVal newValue As String)
     Dim jsVal As String
@@ -319,19 +319,19 @@ End Property
 
 
 ' ============================================================
-' Click (D-3) - クリックする
+' Click (D-3) - clicks
 '
-'   戻り値: True = JS 側で例外なく走った / False = 失敗 (理由は LastError)
+'   Return value: True = ran on the JS side without an exception / False = failure (reason in LastError)
 '
-'   e.click() があればそれを使い (LastInfo = 'click')、無ければ
-'   MouseEvent('click') を bubbles + cancelable つきで dispatch する
-'   (LastInfo = 'dispatch')。どちらも★合成イベントなので isTrusted は false★。
+'   If e.click() exists it is used (LastInfo = 'click'); otherwise
+'   a MouseEvent('click') is dispatched with bubbles + cancelable
+'   (LastInfo = 'dispatch'). Either way **it is a synthetic event, so isTrusted is false**.
 '
-'   ★戻り値 True は「押した結果どうなったか」を保証しない★
-'     disabled なボタンでも例外は出ないので True が返る。ページ遷移や DOM の
-'     書き換えが起きるかは別問題で、それを待つ手段は D-3 の時点ではまだ無い。
+'   **A True return value does not guarantee "what happened as a result of the press"**
+'     A disabled button also raises no exception, so True is returned. Whether page navigation or DOM
+'     rewriting occurs is a separate matter, and as of D-3 there is still no way to wait for it.
 '
-'   使用例:
+'   Usage example:
 '     If Not el.Click() Then Debug.Print el.LastError
 ' ============================================================
 Public Function Click() As Boolean
@@ -346,18 +346,18 @@ End Function
 
 
 ' ============================================================
-' SetAttribute (D-3) - 属性を書き込む
+' SetAttribute (D-3) - writes an attribute
 '
-'   戻り値: True = 書き込めた / False = 失敗 (理由は LastError)
+'   Return value: True = written / False = failure (reason in LastError)
 '
-'   ★GetAttribute と .Value の違いは D-2 のヘッダー参照★
-'     SetAttribute("value", ...) は★属性★を変えるだけで、ユーザーが編集済みの
-'     input の★現在値★は変わらない。値を変えたいなら .Value = を使うこと。
+'   **For the difference between GetAttribute and .Value see the D-2 header**
+'     SetAttribute("value", ...) changes only the **attribute** and does not change the **current value** of an
+'     input the user has already edited. To change the value use .Value =.
 '
-'   属性名が不正なとき (空文字など) は JS が InvalidCharacterError を投げるので、
-'   False + LastError にその名前とメッセージが入る。
+'   When the attribute name is invalid (empty string etc.) JS throws InvalidCharacterError, so
+'   False + that name and message go into LastError.
 '
-'   使用例:
+'   Usage example:
 '     el.SetAttribute "data-id", "42"
 ' ============================================================
 Public Function SetAttribute(ByVal attrName As String, _
@@ -381,17 +381,17 @@ End Function
 
 ' ============================================================
 ' IsStale (D-2)
-'   このハンドルがもう使えなくなっていないかを返す。
+'   Returns whether this handle has become unusable.
 '
-'   True になる条件:
-'     ・ページ遷移などで JS 側のレジストリが作り直された (世代が変わった)
-'     ・添字の位置に要素が入っていない (通常は起こらない)
-'   判定できなかった場合 (通信失敗など) も安全側に倒して True を返す。
-'   このとき LastOk = False なので、区別が必要なら LastError を見ること。
+'   Conditions for True:
+'     - the JS-side registry was rebuilt by page navigation etc. (the generation changed)
+'     - no element is at the index position (does not normally happen)
+'   When it cannot be determined (communication failure etc.) it also errs toward the safe side and returns True.
+'   In that case LastOk = False, so look at LastError if you need to distinguish.
 '
-'   ★DOM から取り外された要素は stale にならない★
-'     世代が同じで配列に残っていれば False を返す。detached な要素も
-'     JS 上は有効なオブジェクトなので、読み取り自体は成功する。
+'   **An element detached from the DOM does not become stale**
+'     If the generation is the same and it remains in the array, False is returned. A detached element is
+'     still a valid object in JS, so the read itself succeeds.
 ' ============================================================
 Public Property Get IsStale() As Boolean
     Dim st As String
@@ -420,8 +420,8 @@ End Property
 
 
 ' ============================================================
-' ReadProp (内部共通: プロパティ 1 個を読む)
-'   valueExpr は JS 側で変数 e (= 対象要素) を使える式。
+' ReadProp (internal common: reads one property)
+'   valueExpr is a JS expression that can use the variable e (= the target element).
 ' ============================================================
 Private Function ReadProp(ByVal valueExpr As String) As String
     Dim v As String
@@ -450,10 +450,10 @@ End Function
 
 
 ' ============================================================
-' ExecAction (D-3、内部共通: 操作を 1 回撃つ)
-'   actionStmts は JS 側で変数 e (対象要素) を使える★文★。
-'   経路の名前を残したいときは JS 側で変数 rv に代入する。
-'   ReadProp と対になる書き込み側の窓口で、状態の更新の仕方も揃えてある。
+' ExecAction (D-3, internal common: fires one operation)
+'   actionStmts is a **statement** that can use the variable e (the target element) on the JS side.
+'   To keep the route name, assign it to the variable rv on the JS side.
+'   The write-side entry paired with ReadProp; the way state is updated is aligned too.
 ' ============================================================
 Private Function ExecAction(ByVal actionStmts As String, _
                             ByVal apiName As String) As Boolean
@@ -475,14 +475,14 @@ Private Function ExecAction(ByVal actionStmts As String, _
         m_lastInfo = v
         ExecAction = True
 
-        ' --- D-4b: opt-in の自動待ち (既定 False なので通常は素通り) ---
-        '   ★戻り値には影響させない★ 操作が走ったかどうかと、
-        '   その後ページが落ち着いたかどうかは別の話 (D-3 の契約を保つ)。
-        '   待ちの結果は m_pane.LastSettleInfo で見る。
+        ' --- D-4b: opt-in auto wait (default False, so normally passes straight through) ---
+        '   **It does not affect the return value.** Whether the operation ran and
+        '   whether the page settled afterwards are separate matters (keeps the D-3 contract).
+        '   The result of the wait is seen via m_pane.LastSettleInfo.
         If m_pane.AutoWaitAfterAction Then m_pane.WaitSettled
     Else
         m_lastError = st
-        Wv2Log.LogW "Wv2Element." & apiName & ": 失敗 (handle=" & m_handle & _
+        Wv2Log.LogW "Wv2Element." & apiName & ": failed (handle=" & m_handle & _
                     ") err=" & st
     End If
 End Function

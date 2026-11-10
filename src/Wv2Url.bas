@@ -1,36 +1,36 @@
 Attribute VB_Name = "Wv2Url"
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Url.bas  第9.16 段階 (整理: URL 変換ユーティリティの切り出し) ---
+' --- Wv2Url.bas  Stage 9.16 (cleanup: extracting the URL conversion utilities) ---
 '
-'   URL 処理のうち「入力だけで出力が決まる純粋なデータ変換」を Wv2Browser から
-'   切り出した標準モジュール。Wv2Json.bas (JSON 変換) と対をなす「状態を持たない
-'   変換ユーティリティ群」。整理段階で作成 (9.13 の JSON 抽出と同じリズム)。
+'   A standard module split out of Wv2Browser containing the pure data conversions of URL
+'   handling, where the output is determined by the input alone. The counterpart of Wv2Json.bas
+'   (JSON conversion): a "group of stateless conversion utilities". Created in the cleanup stage (same rhythm as the JSON extraction in 9.13).
 '
-'   ★何を持つか (メカニズム = 純関数のみ)★
-'     ・IsAlphaOnly(s)          : 文字列が英字のみか (スキーム名判定に使う)
-'     ・UrlEncodeComponent(s)   : encodeURIComponent 相当の percent-encoding
-'     ・Utf8Bytes(s)            : String(UTF-16LE) → UTF-8 バイト列 (ADODB.Stream)
+'   **What it contains (mechanism = pure functions only)**
+'     - IsAlphaOnly(s)          : whether a string is letters only (used to detect scheme names)
+'     - UrlEncodeComponent(s)   : percent-encoding equivalent to encodeURIComponent
+'     - Utf8Bytes(s)            : String(UTF-16LE) -> UTF-8 byte array (ADODB.Stream)
 '
-'   ★何を持たないか (ポリシー = 状態依存は Wv2Browser に残す)★
-'     NormalizeUrl / BuildSearchUrl は検索エンジン設定 (m_searchTemplate) という
-'     インスタンス状態に依存する「ブラウザの振る舞い」なので Wv2Browser に残し、
-'     この Wv2Url の純関数を呼び出す。ポリシーとメカニズムの分離。
+'   **What it does not contain (policy = state-dependent parts stay in Wv2Browser)**
+'     NormalizeUrl / BuildSearchUrl depend on instance state, the search engine setting
+'     (m_searchTemplate), i.e. they are "browser behavior", so they stay in Wv2Browser and
+'     call the pure functions of this Wv2Url. Separation of policy and mechanism.
 '
-'   ★ADODB.Stream の扱い★ Utf8Bytes は ADODB.Stream を使うが、これは WebView2
-'     制御 (サンク・vtable・メモリプリミティブ) とは無関係な単なるデータ変換であり、
-'     既に HTML 書き出しで採用済み。本プロジェクトの「WebView2 を外部 COM なしで
-'     叩く」核心思想は侵さない (9.14 の判断を踏襲)。
+'   **How ADODB.Stream is used** Utf8Bytes uses ADODB.Stream, but this is plain data conversion
+'     unrelated to WebView2 control (thunks, vtables, memory primitives) and is
+'     already used for writing HTML. It does not violate the core idea of the project, "drive
+'     WebView2 without external COM" (follows the decision made in 9.14).
 ''''''''''''''''''''''''''''''''''
 
 Option Explicit
 
 
 ' ============================================================
-' IsAlphaOnly (第9.16 に Wv2Browser から移設、ロジック無変更)
+' IsAlphaOnly (moved from Wv2Browser in 9.16, logic unchanged)
 '
-'   文字列が英字 (A-Z / a-z) のみで構成されるかを返す。
-'   NormalizeUrl が "about:" 等のスキーム名を判定するのに使う
-'   ("example.com:8080" を誤ってスキーム扱いしないよう、数字を含むものは False)。
+'   Returns whether a string consists only of letters (A-Z / a-z).
+'   NormalizeUrl uses it to detect scheme names such as "about:"
+'   (anything containing digits is False, so "example.com:8080" is not mistaken for a scheme).
 ' ============================================================
 Public Function IsAlphaOnly(ByVal s As String) As Boolean
     If Len(s) = 0 Then Exit Function
@@ -45,19 +45,19 @@ End Function
 
 
 ' ============================================================
-' UrlEncodeComponent (第9.16 に Wv2Browser から移設、ロジック無変更)
+' UrlEncodeComponent (moved from Wv2Browser in 9.16, logic unchanged)
 '
-'   文字列を RFC3986 に沿って percent-encoding する
-'   (JS の encodeURIComponent 相当。非予約文字だけ素通し、他は %XX)。
+'   Percent-encodes a string per RFC3986
+'   (equivalent to JS encodeURIComponent. Only unreserved characters pass through; the rest become %XX).
 '
-'   ★非予約文字 (unreserved)★ A-Z a-z 0-9 と "-" "_" "." "~" はそのまま。
-'     それ以外はすべて UTF-8 バイト列にして各バイトを %XX にする。
-'     (空白は %20。encodeURIComponent と同じく "+" にはしない)
+'   **Unreserved characters** A-Z a-z 0-9 and "-" "_" "." "~" are kept as they are.
+'     Everything else is converted to a UTF-8 byte sequence and each byte becomes %XX.
+'     (A space becomes %20. Like encodeURIComponent, it does not become "+")
 '
-'   ★UTF-8 化は Utf8Bytes (ADODB.Stream 経由) が担当★ 日本語等の高位文字を
-'     正しく複数バイトに展開するため。1 文字ずつ AscW で処理すると
-'     サロゲートペア (絵文字等) を壊すので、文字列全体を一括で UTF-8 化してから
-'     バイト単位でエスケープする。
+'   **UTF-8 conversion is done by Utf8Bytes (via ADODB.Stream)** so that high characters such as
+'     Japanese expand correctly into multiple bytes. Processing one character at a time with AscW
+'     would break surrogate pairs (emoji etc.), so the whole string is converted to UTF-8 at once
+'     and then escaped byte by byte.
 ' ============================================================
 Public Function UrlEncodeComponent(ByVal s As String) As String
     If Len(s) = 0 Then Exit Function
@@ -65,7 +65,7 @@ Public Function UrlEncodeComponent(ByVal s As String) As String
     Dim bytes() As Byte
     bytes = Utf8Bytes(s)
 
-    ' Utf8Bytes が空 (Len(s)=0 は上で弾いているので通常起きない) なら空を返す
+    ' If Utf8Bytes is empty (normally cannot happen since Len(s)=0 is rejected above), return empty
     On Error Resume Next
     Dim lb As Long, ub As Long
     lb = LBound(bytes)
@@ -82,7 +82,7 @@ Public Function UrlEncodeComponent(ByVal s As String) As String
     Dim c As String
     For i = lb To ub
         b = bytes(i)            ' 0..255
-        c = Chr$(b)             ' ASCII 範囲の判定用 (b<128 のときのみ意味を持つ)
+        c = Chr$(b)             ' for the ASCII range check (only meaningful when b<128)
         If (b >= 65 And b <= 90) _
         Or (b >= 97 And b <= 122) _
         Or (b >= 48 And b <= 57) _
@@ -99,14 +99,14 @@ End Function
 
 
 ' ============================================================
-' Utf8Bytes (第9.16 に Wv2Browser から移設、ロジック無変更)
+' Utf8Bytes (moved from Wv2Browser in 9.16, logic unchanged)
 '
-'   VBA の String (UTF-16LE) を UTF-8 のバイト列に変換する。
-'   ADODB.Stream に Charset="utf-8" で書き込み、Type=adTypeBinary で読み戻す。
+'   Converts a VBA String (UTF-16LE) to a UTF-8 byte array.
+'   Writes to ADODB.Stream with Charset="utf-8" and reads back with Type=adTypeBinary.
 '
-'   ★先頭 BOM は付かない★ Charset="utf-8" のテキスト書き込みでは BOM は付与
-'     されない (adTypeBinary で読み戻したバイト列に EF BB BF は含まれない)。
-'     万一の将来変更に備え、先頭 3 バイトが BOM だった場合は除去する保険を入れる。
+'   **No leading BOM is added** A text write with Charset="utf-8" adds no BOM
+'     (the bytes read back with adTypeBinary do not contain EF BB BF).
+'     As insurance against future changes, a guard removes the first 3 bytes if they are a BOM.
 ' ============================================================
 Public Function Utf8Bytes(ByVal s As String) As Byte()
     Dim st As Object
@@ -117,19 +117,19 @@ Public Function Utf8Bytes(ByVal s As String) As Byte()
     st.WriteText s
     st.Position = 0
     st.Type = 1                 ' adTypeBinary
-    ' テキストからバイナリへ切り替えると Position が先頭に戻る。
+    ' Switching from text to binary resets Position to the start.
     Dim raw() As Byte
-    raw = st.Read                ' 全バイト取得
+    raw = st.Read                ' get all bytes
     st.Close
     Set st = Nothing
 
-    ' BOM 保険 (通常は付かないが、付いていたら EF BB BF を落とす)
+    ' BOM insurance (normally none is added, but if present, drop EF BB BF)
     On Error Resume Next
     Dim lb As Long, ub As Long
     lb = LBound(raw)
     ub = UBound(raw)
     If Err.Number <> 0 Then
-        ' 空文字入力等でバイトが無い場合。空配列を返す。
+    ' When there are no bytes, e.g. empty string input. Return an empty array.
         On Error GoTo 0
         Utf8Bytes = raw
         Exit Function

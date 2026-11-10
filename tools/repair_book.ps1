@@ -1,29 +1,29 @@
 ﻿<#
-    repair_book.ps1 -- 露出したメンバー属性行を取り除く (コンポーネントの作り直し)
+    repair_book.ps1 -- removes exposed member attribute lines (rebuilds the components)
 
-    使い方:
+    Usage:
         powershell -ExecutionPolicy Bypass -File tools\repair_book.ps1 -Modules Wv2Browser
         powershell -ExecutionPolicy Bypass -File tools\repair_book.ps1 -Modules Wv2Browser -Apply
 
-    ★既定は下見★ 実行するには -Apply が要る (設計原則96)。
+    **The default is a preview** -Apply is required to run (design principle 96).
 
-    何をするか:
-        1. ブックを book\backup\ へ複製する
-        2. 【第1段】ブックを開いて対象コンポーネントを Remove し、保存して閉じ、
-           ★Excel を完全に終了する★
-        3. 【第2段】新しい Excel で開き直し、src\ のファイルを Import して保存する
-        4. check_book.py で重複が消えたことを確かめる
+    What it does:
+        1. Copy the workbook to book\backup\
+        2. [Phase 1] Open the workbook, Remove the target components, save and close,
+           and **quit Excel completely**
+        3. [Phase 2] Reopen in a new Excel, Import the files in src\ and save
+        4. Confirm with check_book.py that the duplicates are gone
 
-    ★なぜ Remove + Import なのか★
-        メンバー属性行が二重になると、片方が VBE のコードペインに露出して
-        コンパイルエラーになる。ところが CodeModule.Lines は Attribute 行を
-        返さないので、CodeModule.DeleteLines では消せない。
-        コンポーネントごと作り直すしかない。
+    **Why Remove + Import**
+        When a member attribute line is doubled, one of them is exposed in the VBE code pane
+        and causes a compile error. But CodeModule.Lines does not
+        return Attribute lines, so CodeModule.DeleteLines cannot delete it.
+        The only way is to rebuild the whole component.
 
-    ★なぜ 2 段階に分けるのか★
-        VBComponents.Remove は削除が遅延する。同じセッションで同名を Import すると
-        Wv2Browser1 のような別名で作られる (E-1 で記録済みの罠)。
-        Excel を終了させてから Import すれば、削除が確定した状態で始められる。
+    **Why it is split into 2 phases**
+        VBComponents.Remove defers the deletion. Importing the same name in the same session
+        creates it under a different name such as Wv2Browser1 (a trap recorded in E-1).
+        If Excel is quit before the Import, you can start with the deletion finalized.
 #>
 
 [CmdletBinding()]
@@ -41,7 +41,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $Book) {
     $cand = @(Get-ChildItem (Join-Path $repoRoot 'book') -Filter '*.xlsm' -ErrorAction SilentlyContinue)
-    if ($cand.Count -ne 1) { throw "book フォルダの .xlsm を 1 本に絞れない。-Book で指定すること。" }
+    if ($cand.Count -ne 1) { throw "Cannot narrow the .xlsm in the book folder down to one. Specify it with -Book." }
     $Book = $cand[0].FullName
 }
 $Book = (Resolve-Path $Book).Path
@@ -50,14 +50,14 @@ $SrcDir = (Resolve-Path $SrcDir).Path
 
 $cp932 = [System.Text.Encoding]::GetEncoding(932)
 
-Write-Host ("ブック  : " + $Book)
-Write-Host ("対象    : " + ($Modules -join ', '))
-$modeLabel = '下見のみ (ブックには触らない)'
-if ($Apply) { $modeLabel = '★作り直す★' }
-Write-Host ("モード  : " + $modeLabel)
+Write-Host ("Book    : " + $Book)
+Write-Host ("Targets : " + ($Modules -join ', '))
+$modeLabel = 'preview only (the workbook is not touched)'
+if ($Apply) { $modeLabel = '**rebuild**' }
+Write-Host ("Mode    : " + $modeLabel)
 Write-Host ""
 
-# ---- 対象ファイルの存在確認 ----------------------------------------------
+# ---- Check that the target files exist ----------------------------------
 $srcFiles = @{}
 foreach ($m in $Modules) {
     $f = $null
@@ -65,26 +65,26 @@ foreach ($m in $Modules) {
         $p = Join-Path $SrcDir ($m + $ext)
         if (Test-Path $p) { $f = $p; break }
     }
-    if ($null -eq $f) { throw ("src に " + $m + ".cls / .bas が見つからない") }
+    if ($null -eq $f) { throw ("Neither " + $m + ".cls nor .bas was found in src") }
     $srcFiles[$m] = $f
     Write-Host ("  " + $m + " <- " + $f)
 }
 Write-Host ""
 
 if (-not $Apply) {
-    Write-Host "※ 下見のみ。実行するには -Apply を付けること。"
-    Write-Host "   実行すると対象コンポーネントを一度削除し、src から Import し直す。"
+    Write-Host "Note: preview only. Add -Apply to run."
+    Write-Host "   When run, it deletes the target components once and re-imports them from src."
     return
 }
 
-# ---- バックアップ ---------------------------------------------------------
+# ---- Backup -------------------------------------------------------------
 if (-not $NoBackup) {
     $backupDir = Join-Path (Split-Path -Parent $Book) 'backup'
     if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory -Path $backupDir -Force | Out-Null }
     $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
     $dest = Join-Path $backupDir ([System.IO.Path]::GetFileNameWithoutExtension($Book) + '_repair_' + $stamp + '.xlsm')
     Copy-Item $Book $dest
-    Write-Host ("バックアップ: " + $dest)
+    Write-Host ("Backup: " + $dest)
     Write-Host ""
 }
 
@@ -99,7 +99,7 @@ function Open-Book([bool]$readOnly) {
         try { $w = $ex.Workbooks.Open($Book, 0, $readOnly); break }
         catch { Start-Sleep -Milliseconds 800 }
     }
-    if ($null -eq $w) { throw "Workbooks.Open に失敗した。Excel を終了してから再実行すること。" }
+    if ($null -eq $w) { throw "Workbooks.Open failed. Quit Excel and re-run." }
     return @($ex, $w)
 }
 
@@ -116,8 +116,8 @@ function Close-Book($ex, $w, [bool]$save) {
     [GC]::WaitForPendingFinalizers()
 }
 
-# ---- 【第1段】削除 --------------------------------------------------------
-Write-Host "【第1段】コンポーネントを削除する"
+# ---- [Phase 1] Delete ---------------------------------------------------
+Write-Host "[Phase 1] Delete the components"
 $r = Open-Book $false
 $ex1 = $r[0]; $wb1 = $r[1]
 try {
@@ -126,28 +126,28 @@ try {
         $comp = $null
         try { $comp = $vbp.VBComponents.Item($m) } catch { }
         if ($null -eq $comp) {
-            Write-Host ("  " + $m + " : ブックに無い (飛ばす)") -ForegroundColor Yellow
+            Write-Host ("  " + $m + " : not in the workbook (skipped)") -ForegroundColor Yellow
             continue
         }
         $vbp.VBComponents.Remove($comp)
-        Write-Host ("  " + $m + " : Remove した")
+        Write-Host ("  " + $m + " : Removed")
     }
 }
 finally {
     Close-Book $ex1 $wb1 $true
 }
 
-Write-Host "  Excel を終了して削除を確定させる ..."
+Write-Host "  Quitting Excel to finalize the deletion ..."
 Start-Sleep -Seconds 3
 $still = @(Get-Process EXCEL -ErrorAction SilentlyContinue)
 if ($still.Count -gt 0) {
-    Write-Host ("  警告: Excel がまだ " + $still.Count + " プロセス残っている") -ForegroundColor Yellow
+    Write-Host ("  Warning: " + $still.Count + " Excel process(es) still remain") -ForegroundColor Yellow
     Start-Sleep -Seconds 3
 }
 Write-Host ""
 
-# ---- 【第2段】Import ------------------------------------------------------
-Write-Host "【第2段】src から Import し直す"
+# ---- [Phase 2] Import ---------------------------------------------------
+Write-Host "[Phase 2] Re-import from src"
 $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ('wv2repair_' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
@@ -166,17 +166,17 @@ try {
 
         $bytes = $cp932.GetBytes($text)
         if ($cp932.GetString($bytes) -ne $text) {
-            throw ($m + " : CP932 への変換が非可逆。check_cp932.py を確認すること。")
+            throw ($m + " : the conversion to CP932 is lossy. Check check_cp932.py.")
         }
         $tmp = Join-Path $tmpDir ([System.IO.Path]::GetFileName($srcPath))
         [System.IO.File]::WriteAllBytes($tmp, $bytes)
 
         $newComp = $vbp.VBComponents.Import($tmp)
         if ($newComp.Name -ne $m) {
-            $failed += ($m + " : Import 後の名前が " + $newComp.Name + " になった")
-            Write-Host ("  " + $m + " : ★名前が " + $newComp.Name + " になった★") -ForegroundColor Red
+            $failed += ($m + " : the name after Import became " + $newComp.Name)
+            Write-Host ("  " + $m + " : **the name became " + $newComp.Name + "**") -ForegroundColor Red
         } else {
-            Write-Host ("  " + $m + " : Import した (" + $newComp.CodeModule.CountOfLines + " 行)")
+            Write-Host ("  " + $m + " : Imported (" + $newComp.CodeModule.CountOfLines + " lines)")
         }
     }
 }
@@ -187,11 +187,11 @@ finally {
 
 Write-Host ""
 if ($failed.Count -gt 0) {
-    Write-Host "★失敗した★" -ForegroundColor Red
+    Write-Host "**Failed**" -ForegroundColor Red
     foreach ($f in $failed) { Write-Host ("  " + $f) -ForegroundColor Red }
-    Write-Host "  book\backup\ の複製から戻すこと。" -ForegroundColor Red
+    Write-Host "  Restore from the copy in book\backup\." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "作り直しが終わった。check_book.py で確かめること:"
+Write-Host "The rebuild is finished. Confirm with check_book.py:"
 Write-Host "  python tools\check_book.py"

@@ -1,8 +1,13 @@
-# CopyMemoryありでの実装方式
-※CopyMemoryがWindowsDiffenderのチェックに引っかかって動作が遅くなるので、ここに示す方式から全面改修中。<br>
-  新形式の開発経過はメモ.md参照。
+# Implementation approach using CopyMemory
+※Because CopyMemory gets caught by Windows Defender's checks and slows things down, the approach shown here is undergoing a full overhaul.<br>
+  See docs/dev-notes-0-index.md for the development history of the new format (the old
+  `Old/開発メモ.md` it originally pointed to is only in the upstream git history).
 
-## 標準モジュール mWebView2Api.bas
+> **English fork note:** this document describes the *earlier* CopyMemory-based approach
+> (`mWebView2Api.bas`). The current code in `src/` uses the SAFEARRAY primitives and x64
+> thunks in `Wv2Thunks.bas`; read this for background only.
+
+## Standard module mWebView2Api.bas
 ```
 'Module mWebView2Api
 
@@ -10,16 +15,16 @@ Option Explicit
 
 ' ???????????????????????????????????????????????????????????????????????
 ' mWebView2Api
-' WebView2 用の定数、列挙型、構造体定義
+' Constants, enumerations and structure definitions for WebView2
 ' ???????????????????????????????????????????????????????????????????????
 
 #If Win64 Then
 #Else
-    #Error "このモジュールは 64 ビット VBA (x64) が必要です"
+    #Error "This module requires 64-bit VBA (x64)"
 #End If
 
 ' ???????????????????????????????????????????????
-' Section 1: GUID 構造体
+' Section 1: GUID structure
 ' ???????????????????????????????????????????????
 
 Public Type guid
@@ -31,11 +36,11 @@ End Type
 
 
 ' ???????????????????????????????????????????????
-' Section 2: TYPEATTR 構造体 (ITypeInfo 用)
+' Section 2: TYPEATTR structure (for ITypeInfo)
 ' ???????????????????????????????????????????????
 
-' x64 レイアウト (合計 96 bytes)
-' BuildFuncPtrCache で cFuncs フィールドを参照する。
+' x64 layout (96 bytes total)
+' BuildFuncPtrCache references the cFuncs field.
 
 Public Type TYPEATTR
     guid As guid           ' 0-15   (16 bytes)
@@ -46,7 +51,7 @@ Public Type TYPEATTR
     lpstrSchema As LongPtr ' 32-39
     cbSizeInstance As Long  ' 40-43
     typekind As Long        ' 44-47
-    cFuncs As Integer       ' 48-49  ★ メソッド数
+    cFuncs As Integer       ' 48-49  ★ Number of methods
     cVars As Integer        ' 50-51
     cImplTypes As Integer   ' 52-53
     cbSizeVft As Integer    ' 54-55
@@ -62,11 +67,11 @@ End Type
 
 
 ' ???????????????????????????????????????????????
-' Section 3: FUNCDESC 構造体 (ITypeInfo 用)
+' Section 3: FUNCDESC structure (for ITypeInfo)
 ' ???????????????????????????????????????????????
 
-' x64 レイアウト
-' BuildFuncPtrCache で memid と oVft を参照する。
+' x64 layout
+' BuildFuncPtrCache references memid and oVft.
 
 Public Type FUNCDESC
     memid As Long              ' 0-3    MEMBERID
@@ -78,7 +83,7 @@ Public Type FUNCDESC
     callconv As Long           ' 32-35
     cParams As Integer         ' 36-37
     cParamsOpt As Integer      ' 38-39
-    oVft As Integer            ' 40-41  ★ VTable オフセット
+    oVft As Integer            ' 40-41  ★ VTable offset
     cScodes As Integer         ' 42-43
     elemdescFunc_tdesc As LongPtr  ' 44-51  (ELEMDESC.TYPEDESC)
     elemdescFunc_tdesc2 As LongPtr ' 52-59
@@ -91,7 +96,7 @@ End Type
 
 
 ' ???????????????????????????????????????????????
-' Section 4: WebView2 列挙型
+' Section 4: WebView2 enumerations
 ' ???????????????????????????????????????????????
 
 ' --- COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT ---
@@ -191,7 +196,7 @@ Public Enum COREWEBVIEW2_WEB_ERROR_STATUS
 End Enum
 
 ' --- COREWEBVIEW2_PHYSICAL_KEY_STATUS ---
-' AcceleratorKeyPressed イベントの args から取得可能な構造体
+' Structure obtainable from the args of the AcceleratorKeyPressed event
 Public Type COREWEBVIEW2_PHYSICAL_KEY_STATUS
     RepeatCount As Long        ' 0-3
     ScanCode As Long           ' 4-7
@@ -203,7 +208,7 @@ End Type
 
 
 ' ???????????????????????????????????????????????
-' Section 5: HRESULT 定数
+' Section 5: HRESULT constants
 ' ???????????????????????????????????????????????
 
 Public Const S_OK As Long = 0
@@ -220,19 +225,19 @@ Public Const E_UNEXPECTED As Long = &H8000FFFF
 Public Const E_NOTIMPL As Long = &H80004001
 Public Const CLASS_E_NOAGGREGATION As Long = &H80040110
 
-' WebView2 固有の HRESULT
+' WebView2-specific HRESULTs
 Public Const HRESULT_FROM_WIN32_ERROR_FILE_NOT_FOUND As Long = &H80070002
 Public Const HRESULT_FROM_WIN32_ERROR_FILE_EXISTS As Long = &H80070050
 
 
 ' ???????????????????????????????????????????????
-' Section 6: その他の定数
+' Section 6: Other constants
 ' ???????????????????????????????????????????????
 
-' VarType 拡張
+' VarType extension
 Public Const vbLongPtr As Integer = 20  ' VT_I8 on x64
 
-' STGM フラグ (IStream / SHCreateStreamOnFileW 用)
+' STGM flags (for IStream / SHCreateStreamOnFileW)
 Public Const STGM_READ As Long = &H0
 Public Const STGM_WRITE As Long = &H1
 Public Const STGM_READWRITE As Long = &H2
@@ -242,7 +247,7 @@ Public Const STGM_SHARE_DENY_READ As Long = &H30
 Public Const STGM_SHARE_DENY_WRITE As Long = &H20
 Public Const STGM_SHARE_EXCLUSIVE As Long = &H10
 
-' CryptStringToBinary フラグ
+' CryptStringToBinary flags
 Public Const CRYPT_STRING_BASE64 As Long = 1
 Public Const CRYPT_STRING_HEX As Long = 4
 
@@ -262,7 +267,7 @@ Public Const CC_STDCALL As Long = 4
 Public Const CC_CDECL As Long = 1
 ```
 
-## 標準モジュール mWebView2Helper.bas
+## Standard module mWebView2Helper.bas
 ```
 'Module mWebView2Helper
 
@@ -271,15 +276,15 @@ Option Explicit
 
 ' ???????????????????????????????????????????????????????????????????????
 ' mWebView2Helper
-' WebView2 ラッパークラス用ヘルパー関数群
+' Group of helper functions for the WebView2 wrapper class
 ' ???????????????????????????????????????????????????????????????????????
 
 #If Win64 Then
 #Else
-    #Error "このモジュールは 64 ビット VBA (x64) が必要です"
+    #Error "This module requires 64-bit VBA (x64)"
 #End If
 
-' --- API 宣言 (モジュール内ローカル) ---
+' --- API declarations (local to the module) ---
 
 Private Declare PtrSafe Function DispCallFunc Lib "oleaut32" ( _
     ByVal pvInstance As LongPtr, ByVal oVft As LongPtr, _
@@ -295,7 +300,7 @@ Public Declare PtrSafe Sub CoTaskMemFree Lib "ole32" (ByVal pv As LongPtr)
 
 
 ' ???????????????????????????????????????????????
-' Section 10: バイト列 ⇔ Base64 変換
+' Section 10: Byte array <-> Base64 conversion
 ' ???????????????????????????????????????????????
 
 Private Declare PtrSafe Function CryptStringToBinaryW Lib "crypt32" ( _
@@ -307,19 +312,19 @@ Private Declare PtrSafe Function CryptBinaryToStringW Lib "crypt32" ( _
     ByVal pszString As LongPtr, ByRef pcchString As Long) As Long
 
 ' ???????????????????????????????????????????????
-' Section 1: DispCallFunc 汎用ラッパー
+' Section 1: General-purpose DispCallFunc wrapper
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' DispCallFunc を使って COM vtable の任意メソッドを呼び出す汎用ラッパー。
-''' 可変引数 (ParamArray) で最大16個のパラメータを受け取る。
+''' General-purpose wrapper that calls an arbitrary method of a COM vtable using DispCallFunc.
+''' Accepts up to 16 parameters through variable arguments (ParamArray).
 '''
-''' 戻り値: COM メソッドの HRESULT。
-'''         DispCallFunc 自体が失敗した場合はその HRESULT。
+''' Return value: the HRESULT of the COM method.
+'''         If DispCallFunc itself fails, that HRESULT.
 '''
-''' ? 全パラメータは Variant として渡される。
-'''   内部で VarType を判定し、vbLong / vbLongPtr / vbDouble に振り分ける。
-'''   それ以外の型は vbLongPtr として扱う (ポインタ前提)。
+''' ? All parameters are passed as Variants.
+'''   Internally the VarType is examined and sorted into vbLong / vbLongPtr / vbDouble.
+'''   Any other type is treated as vbLongPtr (assumed to be a pointer).
 ''' </summary>
 Public Function dcf( _
     ByVal pInterface As LongPtr, _
@@ -339,7 +344,7 @@ Public Function dcf( _
     Dim oVft As LongPtr
     oVft = CLngPtr(vtblIndex) * LenB(pVTable)
 
-    ' ── 引数展開 ──
+    ' -- Expanding the arguments --
     Dim argc As Long
     If UBound(args) >= LBound(args) Then
         argc = UBound(args) - LBound(args) + 1
@@ -363,7 +368,7 @@ Public Function dcf( _
             Select Case VarType(vals(i))
                 Case vbLong
                     vt(i) = vbLong
-                Case vbLongLong   ' x64 の LongPtr は vbLongLong (=20)
+                Case vbLongLong   ' LongPtr on x64 is vbLongLong (=20)
                     vt(i) = vbLongLong
                 Case vbDouble
                     vt(i) = vbDouble
@@ -412,16 +417,16 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 2: Bool プロパティ ヘルパー
+' Section 2: Bool property helpers
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' COM インターフェースの get_XxxBool プロパティを呼び出して Boolean を返す。
-''' vtable レイアウト: HRESULT get_Xxx([out, retval] BOOL *value)
+''' Calls a COM interface's get_XxxBool property and returns a Boolean.
+''' vtable layout: HRESULT get_Xxx([out, retval] BOOL *value)
 ''' </summary>
-''' <param name="pInterface">COM インターフェースポインタ</param>
-''' <param name="vtblIndex">get_ メソッドの vtable インデックス</param>
-''' <returns>プロパティ値</returns>
+''' <param name="pInterface">COM interface pointer</param>
+''' <param name="vtblIndex">vtable index of the get_ method</param>
+''' <returns>Property value</returns>
 Public Function GetBoolProperty( _
     ByVal pInterface As LongPtr, _
     ByVal vtblIndex As Long) As Boolean
@@ -437,12 +442,12 @@ Public Function GetBoolProperty( _
 End Function
 
 ''' <summary>
-''' COM インターフェースの put_XxxBool プロパティを呼び出す。
-''' vtable レイアウト: HRESULT put_Xxx([in] BOOL value)
+''' Calls a COM interface's put_XxxBool property.
+''' vtable layout: HRESULT put_Xxx([in] BOOL value)
 ''' </summary>
-''' <param name="pInterface">COM インターフェースポインタ</param>
-''' <param name="vtblIndex">put_ メソッドの vtable インデックス</param>
-''' <param name="value">設定する値</param>
+''' <param name="pInterface">COM interface pointer</param>
+''' <param name="vtblIndex">vtable index of the put_ method</param>
+''' <param name="value">Value to set</param>
 Public Sub LetBoolProperty( _
     ByVal pInterface As LongPtr, _
     ByVal vtblIndex As Long, _
@@ -457,11 +462,11 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 3: Long プロパティ ヘルパー
+' Section 3: Long property helpers
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' COM インターフェースの get_XxxLong プロパティを呼び出して Long を返す。
+''' Calls a COM interface's get_XxxLong property and returns a Long.
 ''' </summary>
 Public Function GetLongProperty( _
     ByVal pInterface As LongPtr, _
@@ -476,7 +481,7 @@ Public Function GetLongProperty( _
 End Function
 
 ''' <summary>
-''' COM インターフェースの put_XxxLong プロパティを呼び出す。
+''' Calls a COM interface's put_XxxLong property.
 ''' </summary>
 Public Sub LetLongProperty( _
     ByVal pInterface As LongPtr, _
@@ -489,12 +494,12 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 4: LongPtr (ポインタ) プロパティ ヘルパー
+' Section 4: LongPtr (pointer) property helpers
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' COM インターフェースの get_XxxPtr プロパティを呼び出して LongPtr を返す。
-''' 戻り値のポインタは AddRef 済み。呼び出し元が Release する責任を持つ。
+''' Calls a COM interface's get_XxxPtr property and returns a LongPtr.
+''' The returned pointer has already been AddRef'd. The caller is responsible for Releasing it.
 ''' </summary>
 Public Function GetPtrProperty( _
     ByVal pInterface As LongPtr, _
@@ -510,13 +515,13 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 5: 文字列プロパティ ヘルパー
+' Section 5: String property helpers
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' COM インターフェースの get_XxxString プロパティを呼び出して String を返す。
-''' vtable レイアウト: HRESULT get_Xxx([out, retval] LPWSTR *value)
-''' 取得した LPWSTR は CoTaskMemFree で解放する。
+''' Calls a COM interface's get_XxxString property and returns a String.
+''' vtable layout: HRESULT get_Xxx([out, retval] LPWSTR *value)
+''' The obtained LPWSTR is freed with CoTaskMemFree.
 ''' </summary>
 Public Function GetStringProperty( _
     ByVal pInterface As LongPtr, _
@@ -535,8 +540,8 @@ Public Function GetStringProperty( _
 End Function
 
 ''' <summary>
-''' COM インターフェースの put_XxxString プロパティを呼び出す。
-''' vtable レイアウト: HRESULT put_Xxx([in] LPCWSTR value)
+''' Calls a COM interface's put_XxxString property.
+''' vtable layout: HRESULT put_Xxx([in] LPCWSTR value)
 ''' </summary>
 Public Sub LetStringProperty( _
     ByVal pInterface As LongPtr, _
@@ -550,11 +555,11 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 6: ポインタ ⇔ 文字列 変換
+' Section 6: Pointer <-> string conversion
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' LPWSTR (null終端Unicode文字列) を VBA の String に変換する。
+''' Converts an LPWSTR (null-terminated Unicode string) into a VBA String.
 ''' </summary>
 Public Function PtrToString(ByVal p As LongPtr) As String
     If p = 0 Then Exit Function
@@ -566,12 +571,12 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 7: COM Release ヘルパー
+' Section 7: COM Release helpers
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' COM インターフェースポインタを安全に Release する。
-''' 呼び出し後、ByRef で渡されたポインタは 0 にリセットされる。
+''' Safely Releases a COM interface pointer.
+''' After the call, the pointer passed ByRef is reset to 0.
 ''' </summary>
 Public Sub SafeRelease(ByRef pInterface As LongPtr)
     If pInterface = 0 Then Exit Sub
@@ -580,7 +585,7 @@ Public Sub SafeRelease(ByRef pInterface As LongPtr)
 End Sub
 
 ''' <summary>
-''' COM インターフェースポインタを安全に AddRef する。
+''' Safely AddRefs a COM interface pointer.
 ''' </summary>
 Public Sub SafeAddRef(ByVal pInterface As LongPtr)
     If pInterface = 0 Then Exit Sub
@@ -589,20 +594,20 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 8: HRESULT ユーティリティ
+' Section 8: HRESULT utilities
 ' ???????????????????????????????????????????????
 
-''' <summary>HRESULT が成功かどうかを判定する</summary>
+''' <summary>Determines whether an HRESULT indicates success</summary>
 Public Function SUCCEEDED(ByVal hr As Long) As Boolean
     SUCCEEDED = (hr >= 0)
 End Function
 
-''' <summary>HRESULT が失敗かどうかを判定する</summary>
+''' <summary>Determines whether an HRESULT indicates failure</summary>
 Public Function FAILED(ByVal hr As Long) As Boolean
     FAILED = (hr < 0)
 End Function
 
-''' <summary>HRESULT を人間が読める文字列に変換する</summary>
+''' <summary>Converts an HRESULT into a human-readable string</summary>
 Public Function HResultToString(ByVal hr As Long) As String
     Select Case hr
         Case S_OK:              HResultToString = "S_OK"
@@ -623,12 +628,12 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 9: Variant 配列ユーティリティ
+' Section 9: Variant array utilities
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' Variant 配列が初期化 (Allocate) 済みかどうかを判定する。
-''' ParamArray が空の場合でも安全に使える。
+''' Determines whether a Variant array has been initialized (allocated).
+''' Safe to use even when the ParamArray is empty.
 ''' </summary>
 Public Function IsArrayAllocated(ByRef arr As Variant) As Boolean
     On Error GoTo NotAllocated
@@ -642,12 +647,12 @@ End Function
 
 
 
-''' <summary>Base64 文字列をバイト配列にデコードする</summary>
+''' <summary>Decodes a Base64 string into a byte array</summary>
 Public Function Base64Decode(ByVal base64 As String) As Byte()
     Dim cbBinary As Long
     Dim dwSkip As Long, dwFlags As Long
 
-    ' 1st call: サイズ取得
+    ' 1st call: get the size
     If CryptStringToBinaryW(StrPtr(base64), Len(base64), _
         CRYPT_STRING_BASE64, 0, cbBinary, dwSkip, dwFlags) = 0 Then
         Exit Function
@@ -656,19 +661,19 @@ Public Function Base64Decode(ByVal base64 As String) As Byte()
     Dim buf() As Byte
     ReDim buf(0 To cbBinary - 1)
 
-    ' 2nd call: デコード
+    ' 2nd call: decode
     CryptStringToBinaryW StrPtr(base64), Len(base64), _
         CRYPT_STRING_BASE64, VarPtr(buf(0)), cbBinary, dwSkip, dwFlags
 
     Base64Decode = buf
 End Function
 
-''' <summary>バイト配列を Base64 文字列にエンコードする</summary>
+''' <summary>Encodes a byte array into a Base64 string</summary>
 Public Function Base64Encode(ByRef data() As Byte) As String
     Dim cbData As Long: cbData = UBound(data) - LBound(data) + 1
     Dim cchString As Long
 
-    ' 1st call: サイズ取得
+    ' 1st call: get the size
     If CryptBinaryToStringW(VarPtr(data(LBound(data))), cbData, _
         CRYPT_STRING_BASE64, 0, cchString) = 0 Then
         Exit Function
@@ -676,25 +681,25 @@ Public Function Base64Encode(ByRef data() As Byte) As String
 
     Base64Encode = String$(cchString, vbNullChar)
 
-    ' 2nd call: エンコード
+    ' 2nd call: encode
     CryptBinaryToStringW VarPtr(data(LBound(data))), cbData, _
         CRYPT_STRING_BASE64, StrPtr(Base64Encode), cchString
 
-    ' 末尾の CRLF を除去
+    ' Remove the trailing CRLF
     Base64Encode = Replace(Base64Encode, vbCrLf, "")
     Base64Encode = Replace(Base64Encode, vbNullChar, "")
 End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 11: JSON 簡易パーサー
+' Section 11: Simple JSON parser
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' JSON 文字列から指定キーの文字列値を取り出す (簡易版)。
-''' ネストした JSON やエスケープシーケンスは非対応。
+''' Extracts the string value of a specified key from a JSON string (simple version).
+''' Nested JSON and escape sequences are not supported.
 '''
-''' 例: JsonGetString("{""name"":""hello""}", "name") → "hello"
+''' Example: JsonGetString("{""name"":""hello""}", "name") → "hello"
 ''' </summary>
 Public Function JsonGetString(ByVal json As String, ByVal Key As String) As String
     Dim searchKey As String
@@ -704,7 +709,7 @@ Public Function JsonGetString(ByVal json As String, ByVal Key As String) As Stri
     If pos = 0 Then Exit Function
     pos = pos + Len(searchKey)
 
-    ' 空白スキップ
+    ' Skip whitespace
     Do While pos <= Len(json) And Mid$(json, pos, 1) = " "
         pos = pos + 1
     Loop
@@ -713,13 +718,13 @@ Public Function JsonGetString(ByVal json As String, ByVal Key As String) As Stri
     Dim ch As String: ch = Mid$(json, pos, 1)
 
     If ch = """" Then
-        ' 文字列値
+        ' String value
         pos = pos + 1
         Dim endPos As Long: endPos = InStr(pos, json, """")
         If endPos = 0 Then Exit Function
         JsonGetString = Mid$(json, pos, endPos - pos)
     Else
-        ' 数値・true・false・null
+        ' Number, true, false, null
         Dim endPos2 As Long
         endPos2 = pos
         Do While endPos2 <= Len(json)
@@ -732,7 +737,7 @@ Public Function JsonGetString(ByVal json As String, ByVal Key As String) As Stri
 End Function
 
 ''' <summary>
-''' JSON 文字列から指定キーの Long 値を取り出す (簡易版)。
+''' Extracts the Long value of a specified key from a JSON string (simple version).
 ''' </summary>
 Public Function JsonGetLong(ByVal json As String, ByVal Key As String) As Long
     Dim s As String: s = JsonGetString(json, Key)
@@ -740,7 +745,7 @@ Public Function JsonGetLong(ByVal json As String, ByVal Key As String) As Long
 End Function
 
 ''' <summary>
-''' JSON 文字列から指定キーの Boolean 値を取り出す (簡易版)。
+''' Extracts the Boolean value of a specified key from a JSON string (simple version).
 ''' </summary>
 Public Function JsonGetBool(ByVal json As String, ByVal Key As String) As Boolean
     Dim s As String: s = LCase$(JsonGetString(json, Key))
@@ -806,12 +811,12 @@ Public Sub SaveBytesToFile(ByRef bytes() As Byte, ByVal filePath As String)
 End Sub
 
 ' ???????????????????????????????????????????????
-' Section 12: デバッグ支援
+' Section 12: Debugging aids
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' LongPtr のバイト列を 16 進数文字列としてダンプする。
-''' デバッグ用。
+''' Dumps the bytes of a LongPtr as a hexadecimal string.
+''' For debugging.
 ''' </summary>
 Public Function HexDump(ByVal p As LongPtr, ByVal byteCount As Long) As String
     If p = 0 Then HexDump = "(null)": Exit Function
@@ -830,8 +835,8 @@ Public Function HexDump(ByVal p As LongPtr, ByVal byteCount As Long) As String
 End Function
 
 ''' <summary>
-''' COM インターフェースの vtable の最初の numEntries 個のアドレスを
-''' デバッグ出力する。
+''' Prints the addresses of the first numEntries entries of a COM interface's vtable
+''' as debug output.
 ''' </summary>
 Public Sub DumpVTable(ByVal pInterface As LongPtr, _
     Optional ByVal numEntries As Long = 10, _
@@ -858,7 +863,7 @@ Public Sub DumpVTable(ByVal pInterface As LongPtr, _
 End Sub
 ```
 
-## クラスモジュール WebView2.cls
+## Class module WebView2.cls
 ```
 'WebView2.cls
 Option Explicit
@@ -867,24 +872,24 @@ Option Explicit
 ' WebView2 Wrapper Class (x64 VBA) - Complete Edition
 ' ???????????????????????????????????????????????????????????????????????
 '
-' 必要な外部モジュール:
-'   - mWebView2Api    : Win32 API宣言, 定数, 列挙型, TYPEATTR, FUNCDESC
+' Required external modules:
+'   - mWebView2Api    : Win32 API declarations, constants, enumerations, TYPEATTR, FUNCDESC
 '   - mWebView2Helper : dcf(), GetBoolProperty(), LetBoolProperty()
 '
-' ? 重要な制約:
-'   (1) 64ビット VBA 専用
-'   (2) ObjPtr(Me) がサンクにハードコードされるため、
-'       VBA IDE の停止ボタンや End ステートメントは使用禁止。
-'       必ず Finalize → Set obj = Nothing の順で破棄すること。
-'   (3) jmp テールコールを使用しているため、
-'       COM コールバックの明示的パラメータは最大3個まで。
-'       (this + Me挿入後で4レジスタ: RCX, RDX, R8, R9)
+' ? Important constraints:
+'   (1) 64-bit VBA only
+'   (2) Because ObjPtr(Me) is hard-coded into the thunk,
+'       the VBA IDE's stop button and the End statement must not be used.
+'       Always dispose in the order Finalize → Set obj = Nothing.
+'   (3) Because a jmp tail call is used,
+'       a COM callback can have at most 3 explicit parameters.
+'       (4 registers after this + inserted Me: RCX, RDX, R8, R9)
 '
 ' ???????????????????????????????????????????????????????????????????????
 
 #If Win64 Then
 #Else
-    #Error "このクラスは 64 ビット VBA (x64) が必要です"
+    #Error "This class requires 64-bit VBA (x64)"
 #End If
 
 Private Declare PtrSafe Sub RtlMoveMemory Lib "kernel32" ( _
@@ -943,7 +948,7 @@ Private Const STGM_SHARE_DENY_NONE As Long = &H40
 Private Const CRYPT_STRING_BASE64 As Long = 1
 
 ' ???????????????????????????????????????????????
-' Section 1: Event 宣言
+' Section 1: Event declarations
 ' ???????????????????????????????????????????????
 
 ' --- ICoreWebView2Controller Events ---
@@ -985,29 +990,29 @@ Public Event DevToolsProtocolEventReceived( _
 
 
 ' ???????????????????????????????????????????????
-' Section 2: 内部型定義
+' Section 2: Internal type definitions
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' 統一ハンドラエントリ。
-''' イベント購読 (add_/remove_) と完了コールバックの両方を管理する。
+''' Unified handler entry.
+''' Manages both event subscriptions (add_/remove_) and completion callbacks.
 ''' </summary>
 Private Type HandlerEntry
-    Key As String              ' ユーザー指定または自動生成のキー
+    Key As String              ' User-specified or auto-generated key
     vtblBlock As LongPtr       ' VirtualAlloc: vtable(32) + thunk(48) = 80 bytes
     fakeObj As LongPtr         ' VirtualAlloc: 8 bytes (COM Object)
 
-    ' --- イベント購読用 (isEvent=True のみ有効) ---
-    isEvent As Boolean         ' True: add_/remove_ ペア
-    pInterface As LongPtr      ' remove_ 呼び出し先 COM インターフェース
-    removeIndex As Long        ' remove_ の vtable インデックス
+    ' --- For event subscriptions (valid only when isEvent=True) ---
+    isEvent As Boolean         ' True: add_/remove_ pair
+    pInterface As LongPtr      ' COM interface on which remove_ is called
+    removeIndex As Long        ' vtable index of remove_
     token As LongPtr           ' EventRegistrationToken (8 bytes)
-    pExtraRelease As LongPtr   ' 追加で Release が必要な COM ポインタ
+    pExtraRelease As LongPtr   ' Additional COM pointer that needs a Release
 
-    active As Boolean          ' 有効フラグ
+    active As Boolean          ' Active flag
 End Type
 
-''' <summary>CDP メソッド呼び出し追跡用</summary>
+''' <summary>For tracking CDP method calls</summary>
 Private Type CDPRequestEntry
     requestId As Long
     methodName As String
@@ -1015,7 +1020,7 @@ Private Type CDPRequestEntry
     fakeObj As LongPtr
 End Type
 
-''' <summary>登録済みスクリプト情報</summary>
+''' <summary>Registered script information</summary>
 Private Type ScriptEntry
     scriptId As String
     javascript As String
@@ -1023,61 +1028,61 @@ End Type
 
 
 ' ???????????????????????????????????????????????
-' Section 3: メンバ変数
+' Section 3: Member variables
 ' ???????????????????????????????????????????????
 
-' --- COM インターフェースポインタ ---
+' --- COM interface pointers ---
 Private m_pEnv As LongPtr
 Private m_pController As LongPtr
 Private m_pWebView As LongPtr
 Private m_pSettings As LongPtr
 
-' --- ターゲットウィンドウ ---
+' --- Target window ---
 Private m_targetFrame As MSForms.Frame
 Private m_targetHWnd As LongPtr
 
-' --- 共有スタブ (全ハンドラで共用、各1つだけ) ---
+' --- Shared stubs (shared by all handlers, only one of each) ---
 Private m_pStubQI As LongPtr
 Private m_pStubAddRefRelease As LongPtr
 
-' --- 関数ポインタキャッシュ ---
+' --- Function pointer cache ---
 Private m_funcPtrs As Object  ' Dictionary: methodName -> pFunc (LongPtr)
 
-' --- 統一ハンドラ管理 ---
+' --- Unified handler management ---
 Private m_handlers As Object        ' Dictionary: key(String) -> index(Long)
 Private m_fakeObjToKey As Object    ' Dictionary: CStr(fakeObj) -> key(String)
 Private m_handlerData() As HandlerEntry
 Private m_handlerCount As Long
 
-' --- CDP メソッド呼び出し ---
+' --- CDP method calls ---
 Private m_CDPRequests() As CDPRequestEntry
 Private m_CDPRequestCount As Long
 Private m_CDPNextId As Long
 
-' --- スクリプト管理 ---
+' --- Script management ---
 Private m_Scripts() As ScriptEntry
 Private m_ScriptCount As Long
 Private m_PendingScript As String
 Private m_IsScriptPending As Boolean
 
-' --- ExecuteScript 状態 ---
+' --- ExecuteScript state ---
 Private m_IsExecuteScriptPending As Boolean
 Private m_IsScriptRunning As Boolean
 Public LastScriptResult As String
 
-' --- ナビゲーション状態 ---
+' --- Navigation state ---
 Private m_IsNavigating As Boolean
 
-' --- キャプチャ状態 ---
+' --- Capture state ---
 Private m_pCaptureStream As LongPtr
 
-' --- 初期化済みフラグ ---
+' --- Initialized flag ---
 Private m_Initialized As Boolean
 
 Private m_StartURL As String
 
 ' ???????????????????????????????????????????????
-' Section 4: ライフサイクル
+' Section 4: Lifecycle
 ' ???????????????????????????????????????????????
 
 Private Sub Class_Initialize()
@@ -1100,12 +1105,12 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 5: 共有スタブ生成
+' Section 5: Shared stub generation
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' QueryInterface スタブ: 全 IID に対して E_NOINTERFACE を返す。
-''' WebView2 は IUnknown::QI を呼ぶが、Fake Object なので常に拒否。
+''' QueryInterface stub: returns E_NOINTERFACE for every IID.
+''' WebView2 calls IUnknown::QI, but since this is a Fake Object it is always refused.
 ''' </summary>
 Private Function CreateStubThunk_QI() As LongPtr
     ' mov eax, E_NOINTERFACE / ret
@@ -1124,7 +1129,7 @@ Private Function CreateStubThunk_QI() As LongPtr
 End Function
 
 ''' <summary>
-''' AddRef / Release スタブ: 常に 1 を返す (参照カウント固定)。
+''' AddRef / Release stub: always returns 1 (fixed reference count).
 ''' </summary>
 Private Function CreateStubThunk_AddRefRelease() As LongPtr
     ' mov eax, 1 / ret
@@ -1142,13 +1147,13 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 6: 関数ポインタキャッシュ
+' Section 6: Function pointer cache
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' このクラスの全 Public メソッドのアドレスを ITypeInfo 経由で取得し、
-''' Dictionary にキャッシュする。サンク生成時にメソッド名から
-''' 直接関数ポインタを引くために使用。
+''' Obtains the addresses of all Public methods of this class via ITypeInfo
+''' and caches them in a Dictionary. Used to look up function pointers
+''' directly from method names when generating thunks.
 ''' </summary>
 Public Sub BuildFuncPtrCache()
     Set m_funcPtrs = Nothing
@@ -1212,7 +1217,7 @@ Cleanup:
     CallCOM0V pTInfo, 2
 End Sub
 
-' --- DispCallFunc ラッパー群 (BuildFuncPtrCache 専用) ---
+' --- DispCallFunc wrapper group (dedicated to BuildFuncPtrCache) ---
 
 Private Function CallCOM0V(ByVal p As LongPtr, ByVal idx As Long) As Long
     Dim res As Variant
@@ -1272,30 +1277,30 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 7: ハンドラ VTable + サンク生成
+' Section 7: Handler VTable + thunk generation
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' 指定メソッド名の関数ポインタを取得し、
-''' COM コールバック用の VTable + サンクを生成する。
+''' Obtains the function pointer for the specified method name
+''' and generates a VTable + thunk for a COM callback.
 '''
-''' VTable レイアウト (各 8 bytes):
+''' VTable layout (8 bytes each):
 '''   [0] QueryInterface   → m_pStubQI
 '''   [1] AddRef           → m_pStubAddRefRelease
 '''   [2] Release          → m_pStubAddRefRelease
 '''   [3] Invoke           → thunkAddr
 '''
-''' サンクの動作:
-'''   COM から (this, arg1, arg2, arg3) で呼ばれた時、
-'''   引数をシフトして (ObjPtr(Me), this, arg1, arg2) に変換し、
-'''   VBA メソッドへ jmp する。
+''' Thunk behavior:
+'''   When called from COM with (this, arg1, arg2, arg3),
+'''   it shifts the arguments to convert them into (ObjPtr(Me), this, arg1, arg2)
+'''   and jmps to the VBA method.
 '''
-''' 制限: 明示的パラメータは最大3個まで (4レジスタ制約)。
+''' Limitation: at most 3 explicit parameters (4-register constraint).
 ''' </summary>
 Private Function CreateHandlerVTable(ByVal methodName As String) As LongPtr
 
     If Not m_funcPtrs.Exists(methodName) Then
-        Debug.Print "CreateHandlerVTable: メソッド未発見 - " & methodName
+        Debug.Print "CreateHandlerVTable: method not found - " & methodName
         Exit Function
     End If
 
@@ -1303,7 +1308,7 @@ Private Function CreateHandlerVTable(ByVal methodName As String) As LongPtr
     pFunc = m_funcPtrs(methodName)
     If pFunc = 0 Then Exit Function
 
-    ' メモリ確保: vtable(32) + thunk(48) = 80 bytes
+    ' Memory allocation: vtable(32) + thunk(48) = 80 bytes
     Dim blockAddr As LongPtr
     blockAddr = VirtualAlloc(0, 80, MEM_COMMIT Or MEM_RESERVE, PAGE_EXECUTE_READWRITE)
     If blockAddr = 0 Then Exit Function
@@ -1311,7 +1316,7 @@ Private Function CreateHandlerVTable(ByVal methodName As String) As LongPtr
     Dim vtblAddr As LongPtr:  vtblAddr = blockAddr
     Dim thunkAddr As LongPtr: thunkAddr = blockAddr + 32
 
-    ' --- サンク生成 (x64 machine code) ---
+    ' --- Thunk generation (x64 machine code) ---
     Dim b(47) As Byte, i As Long
     ' mov r9, r8       (arg2 → slot3)
     b(i) = &H4D: b(i + 1) = &H89: b(i + 2) = &HC1: i = i + 3
@@ -1331,7 +1336,7 @@ Private Function CreateHandlerVTable(ByVal methodName As String) As LongPtr
 
     RtlMoveMemory thunkAddr, VarPtr(b(0)), CLngPtr(i)
 
-    ' --- VTable 構築 ---
+    ' --- Building the VTable ---
     RtlMoveMemory vtblAddr + 0, VarPtr(m_pStubQI), 8
     RtlMoveMemory vtblAddr + 8, VarPtr(m_pStubAddRefRelease), 8
     RtlMoveMemory vtblAddr + 16, VarPtr(m_pStubAddRefRelease), 8
@@ -1341,8 +1346,8 @@ Private Function CreateHandlerVTable(ByVal methodName As String) As LongPtr
 End Function
 
 ''' <summary>
-''' VTable ポインタから Fake COM Object (8 bytes) を生成する。
-''' 戻り値がそのまま COM ハンドラオブジェクトとして使える。
+''' Generates a Fake COM Object (8 bytes) from a VTable pointer.
+''' The return value can be used as-is as a COM handler object.
 ''' </summary>
 Private Function AllocFakeObj(ByVal vtblAddr As LongPtr) As LongPtr
     Dim p As LongPtr
@@ -1352,7 +1357,7 @@ Private Function AllocFakeObj(ByVal vtblAddr As LongPtr) As LongPtr
     AllocFakeObj = p
 End Function
 
-''' <summary>ハンドラメモリブロックを解放する</summary>
+''' <summary>Frees a handler memory block</summary>
 Private Sub FreeHandlerMemory(ByRef vtblBlock As LongPtr, ByRef fakeObj As LongPtr)
     If fakeObj <> 0 Then VirtualFree fakeObj, 0, MEM_RELEASE: fakeObj = 0
     If vtblBlock <> 0 Then VirtualFree vtblBlock, 0, MEM_RELEASE: vtblBlock = 0
@@ -1360,27 +1365,27 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 8: 統一イベント登録システム
+' Section 8: Unified event registration system
 ' ???????????????????????????????????????????????
 '
-' 使い方:
-'   登録: key = AddEventHandler(pInterface, addIdx, removeIdx, "Invoke_XXX", "MyKey")
-'   解除: RemoveEventHandler "MyKey"
-'   確認: If HasEventHandler("MyKey") Then ...
+' Usage:
+'   Register: key = AddEventHandler(pInterface, addIdx, removeIdx, "Invoke_XXX", "MyKey")
+'   Unregister: RemoveEventHandler "MyKey"
+'   Check: If HasEventHandler("MyKey") Then ...
 '
-' 完了コールバック (add_/remove_ なし):
+' Completion callbacks (without add_/remove_):
 '   fakeObj = EnsureCallbackHandler("__exec_script", "Invoke_ExecuteScript")
 '
 
 ''' <summary>
-''' イベントハンドラを登録する。
+''' Registers an event handler.
 ''' </summary>
-''' <param name="pInterface">COMインターフェースポインタ</param>
-''' <param name="addIndex">add_xxx の vtable インデックス</param>
-''' <param name="removeIndex">remove_xxx の vtable インデックス</param>
-''' <param name="callbackMethod">VBAコールバックメソッド名</param>
-''' <param name="key">管理キー (空の場合は callbackMethod を使用)</param>
-''' <returns>登録キー (失敗時は空文字列)</returns>
+''' <param name="pInterface">COM interface pointer</param>
+''' <param name="addIndex">vtable index of add_xxx</param>
+''' <param name="removeIndex">vtable index of remove_xxx</param>
+''' <param name="callbackMethod">Name of the VBA callback method</param>
+''' <param name="key">Management key (callbackMethod is used if empty)</param>
+''' <returns>Registration key (empty string on failure)</returns>
 Public Function AddEventHandler( _
     ByVal pInterface As LongPtr, _
     ByVal addIndex As Long, _
@@ -1389,19 +1394,19 @@ Public Function AddEventHandler( _
     Optional ByVal Key As String = "") As String
 
     If pInterface = 0 Then
-        Debug.Print "AddEventHandler: インターフェースが null です"
+        Debug.Print "AddEventHandler: interface is null"
         Exit Function
     End If
 
     If Key = "" Then Key = callbackMethod
 
-    ' 重複チェック
+    ' Duplicate check
     If m_handlers.Exists(Key) Then
-        Debug.Print "AddEventHandler: キー重複 - " & Key
+        Debug.Print "AddEventHandler: duplicate key - " & Key
         Exit Function
     End If
 
-    ' ハンドラ生成
+    ' Generate the handler
     Dim vtbl As LongPtr: vtbl = CreateHandlerVTable(callbackMethod)
     If vtbl = 0 Then Exit Function
     Dim fakeObj As LongPtr: fakeObj = AllocFakeObj(vtbl)
@@ -1410,18 +1415,18 @@ Public Function AddEventHandler( _
         Exit Function
     End If
 
-    ' COM に登録
+    ' Register with COM
     Dim token As LongPtr
     Dim hr As Long
     hr = dcf(pInterface, addIndex, callbackMethod, fakeObj, VarPtr(token))
 
     If hr <> 0 Then
-        Debug.Print "AddEventHandler: 登録失敗 - " & Key & " hr=&H" & Hex(hr)
+        Debug.Print "AddEventHandler: registration failed - " & Key & " hr=&H" & Hex(hr)
         FreeHandlerMemory vtbl, fakeObj
         Exit Function
     End If
 
-    ' エントリ保存
+    ' Save the entry
     m_handlerCount = m_handlerCount + 1
     ReDim Preserve m_handlerData(0 To m_handlerCount - 1)
     Dim idx As Long: idx = m_handlerCount - 1
@@ -1446,11 +1451,11 @@ Public Function AddEventHandler( _
 End Function
 
 ''' <summary>
-''' キーを指定してイベントハンドラを解除・メモリ解放する。
+''' Unregisters the event handler for the specified key and frees its memory.
 ''' </summary>
 Public Function RemoveEventHandler(ByVal Key As String) As Long
     If Not m_handlers.Exists(Key) Then
-        Debug.Print "RemoveEventHandler: 未登録 - " & Key
+        Debug.Print "RemoveEventHandler: not registered - " & Key
         RemoveEventHandler = -1
         Exit Function
     End If
@@ -1460,27 +1465,27 @@ Public Function RemoveEventHandler(ByVal Key As String) As Long
     With m_handlerData(idx)
         If Not .active Then Exit Function
 
-        ' COM の remove_ 呼び出し
+        ' Call COM's remove_
         If .isEvent And .pInterface <> 0 Then
             Dim hr As Long
             hr = dcf(.pInterface, .removeIndex, "remove_" & Key, .token)
             RemoveEventHandler = hr
             If hr <> 0 Then
-                Debug.Print "RemoveEventHandler: remove 失敗 - " & Key & " hr=&H" & Hex(hr)
+                Debug.Print "RemoveEventHandler: remove failed - " & Key & " hr=&H" & Hex(hr)
             End If
         End If
 
-        ' 追加 COM ポインタの Release
+        ' Release the additional COM pointer
         If .pExtraRelease <> 0 Then
             dcf .pExtraRelease, 2, "Release_extra"
             .pExtraRelease = 0
         End If
 
-        ' 逆引き辞書から削除
+        ' Delete from the reverse-lookup dictionary
         Dim fakeObjKey As String: fakeObjKey = CStr(.fakeObj)
         If m_fakeObjToKey.Exists(fakeObjKey) Then m_fakeObjToKey.Remove fakeObjKey
 
-        ' メモリ解放
+        ' Free the memory
         FreeHandlerMemory .vtblBlock, .fakeObj
         .active = False
         .pInterface = 0
@@ -1491,19 +1496,19 @@ Public Function RemoveEventHandler(ByVal Key As String) As Long
     Debug.Print "Event Removed: " & Key
 End Function
 
-''' <summary>登録済みかどうかを確認する</summary>
+''' <summary>Checks whether a handler is registered</summary>
 Public Function HasEventHandler(ByVal Key As String) As Boolean
     HasEventHandler = m_handlers.Exists(Key)
 End Function
 
 ''' <summary>
-''' 再利用可能な完了コールバックハンドラを取得する (add_/remove_ 不要)。
-''' 初回呼び出し時に生成し、以降はキャッシュを返す。
+''' Obtains a reusable completion callback handler (no add_/remove_ needed).
+''' Generated on the first call; afterwards the cached one is returned.
 ''' </summary>
 Private Function EnsureCallbackHandler( _
     ByVal Key As String, ByVal callbackMethod As String) As LongPtr
 
-    ' 既存があればそれを返す
+    ' If one already exists, return it
     If m_handlers.Exists(Key) Then
         Dim existIdx As Long: existIdx = m_handlers(Key)
         If m_handlerData(existIdx).active Then
@@ -1512,7 +1517,7 @@ Private Function EnsureCallbackHandler( _
         End If
     End If
 
-    ' 新規生成
+    ' Generate a new one
     Dim vtbl As LongPtr: vtbl = CreateHandlerVTable(callbackMethod)
     If vtbl = 0 Then Exit Function
     Dim fakeObj As LongPtr: fakeObj = AllocFakeObj(vtbl)
@@ -1539,7 +1544,7 @@ Private Function EnsureCallbackHandler( _
     EnsureCallbackHandler = fakeObj
 End Function
 
-''' <summary>fakeObj アドレスからキーを逆引きする</summary>
+''' <summary>Reverse-looks up the key from a fakeObj address</summary>
 Private Function LookupKeyByFakeObj(ByVal fakeObj As LongPtr) As String
     Dim k As String: k = CStr(fakeObj)
     If m_fakeObjToKey.Exists(k) Then
@@ -1549,7 +1554,7 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 9: WebView2 ライフサイクル
+' Section 9: WebView2 lifecycle
 ' ???????????????????????????????????????????????
 
 Public Sub CreateWebView2Environment(ByVal TargetFrame As MSForms.Frame, Optional StartURL As String)
@@ -1561,7 +1566,7 @@ Public Sub CreateWebView2Environment(ByVal TargetFrame As MSForms.Frame, Optiona
     Set TargetCtrl = m_targetFrame
     m_targetHWnd = TargetCtrl.[_GethWnd]
 
-    ' 環境作成完了用コールバック
+    ' Callback for environment creation completion
     Dim fakeObj As LongPtr
     fakeObj = EnsureCallbackHandler("__env_completed", "Invoke_EnvironmentCompleted")
     If fakeObj = 0 Then
@@ -1668,7 +1673,7 @@ Public Sub Invoke_EnvironmentCompleted( _
     End If
 
     m_pEnv = pEnvironment
-    ' AddRef して VBA 側で保持
+    ' AddRef and hold it on the VBA side
     dcf m_pEnv, 1, "Env.AddRef"
     Debug.Print "Environment Ready: &H" & Hex(m_pEnv)
 
@@ -1694,9 +1699,9 @@ Public Sub StartControllerCreation(Optional ByVal TargetFrame As MSForms.Frame, 
     Debug.Print "Target HWND: &H" & Hex(m_targetHWnd)
 
 
-    ' サンクのダンプ (fakeObj は m_fakeObj_ctrl 等の変数名かも)
+    ' Thunk dump (fakeObj may be a variable name such as m_fakeObj_ctrl)
     Dim fakeObjAddr As LongPtr
-    fakeObjAddr = fakeObj  ' ← 元のコードの変数名に合わせて
+    fakeObjAddr = fakeObj  ' ← matched to the variable name in the original code
 
     Dim pVtbl As LongPtr
     CopyMemory pVtbl, ByVal fakeObjAddr, 8
@@ -1738,37 +1743,37 @@ Public Sub Invoke_ControllerCompleted( _
         Exit Sub
     End If
 
-    ' --- 1. Controller を保持 ---
+    ' --- 1. Hold the Controller ---
     m_pController = pController
     dcf m_pController, 1, "Controller.AddRef"
 
-    ' --- 2. 可視化 (put_IsVisible: Index 4) ---
+    ' --- 2. Make it visible (put_IsVisible: Index 4) ---
     dcf m_pController, 4, "put_IsVisible", 1&
 
-    ' --- 3. サイズ設定 (put_Bounds: Index 6) ---
+    ' --- 3. Set the size (put_Bounds: Index 6) ---
     Dim l(3) As Long
     l(0) = 0: l(1) = 0
     l(2) = PtsToPx(m_targetFrame.InsideWidth, False)
     l(3) = PtsToPx(m_targetFrame.InsideHeight, True)
     dcf m_pController, 6, "put_Bounds", VarPtr(l(0))
 
-    ' --- 4. WebView2 本体を取得 ---
+    ' --- 4. Obtain the WebView2 itself ---
     Dim pWV As LongPtr
     dcf m_pController, 25, "get_CoreWebView2", VarPtr(pWV)
     m_pWebView = pWV
     If m_pWebView = 0 Then
-        Debug.Print "ICoreWebView2 取得失敗"
+        Debug.Print "Failed to obtain ICoreWebView2"
         Exit Sub
     End If
-    ' get_ は AddRef 済みポインタを返すので追加の AddRef は不要
+    ' get_ returns an already-AddRef'd pointer, so no additional AddRef is needed
 
-    ' --- 5. Settings を取得 ---
+    ' --- 5. Obtain the Settings ---
     dcf m_pWebView, 3, "get_Settings", VarPtr(m_pSettings)
 
-    ' --- 6. イベントハンドラ一括登録 ---
+    ' --- 6. Bulk registration of event handlers ---
     Call RegisterDefaultHandlers
 
-    ' --- 7. テスト表示 ---
+    ' --- 7. Test display ---
     'Debug.Print "Navigating to Google..."
     'dcf m_pWebView, 5, "Navigate", StrPtr("https://www.google.com")
     If m_StartURL <> "" Then
@@ -1935,7 +1940,7 @@ Public Function Invoke_Controller_LostFocus( _
     Invoke_Controller_LostFocus = 0
 End Function
 
-' ★ 修正: インデックス 19/20 (旧コードは誤って 17 を使用)
+' ★ Fix: indexes 19/20 (the old code mistakenly used 17)
 Public Function Controller_add_AcceleratorKeyPressed( _
     Optional ByVal Key As String = "Ctrl.AcceleratorKeyPressed") As String
     Controller_add_AcceleratorKeyPressed = _
@@ -1947,7 +1952,7 @@ Public Function Invoke_Controller_AcceleratorKeyPressed( _
     Invoke_Controller_AcceleratorKeyPressed = 0
 End Function
 
-' --- 個別 remove ラッパー (任意のキーで解除可能) ---
+' --- Individual remove wrappers (can unregister with any key) ---
 Public Function Controller_remove_ZoomFactorChanged( _
     Optional ByVal Key As String = "Ctrl.ZoomFactorChanged") As Long
     Controller_remove_ZoomFactorChanged = RemoveEventHandler(Key)
@@ -2236,11 +2241,11 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 13: ICoreWebView2 イベントハンドラ登録
+' Section 13: ICoreWebView2 event handler registration
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' 初期化時に全デフォルトハンドラを登録する。
+''' Registers all default handlers at initialization.
 ''' </summary>
 Private Sub RegisterDefaultHandlers()
     ' --- ICoreWebView2 Events ---
@@ -2269,7 +2274,7 @@ Private Sub RegisterDefaultHandlers()
     AddScriptToExecuteOnDocumentCreated script1
 End Sub
 
-' --- 個別 add ラッパー (任意のキーで登録可能) ---
+' --- Individual add wrappers (can register with any key) ---
 
 Public Function add_NavigationStarting( _
     Optional ByVal Key As String = "WV.NavigationStarting") As String
@@ -2337,7 +2342,7 @@ Public Function add_WindowCloseRequested( _
     add_WindowCloseRequested = AddEventHandler(m_pWebView, 59, 60, "Invoke_WindowCloseRequested", Key)
 End Function
 
-' --- 個別 remove ラッパー ---
+' --- Individual remove wrappers ---
 
 Public Function remove_NavigationStarting( _
     Optional ByVal Key As String = "WV.NavigationStarting") As Long
@@ -2406,7 +2411,7 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 14: Invoke コールバック (ICoreWebView2 Events)
+' Section 14: Invoke callbacks (ICoreWebView2 Events)
 ' ???????????????????????????????????????????????
 
 Public Function Invoke_NavigationStarting( _
@@ -2530,7 +2535,7 @@ End Function
 Public Function AddScriptToExecuteOnDocumentCreated(ByVal javascript As String) As Long
 
     If m_IsScriptPending Then
-        Debug.Print "AddScriptToExecuteOnDocumentCreated: 前回が未完了です"
+        Debug.Print "AddScriptToExecuteOnDocumentCreated: the previous call has not completed"
         AddScriptToExecuteOnDocumentCreated = E_PENDING
         Exit Function
     End If
@@ -2582,7 +2587,7 @@ Public Function RemoveScriptToExecuteOnDocumentCreated(ByVal scriptId As String)
     RemoveScriptToExecuteOnDocumentCreated = dcf(m_pWebView, 28, _
         "RemoveScriptToExecuteOnDocumentCreated", StrPtr(scriptId))
 
-    ' 内部リストからも削除
+    ' Also remove from the internal list
     Dim i As Long, j As Long
     For i = 0 To m_ScriptCount - 1
         If m_Scripts(i).scriptId = scriptId Then
@@ -2605,7 +2610,7 @@ End Function
 Public Function ExecuteScriptAsync(ByVal script As String) As Long
 
     If m_IsExecuteScriptPending Then
-        Debug.Print "ExecuteScript: 前回が未完了です"
+        Debug.Print "ExecuteScript: the previous call has not completed"
         ExecuteScriptAsync = E_PENDING
         Exit Function
     End If
@@ -2715,9 +2720,9 @@ End Function
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' CDP メソッドを非同期で呼び出す。
-''' 完了時に CDPMethodCompleted イベントが発火する。
-''' 戻り値: 成功時は正のリクエストID、失敗時は負のHRESULT。
+''' Calls a CDP method asynchronously.
+''' The CDPMethodCompleted event fires on completion.
+''' Return value: a positive request ID on success, a negative HRESULT on failure.
 ''' </summary>
 Public Function CallDevToolsProtocolMethod( _
     ByVal methodName As String, ByVal parameterAsJson As String) As Long
@@ -2725,7 +2730,7 @@ Public Function CallDevToolsProtocolMethod( _
     m_CDPNextId = m_CDPNextId + 1
     Dim requestId As Long: requestId = m_CDPNextId
 
-    ' リクエストごとにハンドラを生成 (再利用不可)
+    ' Generate a handler for each request (not reusable)
     Dim vtbl As LongPtr: vtbl = CreateHandlerVTable("Invoke_CDPMethodCompleted")
     If vtbl = 0 Then
         CallDevToolsProtocolMethod = &H80004005  ' E_FAIL
@@ -2738,7 +2743,7 @@ Public Function CallDevToolsProtocolMethod( _
         Exit Function
     End If
 
-    ' リクエスト追跡
+    ' Request tracking
     m_CDPRequestCount = m_CDPRequestCount + 1
     ReDim Preserve m_CDPRequests(0 To m_CDPRequestCount - 1)
     With m_CDPRequests(m_CDPRequestCount - 1)
@@ -2748,7 +2753,7 @@ Public Function CallDevToolsProtocolMethod( _
         .fakeObj = fakeObj
     End With
 
-    ' fakeObj→Key 逆引き登録
+    ' Register the fakeObj→Key reverse lookup
     m_fakeObjToKey(CStr(fakeObj)) = "__cdp_" & requestId
 
     Dim hr As Long
@@ -2758,7 +2763,7 @@ Public Function CallDevToolsProtocolMethod( _
     If hr = 0 Then
         CallDevToolsProtocolMethod = requestId
     Else
-        ' 失敗時クリーンアップ
+        ' Cleanup on failure
         FreeHandlerMemory vtbl, fakeObj
         m_fakeObjToKey.Remove CStr(fakeObj)
         m_CDPRequestCount = m_CDPRequestCount - 1
@@ -2773,7 +2778,7 @@ Public Function Invoke_CDPMethodCompleted( _
     ByVal errorCode As Long, _
     ByVal resultPtr As LongPtr) As Long
 
-    ' pThis (= fakeObj) から対応リクエストを検索
+    ' Find the corresponding request from pThis (= fakeObj)
     Dim i As Long, j As Long
     Dim methodName As String
     Dim requestId As Long
@@ -2784,11 +2789,11 @@ Public Function Invoke_CDPMethodCompleted( _
             methodName = m_CDPRequests(i).methodName
             requestId = m_CDPRequests(i).requestId
 
-            ' メモリ解放
+            ' Free the memory
             FreeHandlerMemory m_CDPRequests(i).vtblBlock, m_CDPRequests(i).fakeObj
             m_fakeObjToKey.Remove CStr(pThis)
 
-            ' 配列を詰める
+            ' Compact the array
             For j = i To m_CDPRequestCount - 2
                 m_CDPRequests(j) = m_CDPRequests(j + 1)
             Next j
@@ -2809,7 +2814,7 @@ Public Function Invoke_CDPMethodCompleted( _
     If found Then
         RaiseEvent CDPMethodCompleted(requestId, methodName, errorCode, strResult)
     Else
-        Debug.Print "CDPMethodCompleted: 不明なリクエスト pThis=&H" & Hex(pThis)
+        Debug.Print "CDPMethodCompleted: unknown request pThis=&H" & Hex(pThis)
     End If
 
     Invoke_CDPMethodCompleted = 0
@@ -2821,25 +2826,25 @@ End Function
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' CDP イベントを購読する。
-''' eventName がそのままキーとなる (プレフィックス "DTP." 付き)。
+''' Subscribes to a CDP event.
+''' eventName becomes the key as it is (with the prefix "DTP.").
 ''' </summary>
 Public Function add_DevToolsProtocolEventReceived(ByVal eventName As String) As String
     Dim Key As String: Key = "DTP." & eventName
 
     If m_handlers.Exists(Key) Then
-        Debug.Print "add_DevToolsProtocolEventReceived: 既に登録済み - " & eventName
+        Debug.Print "add_DevToolsProtocolEventReceived: already registered - " & eventName
         Exit Function
     End If
 
-    ' 1. GetDevToolsProtocolEventReceiver でレシーバー取得
+    ' 1. Obtain the receiver with GetDevToolsProtocolEventReceiver
     Dim receiverPtr As LongPtr
     Dim hr As Long
     hr = dcf(m_pWebView, 42, "GetDevToolsProtocolEventReceiver", _
         StrPtr(eventName), VarPtr(receiverPtr))
     If hr <> 0 Or receiverPtr = 0 Then Exit Function
 
-    ' 2. ハンドラ生成
+    ' 2. Generate the handler
     Dim vtbl As LongPtr: vtbl = CreateHandlerVTable("Invoke_DTPEventReceived")
     If vtbl = 0 Then
         dcf receiverPtr, 2, "Receiver.Release"
@@ -2852,8 +2857,8 @@ Public Function add_DevToolsProtocolEventReceived(ByVal eventName As String) As 
         Exit Function
     End If
 
-    ' 3. レシーバーに対して add_DevToolsProtocolEventReceived (index 3)
-    '    remove は index 4
+    ' 3. add_DevToolsProtocolEventReceived on the receiver (index 3)
+    '    remove is index 4
     Dim token As LongPtr
     hr = dcf(receiverPtr, 3, "add_DevToolsProtocolEventReceived", fakeObj, VarPtr(token))
     If hr <> 0 Then
@@ -2862,7 +2867,7 @@ Public Function add_DevToolsProtocolEventReceived(ByVal eventName As String) As 
         Exit Function
     End If
 
-    ' 4. エントリ保存
+    ' 4. Save the entry
     m_handlerCount = m_handlerCount + 1
     ReDim Preserve m_handlerData(0 To m_handlerCount - 1)
     Dim idx As Long: idx = m_handlerCount - 1
@@ -2872,10 +2877,10 @@ Public Function add_DevToolsProtocolEventReceived(ByVal eventName As String) As 
         .vtblBlock = vtbl
         .fakeObj = fakeObj
         .isEvent = True
-        .pInterface = receiverPtr  ' remove_ はレシーバーに対して呼ぶ
+        .pInterface = receiverPtr  ' remove_ is called on the receiver
         .removeIndex = 4           ' remove_DevToolsProtocolEventReceived
         .token = token
-        .pExtraRelease = receiverPtr  ' Finalize 時に Release する
+        .pExtraRelease = receiverPtr  ' Released at Finalize
         .active = True
     End With
 
@@ -2889,12 +2894,12 @@ End Function
 Public Function Invoke_DTPEventReceived( _
     ByVal pThis As LongPtr, ByVal sender As LongPtr, ByVal args As LongPtr) As Long
 
-    ' pThis (= fakeObj) からキーを逆引き → eventName 取得
+    ' Reverse-look up the key from pThis (= fakeObj) → get eventName
     Dim Key As String: Key = LookupKeyByFakeObj(pThis)
     Dim eventName As String
-    If Len(Key) > 4 Then eventName = Mid$(Key, 5)  ' "DTP." を除去
+    If Len(Key) > 4 Then eventName = Mid$(Key, 5)  ' Remove "DTP."
 
-    ' get_ParameterObjectAsJson (args の index 3)
+    ' get_ParameterObjectAsJson (index 3 of args)
     Dim paramJson As String
     Dim pStr As LongPtr
     dcf args, 3, "get_ParameterObjectAsJson", VarPtr(pStr)
@@ -2913,7 +2918,7 @@ End Function
 
 
 ' ???????????????????????????????????????????????
-' Section 20: リサイズ
+' Section 20: Resize
 ' ???????????????????????????????????????????????
 
 Public Sub ResizeWebView()
@@ -2928,28 +2933,28 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 21: 全体クリーンアップ (Finalize)
+' Section 21: Overall cleanup (Finalize)
 ' ???????????????????????????????????????????????
 
 Public Sub Finalize()
 
     If Not m_Initialized Then Exit Sub
 
-    ' --- 1. 全ハンドラ解除 ---
+    ' --- 1. Unregister all handlers ---
     Dim keys As Variant
     If m_handlers.Count > 0 Then
         keys = m_handlers.keys
         Dim i As Long
         For i = UBound(keys) To LBound(keys) Step -1
             Dim Key As String: Key = CStr(keys(i))
-            ' __xxx は完了コールバック (add_/remove_ なし) → メモリだけ解放
+            ' __xxx is a completion callback (no add_/remove_) → free only the memory
             Dim idx As Long
             If m_handlers.Exists(Key) Then
                 idx = m_handlers(Key)
                 If m_handlerData(idx).isEvent Then
                     RemoveEventHandler Key
                 Else
-                    ' 非イベントハンドラのメモリ解放
+                    ' Free the memory of non-event handlers
                     Dim fakeObjKey As String
                     fakeObjKey = CStr(m_handlerData(idx).fakeObj)
                     If m_fakeObjToKey.Exists(fakeObjKey) Then m_fakeObjToKey.Remove fakeObjKey
@@ -2961,14 +2966,14 @@ Public Sub Finalize()
         Next i
     End If
 
-    ' --- 2. CDP リクエスト残存分を解放 ---
+    ' --- 2. Free any remaining CDP requests ---
     For i = 0 To m_CDPRequestCount - 1
         FreeHandlerMemory m_CDPRequests(i).vtblBlock, m_CDPRequests(i).fakeObj
     Next i
     m_CDPRequestCount = 0
     Erase m_CDPRequests
 
-    ' --- 3. COM インターフェースを Release ---
+    ' --- 3. Release COM interfaces ---
     If m_pSettings <> 0 Then dcf m_pSettings, 2, "Settings.Release": m_pSettings = 0
     If m_pWebView <> 0 Then dcf m_pWebView, 2, "WebView.Release": m_pWebView = 0
     If m_pController <> 0 Then
@@ -2984,11 +2989,11 @@ Public Sub Finalize()
         m_pCaptureStream = 0
     End If
 
-    ' --- 5. 共有スタブ解放 ---
+    ' --- 5. Free the shared stubs ---
     If m_pStubQI <> 0 Then VirtualFree m_pStubQI, 0, MEM_RELEASE: m_pStubQI = 0
     If m_pStubAddRefRelease <> 0 Then VirtualFree m_pStubAddRefRelease, 0, MEM_RELEASE: m_pStubAddRefRelease = 0
 
-    ' --- 6. 内部データクリア ---
+    ' --- 6. Clear internal data ---
     m_handlerCount = 0
     Erase m_handlerData
     m_handlers.RemoveAll
@@ -3006,10 +3011,10 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 22: ユーティリティ
+' Section 22: Utilities
 ' ???????????????????????????????????????????????
 
-''' <summary>LPWSTR を VBA の String に変換する</summary>
+''' <summary>Converts an LPWSTR into a VBA String</summary>
 Private Function PtrToStrW(ByVal p As LongPtr) As String
     If p = 0 Then Exit Function
     Dim cch As Long: cch = lstrlenW(p)
@@ -3018,7 +3023,7 @@ Private Function PtrToStrW(ByVal p As LongPtr) As String
     RtlMoveMemory StrPtr(PtrToStrW), p, CLngPtr(cch * 2)
 End Function
 
-''' <summary>Points → Pixels 変換 (DPI対応)</summary>
+''' <summary>Points → Pixels conversion (DPI-aware)</summary>
 Private Function PtsToPx(ByVal pts As Single, ByVal isVertical As Boolean) As Long
     Dim hdc As LongPtr: hdc = GetDC(0)
     Dim dpi As Long
@@ -3028,7 +3033,7 @@ Private Function PtsToPx(ByVal pts As Single, ByVal isVertical As Boolean) As Lo
     PtsToPx = CLng(pts * dpi / 72)
 End Function
 
-''' <summary>フォルダを再帰的に作成する</summary>
+''' <summary>Creates a folder recursively</summary>
 Private Sub CreateDeepFolder(ByVal folderPath As String)
     If folderPath = "" Then Exit Sub
     If Right$(folderPath, 1) = "\" Then folderPath = Left$(folderPath, Len(folderPath) - 1)
@@ -3043,7 +3048,7 @@ Private Sub CreateDeepFolder(ByVal folderPath As String)
     MkDir folderPath
 End Sub
 
-''' <summary>登録済みハンドラの一覧をデバッグ出力する</summary>
+''' <summary>Prints a list of registered handlers as debug output</summary>
 Public Sub DumpHandlers()
     Debug.Print "=== Registered Handlers ==="
     Debug.Print "Total entries: " & m_handlerCount
@@ -3070,7 +3075,7 @@ Public Sub DumpHandlers()
     Debug.Print "==========================="
 End Sub
 
-''' <summary>登録済み CDP リクエストの一覧をデバッグ出力する</summary>
+''' <summary>Prints a list of registered CDP requests as debug output</summary>
 Public Sub DumpCDPRequests()
     Debug.Print "=== Pending CDP Requests ==="
     Debug.Print "Total: " & m_CDPRequestCount
@@ -3084,16 +3089,16 @@ End Sub
 
 
 ' ???????????????????????????????????????????????
-' Section 23: COM 呼び出しラッパー (dcf)
+' Section 23: COM call wrapper (dcf)
 ' ???????????????????????????????????????????????
 
 ''' <summary>
-''' DispCallFunc を使って COM vtable の任意メソッドを呼び出す汎用ラッパー。
-''' 可変引数 (ParamArray) で最大16個のパラメータを受け取る。
+''' General-purpose wrapper that calls an arbitrary method of a COM vtable using DispCallFunc.
+''' Accepts up to 16 parameters through variable arguments (ParamArray).
 '''
-''' ? 全パラメータは LongPtr として扱う。
-'''   BOOL 等は事前に Long に変換してから渡すこと。
-'''   Double は 8 bytes だが LongPtr (x64) も 8 bytes なので互換。
+''' ? All parameters are treated as LongPtr.
+'''   Convert BOOL and the like to Long beforehand before passing them.
+'''   Double is 8 bytes, but LongPtr (x64) is also 8 bytes, so they are compatible.
 ''' </summary>
 Private Function dcf( _
     ByVal pInterface As LongPtr, _
@@ -3107,16 +3112,16 @@ Private Function dcf( _
         Exit Function
     End If
 
-    ' vtable からメソッドアドレスを取得
+    ' Obtain the method address from the vtable
     Dim pVTable As LongPtr
     CopyMemory pVTable, ByVal pInterface, LenB(pVTable)
     Dim pMethod As LongPtr
     CopyMemory pMethod, ByVal (pVTable + vtblIndex * LenB(pVTable)), LenB(pMethod)
 
-    ' 引数を配列に展開
+    ' Expand the arguments into an array
     Dim argc As Long
     argc = UBound(args) - LBound(args) + 1
-    If argc < 0 Then argc = 0  ' ParamArray が空の場合
+    If argc < 0 Then argc = 0  ' When the ParamArray is empty
 
     Dim vt() As Integer
     Dim vp() As LongPtr

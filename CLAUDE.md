@@ -1,422 +1,173 @@
-# VBA-WebView2 プロジェクト
+# VBA-WebView2 (English fork)
 
-Excel VBA **だけ**（外部 COM ライブラリ不使用、マシンコードサンク・SAFEARRAY 系メモリ
-プリミティブ・手作り vtable のみ）で WebView2 ブラウザコントロールを実装するプロジェクト。
-**開発言語は日本語。応答も日本語で行う。**
+Microsoft Edge **WebView2** hosted directly on an Excel VBA UserForm, in **pure VBA** — no
+external COM library, no ActiveX reference, no registry changes. It uses only x64 machine-code
+thunks, SAFEARRAY-based memory primitives and hand-built COM vtables called through
+`DispCallFunc`. **64-bit Office only.**
 
-タブブラウザとして一通り使える形は完成済み。「ページ自動制御（MSHTML 相当）」の
-D 軸は **D-7 まで完了**。**ネットワーク調査の N 軸は N-4 まで完了**。
+This is an English fork of [tarboh/WebView2-For-Excel-VBA](https://github.com/tarboh/WebView2-For-Excel-VBA)
+(MIT). Upstream history is kept; the upstream remote is named `upstream`. Working language of this
+fork: **English** (code, comments, docs, commit messages).
 
-## コンセプト（取捨選択の基準）
+Status inherited from upstream: usable tabbed browser; page automation ("D axis", an MSHTML-like
+API) complete through D-7; network inspection ("N axis") complete through N-4.
 
-**普通のブラウザを完全再現することは目的ではない。** 目指すのは次の 2 点:
+## Concept (what to optimise for)
 
-1. **Web ページを自動制御することに優れた使いやすさを発揮すること**
-2. **ユーザーフォーム上のコントロールを HTML で配置することでモダンな GUI を提供すること**
+Not a full browser clone. Two goals:
 
-判断に迷ったら、この 2 点に照らして「本家に合わせる価値があるか」を問う。
-D 軸はコンセプト①への直接の投資。
+1. **Be excellent at automating web pages from VBA.**
+2. **Give UserForms a modern GUI by laying out controls in HTML.**
 
----
-
-## 開発サイクル（厳守）
-
-① 方針すり合わせ（**複数案提示 + 推奨を明示**）→ たーぼーさんが選択 →
-② 実装 → ③ 実機検証ログ共有 → ④ 開発メモ記録 → 次段階。
-
-- **実装は方針合意前に絶対に開始しない。**
-- 各段階は独立して実機検証できる小さいスコープに保つ。
-- 実装直前に新たな技術リスクを見つけたら、勝手に処理せず**その場で論点として提示し合意を取る**。
-- 論点は**一括合意**の形が定着（第9.27 は 7 件、第9.32 は 7 件、D-1 は 8 件、D-2 は 9 件、D-3 は 8 件、D-4 は 10 件）。
-- **防御的実装や方針の微修正は必ず事後報告する**（設計原則79）。
-- 検証は Claude が検証 Sub / ヘルプ Sub を用意し、たーぼーさんは
-  **イミディエイトウィンドウで Sub 名を打つだけ**で済む形にする。
-- ★**判定は `Wv2Log` に出す**★（D-3 で D-1〜D-3 のテストを移行済み）。イミディエイトは
-  配管ログで流れるので、**合否はログファイルで読む**。各テストの最後に
-  `★判定 n 件: OK x / FAIL y★` を出す。Claude が直接ログを読めるので貼る必要も無い。
-- ★**検証の準備は `UserForm1.Show vbModeless` から**★（仕様事実54）。Show していないと
-  `hWnd_Frame` が 0 のままで `StartWebView2_Full` が失敗する。
-- ★**書き戻す前に Excel を閉じてもらう**★（仕様事実61）。開いていると `Workbooks.Open` が
-  読み取り専用で成功し、★ディスクに届かないのに「書き戻した」と出る★。
-  `import.ps1` にガードを入れたので今は中止して教えてくれる。
-
-### 過去の教訓
-
-- **第9.30**: 合意した初手が事前調査で誤りと分かったら、その場で初手を差し替えて再合意。
-- **第9.32b**: 実装準備中に「必ず踏む別の問題」を見つけたら、同じ回の論点に加えて一緒に塞ぐ。
-- **D-1**: たーぼーさんが前提の誤りを指摘したら即座に評価を組み直す。コードを渡す前の検査は増やす価値がある。
-- **D-2**: 設計時にメンバ数を数えて満足せず、「**この戻り値だけで呼び出し側が判断できるか**」を必ず問う。
-- **D-3**: **プローブ自体を検算する**（設計原則103）。合意した実測手順が、測りたい性質を
-  経路の途中で潰していないか確かめてから走らせる。D-3 では `EvalSync` が `JSON.stringify` を
-  先に噛ませるせいで Promise が `{}` に潰れており、下書きのプローブでは答えが出なかった。
-- **D-3**: **検証の判定は流れる場所に出さない**（設計原則105）。イミディエイトは
-  `EvalSync` 1 往復あたり配管ログ 15 行で溢れる。判定は `Wv2Log` に出してファイルで読む。
-- **D-4**: **外部の対象を掴む識別子は推測で書かない**（設計原則107）。実サイトの id は
-  自動生成に変わる。★覗く道具を先に作る★（`Test_D4_Dom` が実例）。候補を並べて
-  「どれが当たったか」をログに残す。
-- **D-4**: **相手に持たせた設定は空でも毎回送る**（設計原則106）。「空だから送らない」は
-  相手側に前の状態を残す。
-- **D-5**: ★**状態を持つ相手は「2 回目」で試す**★（設計原則110）。1 件だけの検証は
-  「前の状態が残る」類のバグを構造的に見逃す。実サイトの検証は最低 3 件並べる。
-- **D-5b**: **判定できない値は書き残さず、理由を残す**（設計原則111）。それらしい値を
-  入れておくと、後段（人でも数式でも）がそれを信じる。
-- **D-6b**: **状態の判定に間接的な指標を使わない**（設計原則112）。「地図が動いた」は
-  もっともらしいが、動かない理由は他にもある。数えられるなら数える。
-  回帰確認は既存バグを掘り当てることがある。見つけたら勝手に直さず、原因だけ特定して宿題に積む。
-- **N-1**: ★**COM の vtable index は推測で書かない**★（設計原則115）。
-  セレクタが外れても「見つからない」で済むが、**index が 1 つずれると別のメソッドを
-  呼んでプロセスごと落ちる**。`python tools/vtable.py <IF名>` で SDK ヘッダから抜く。
-- **N-1**: **自前で閉じた検証は、閉じた世界そのものが原因のとき何も言えない**（設計原則116）。
-  検証ページの的を全部★仮想ホスト★に置いた結果、全滅したときに「配線が悪い」のか
-  「仮想ホストが特殊」なのかを区別できなかった。★閉じた検証ほど対照を 1 本混ぜる★。
-- **N-1**: **相手が返す分類を自分の言葉で決めつけない**（設計原則117）。
-  「`fetch()` なら種別は FETCH だろう」で FAIL 3 件。実際は XHR で届く（仕様事実70）。
-  ★観察した値をログに書き出してから判定する★。
-- **N-2**: **観測が対象に触れるとき、「壊していないこと」を★別経路で★数える**
-  （設計原則118）。`IStream` を読むと位置が進むので `Seek(0)` で戻したが、
-  ★それが効いている証拠は自分の側からは絶対に得られない★。
-  送り先が受け取った本文と突き合わせて初めて分かる。
-- **N-2**: **依存する土台そのものを先に確かめる**（設計原則103）。
-  `MultiByteToWideChar` を ★ctypes で実物のまま呼んで★ 検算したので、
-  「上限で切ってマルチバイトの途中で切れたら U+FFFD になり残りは読める」まで
-  分かった状態で VBA に落とせた（実機 1 回で通った）。
-- **N-3**: **「用意ができた」を「終わった」の代わりに待たない**（設計原則120）。
-  詳細エントリは★要求が飛んだ瞬間★に作られる。それを「応答が来た」の代わりに
-  待って中身を読み、★毎回まだ来ていないものを読んでいた★。
-  実装は無罪で、実機 3 回ぶんを溶かした。
-- **N-3**: ★**走らなかった判定は FAIL より危険**★（設計原則121）。
-  条件で飛ばした判定は「OK 0 / FAIL 0」として数字から消える。
-  実際「OK 22 / FAIL 0」なのに確かめたかった 1 件が走っていなかった。
-  **飛ばしたことを必ずログに出す。**
-- **N-4**: **答えが 2 通りあり得るときは★どちらかに必ず決まる判定★を書く**
-  （設計原則122）。「決めつけない」だけでは観測しただけで終わる。
-  `Xor` で片方に決まる形にしたので、★1 回の実機で仕様が確定し、
-  しかも回帰試験として残った★。
+When in doubt, ask whether a change serves one of these two.
 
 ---
 
-## ファイル構成と「真実の所在」
+## Where the truth lives
 
-| 場所 | 中身 | 性質 |
+| Path | Contents | Notes |
 |---|---|---|
-| `src/` | 標準 8 本 + クラス 9 本 | **★正★ ここを編集する** |
-| `src/document/` | `ThisWorkbook` / `Sheet1` | 参照用（import では置換できない） |
-| `forms/` | `UserForm1` / `TimerForm` | **手動運用**。自動 import の対象外 |
-| `book/` | `WebView2_v0.5.2.xlsm` | 現行ブック。節目だけコミット |
-| `docs/` | 開発メモ 4 分冊ほか | 下記 |
-| `tools/` | `export.ps1` / `import.ps1` / `check_*.py` | ブックとの往復と検査 |
-| `Old/` | 過去のブック・モジュール・旧開発メモ | **触らない** |
+| `src/` | 8 standard modules + 9 classes | **Source of truth. Edit here.** |
+| `src/document/` | `ThisWorkbook` / `Sheet1` | Reference only (import cannot replace them) |
+| `forms/` | `UserForm1` / `TimerForm` | Managed by hand; not auto-imported |
+| `book/` | `WebView2_v0.5.2.xlsm` | Current workbook; commit only at milestones |
+| `docs/` | Dev notes (see below) | |
+| `tools/` | `export.ps1` / `import.ps1` / `check_*.py` / `vtable.py` | Round-trip with the workbook, checks |
 
-### ブックとの往復
+### Round-trip with the workbook
 
-**ブック → `src/`**
+**Workbook → `src/`** (opens the book read-only with macros disabled; never modifies it):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File tools/export.ps1 -Force
 ```
 
-ブックを読み取り専用・マクロ無効で開き、`src/` と `src/document/` を更新する。
-ブックは変更しない。フォームは `-Forms` を付けたときだけ書き出す
-（`.frx` はエクスポートのたびに数バイト変化して差分が汚れるため）。
+Forms are exported only with `-Forms` (`.frx` changes a few bytes on every export).
 
-**`src/` → ブック（★既定は下見。書き戻すには `-Apply` が要る★）**
+**`src/` → workbook** (default is a dry run; `-Apply` writes, `-AllowNew` allows new modules,
+`-Modules A,B` limits the set):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File tools/import.ps1
 ```
 
-`-Apply` を付けると書き戻す。**新規モジュールを足すときは `-AllowNew` も要る。**
-`-Modules Wv2Json,Wv2Url` で対象を絞れる。
+- **Close Excel first.** If the book is open, `Workbooks.Open` succeeds read-only and nothing
+  reaches the disk; `import.ps1` guards against this.
+- A timestamped backup goes to `book/backup/`; only changed modules are written; the book is
+  re-read and compared afterwards.
+- Existing modules are replaced with `AddFromString`, new ones are added with `Import`
+  (`Remove` + `Import` renames the module to `Wv2Pane1` because removal is deferred).
+- Member attribute lines (`Attribute m_foo.VB_VarHelpID`) are dropped on write; otherwise they
+  duplicate and one becomes visible code → compile error. After `-Apply` run
+  `python tools/check_book.py`; if a module got corrupted, `tools/repair_book.ps1 -Modules <name> -Apply`.
+- Declaring an identifier that already exists with different casing makes VBA re-case it in the
+  whole project; `import.ps1` reports this — then run `export.ps1 -Force`.
+- **Keep the workbook outside OneDrive.** OneDrive opens it via a cloud URL with AutoSave on, which
+  silently overwrites what `import.ps1` wrote.
 
-- 事前に `check_cp932.py` が走り、1 件でも出たら**中止**する
-- `Attribute VB_Name` がファイル名と違ったら**中止**する
-- `book/backup/` へタイムスタンプ付きで複製してから書き込む
-- **内容が変わったモジュールだけ**入れる。1 本も変わらなければブックを保存しない
-- **既存の差し替えは `AddFromString`、新規の追加は `Import`** のハイブリッド。
-  `VBComponents.Remove` + `Import` は使わない（削除が遅延して同名 Import が
-  `Wv2Pane1` に化ける罠がある）。`Remove` しないので新規追加の `Import` は安全で、
-  ヘッダーの属性と名前が自動で正しく付く
-- 書き戻した直後に読み直して照合する
-- ヘッダー属性（`VB_PredeclaredId` 等）が `src/` とブックで食い違えば警告する
-  （VBIDE からは設定できないので VBE で手当てする）
-- **★書き戻した後、触っていないモジュールが変わることがある★**
-  新規モジュールが既存と同じ綴りの識別子を別の大小で宣言していると、
-  VBA がプロジェクト全体の綴りを統一する（仕様事実38）。
-  `import.ps1` が検出して報告するので、**`export.ps1 -Force` で `src/` に取り込む**
-- ★**メンバー属性行（`Attribute m_foo.VB_VarHelpID`）は書き込みから落とす**★
-  残すと VBE が生成する本物と二重になり、**片方がコードとして露出して
-  コンパイルエラーになる**。`VB_VarHelpID` は VBE が自動生成するので送る必要がない
-- ★**`CodeModule` 経由の照合ではこの重複を検出できない**★
-  `-Apply` の後は `python tools/check_book.py` でブック内部を直接確かめる。
-  露出してしまったら `tools/repair_book.ps1 -Modules <名前> -Apply` で作り直す
-- 対象は `src/*.bas` と `src/*.cls` のみ。`src/document/` と `forms/` は対象外
-
----
-
-## 開発メモ（`docs/`）
-
-**4 分冊。索引が入口で、索引だけでほぼ全ての「現在地」が揃う。**
-
-| ファイル | 中身 | 性質 |
-|---|---|---|
-| `開発メモ_0_索引.md` (651 行) | 段階番号の体系 / コンセプト / 全段階の目次 / **設計原則 全リスト (1〜122)** / **仕様事実 全リスト (1〜80)** / ロードマップ / 現行の状態 / **未解決の宿題** | **まずここを読む** |
-| `開発メモ_1_基盤編.md` (6511 行) | 序 〜 第9.2 段階（サンク基盤の確立） | 凍結 |
-| `開発メモ_2_ブラウザ編.md` (6628 行) | 第9.3a 〜 第9.32b 段階 | 凍結 |
-| `開発メモ_3_D軸.md` (1283 行) | D-1 段階 〜 D-5 段階 + 外部からの提言 | **現役の追記先 (D 軸)** |
-| `開発メモ_4_E軸.md` (870 行) | E-1 段階 〜 E-4 段階 | **現役の追記先 (開発環境・ツール)** |
-| `開発メモ_5_K軸.md` | K-1 段階 〜 K-5 段階 | **現役の追記先 (基盤・借金返済)** |
-| `開発メモ_6_N軸.md` | N-1 段階 〜 | **現役の追記先 (ネットワーク調査)** |
-| `引き継ぎ_D-2完了時点.md` | チャット時代の引き継ぎプロンプト | **歴史的記録。現行ルールではない** |
-
-索引の全リストは番号・見出し・出典段階の 3 列。**全文が要るときは「出典段階」の節を分冊で引く。
-索引の表は要約であって原文ではない。**
-
-### 追記ルール
-
-- **その軸の分冊**に本文を末尾に追記する。D 軸 (ページ自動制御) は `_3_D軸.md`、
-  開発環境・ツールは `_4_E軸.md`、基盤・借金返済は `_5_K軸.md`、
-  ネットワーク調査は `_6_N軸.md`。
-  新しい軸を立てるときは分冊を新設し、**たーぼーさんに確認してから**にする
-- `開発メモ_0_索引.md` … 目次に 1 行 + 原則/事実の表に 1 行ずつ + 見出しの上限番号を更新
-  + 「現行の状態」の見出しとファイル構成 + 末尾の宿題を差し替え
-- 末尾の「未解決 / 次段の宿題」は**常に最新の 1 枚だけを保つ**
-- 開発メモは **UTF-8 / BOM なし / CRLF**
-
----
-
-## ★VBA コードを書くときの必須ルール★
-
-- **モジュール修正時はヘッダーのバージョンを更新する。** 最新ブロックを先頭に積み、過去は残す。
-  ブック内のモジュールと `src/` の版を突き合わせる唯一の手がかりなので省略しない。
-- ★**VBA は識別子の大小を区別しない**★ `eNum` は予約語 `Enum` と衝突する（D-1 で踏んだ）。
-  **新規識別子は必ず予約語リストと小文字化して照合する**（設計原則90）。
-- ★**クラスモジュールの `Public Enum` が他モジュールから無修飾で見えるかは未検証**★
-  D-2 では `Boolean` + 状態文字列で回避した。使いたくなったら先に検証すること。
-- ★**Function 内で関数名を右辺に書くと再帰呼び出しになる**★（一時変数で回避）
-- `WritePtrNatively` の第一引数は `LONG_PTR`（`LongPtr` と書くと実行時エラー）
-- `AddressOf` は関数の実引数位置でしか書けない（`addr = VBA.Int(AddressOf X)`）
-- 行継続記号（アンダースコア）の右側に同じ行内でコメントを書くと構文エラー
-- モジュールレベル変数・定数はモジュール冒頭（全プロシージャより手前）に置く
-
-### VBA 文字列内で JS を書くとき
-
-**バックスラッシュ + 二重引用符は禁物**（JS の属性値・文字列はシングルクォート。コメント内にも書かない）。
-
-D-2 で確立: **`Wv2Pane.JsQuote` を使えばよい。** 実体は
-`Chr$(34) & Wv2Json.JsonEscape(s) & Chr$(34)` なので、エスケープ列は実行時に組み立てられ、
-VBA のソース上に現れない。
-
----
-
-## ★ブックは OneDrive の外に置く（2026-08-20 確定）★
-
-リポジトリは `C:\Users\gugug\GitHub\WebView2-For-Excel-VBA`。**OneDrive 配下に置かない。**
-
-OneDrive 上に置くと:
-
-- Excel がブックを **`https://d.docs.live.net/...` のクラウド URL で開く**
-- そのため **AutoSave が既定で ON** になり、**編集が意識せず書き戻される**
-- ローカルファイルと Excel が見ている版が食い違い、
-  `import.ps1` で直したはずの内容が古い在庫で上書きされる
-
-K-2 でこれを踏み、`import.ps1` で正常化したブックが AutoSave に潰された。
-
----
-
-## ★文字コードの制約（最重要・2026-08-19 確定）★
-
-**VBA のソースはプロジェクトのコードページ（日本語環境では CP932）で保持される。
-CP932 で表現できない文字は、import した時点で `?` になり永久に失われる。**
-
-- `src/` のファイルは **UTF-8 / BOM なし / CRLF**。`export.ps1` が CP932 から変換している。
-- **新しくコードやコメントを書くとき、CP932 で往復できない文字を使ってはならない。**
-  失敗モードが 2 つあることに注意:
-
-  | モード | 例 | 結果 |
-  |---|---|---|
-  | encode 自体が不可 | `⚙` `⟳` `⇄` `✓` `✗` `↔` `—` 絵文字全般 | `?` になる |
-  | **encode は通るが別の字に化ける** | `〜`(U+301C)→`～`、`−`(U+2212)→`－`、`¢`→`￠` | 黙って置き換わる |
-
-  - 安全と確認済み: `★ ← → ⇔ ① ② ③ ～`(U+FF5E) `―`(U+2015) `－`(U+FF0D) `ー ・ ※ 〓`
-  - ★**`.encode('cp932')` が通るかだけでは不十分**★ 往復して同じ字に戻るかを見ること。
-    さらに Python の cp932 は Windows より寛容で、`〜`(U+301C) は Python では通るが
-    **VBA では `?` になる**。往復検査ならどちらも捕まる。
-  - **迷わず検査スクリプトを使う:**
-
-    ```bash
-    python tools/check_cp932.py
-    ```
-- ★**過去に失われた 76 文字は K-3 で解消済み**★
-  （`〜`→`～` / `⚙`→`[歯車]` / `⇄``↔`→`⇔` / `⟳`→`[更新]` / `—`→`―`）。
-  経緯は `docs/開発メモ_5_K軸.md` の K-3 段階。
-  **今後は事前ゲートが止めるので同じ被害は増えない**（実際 K-2 で 1 件捕まえた）。
-
----
-
-## デバッグログ（K-1 で新設）
+### Opening the browser
 
 ```vba
-Wv2Log.LogE "..."   ' ERROR（直後に強制フラッシュ）
-Wv2Log.LogW "..."   ' WARN （同上）
+UserForm1.Show vbModeless      ' must be shown first, or hWnd_Frame is 0 and startup fails
+```
+
+---
+
+## Dev notes (`docs/`)
+
+| File | Contents |
+|---|---|
+| `dev-notes-0-index.md` | **Start here.** Stage numbering, all design principles (1-122), all spec facts (1-80), roadmap, current state, open items |
+| `standard-thunk-method.md` | How the x64 thunk technique works |
+| `dev-notes-3-D-axis.md` | D-1 … D-7: page automation |
+| `dev-notes-4-E-axis.md` | E-1 … E-4: dev environment / tooling |
+| `dev-notes-5-K-axis.md` | K-1 … K-5: foundation / tech-debt |
+| `dev-notes-6-N-axis.md` | N-1 … N-4: network inspection |
+| `dev-notes-1-foundation.ja.md`, `dev-notes-2-browser.ja.md`, `handover-at-D2.ja.md` | Frozen history, still in Japanese |
+
+Append to the note for the relevant axis; keep the index's open-items section current.
+Notes are UTF-8 without BOM, CRLF.
+
+---
+
+## Rules for writing VBA here
+
+- **Update the version header block when you change a module** (newest block on top). It is the
+  only way to match a module in the book with `src/`.
+- **VBA identifiers are case-insensitive.** `eNum` collides with `Enum`. Check new identifiers with
+  `python tools/check_idents.py <names...>` (it compares against reserved words and every existing
+  identifier, lower-cased).
+- Writing the function name on the right-hand side inside a Function is a recursive call — use a temp.
+- The first argument of `WritePtrNatively` is `LONG_PTR` (writing `LongPtr` gives a runtime error).
+- `AddressOf` is only allowed as a call argument (`addr = VBA.Int(AddressOf X)`).
+- No comment after a line-continuation underscore on the same line (syntax error).
+- Module-level variables and constants go at the top of the module.
+- **Never guess a COM vtable index.** An index off by one calls a different method and kills the
+  process. Get it from the SDK header: `python tools/vtable.py ICoreWebView2` (set `WEBVIEW2_H` to
+  the path of `WebView2.h` from the Microsoft.Web.WebView2 NuGet package).
+- **Source text must stay ASCII.** VBA stores source in the project's ANSI code page; anything that
+  code page cannot represent becomes `?` on import and is lost forever. Non-ASCII data (e.g. the
+  Japanese test inputs) must be built at runtime with `ChrW(&Hxxxx&)`. `import.ps1` runs
+  `tools/check_cp932.py` and `tools/check_ascii.py` before every import and aborts on a hit.
+
+### JavaScript inside VBA strings
+
+Never put backslash + double quote in VBA-built JS. Use single quotes in JS, and quote VBA values
+with `Wv2Pane.JsQuote(s)` (= `Chr$(34) & Wv2Json.JsonEscape(s) & Chr$(34)`).
+
+### Debug log
+
+```vba
+Wv2Log.LogE "..."   ' ERROR (flushed immediately)
+Wv2Log.LogW "..."   ' WARN  (flushed immediately)
 Wv2Log.LogI "..."   ' INFO
 Wv2Log.LogD "..."   ' DEBUG
 ```
 
-- **`LogPrint` が内部で `Debug.Print` も撃つ**ので、呼び出し側は 1 行だけ。
-  移行は `Debug.Print "..."` → `Wv2Log.LogD "..."` の**機械的な 1 対 1 置換**でよい。
-  イミディエイトの見え方は変わらない（`Wv2Log.LogEcho = False` で切れる）
-- ログは `%APPDATA%\Wv2Browser\logs\` に**起動ごとに 1 本**。20 本を残して自動削除
-- **行頭の 6 桁は連番。欠番があればログが落ちている**（K-1 を作った動機そのもの）
-- 検証前に `Wv2Log.LogStart` を打てば、そのテスト 1 回分が 1 ファイルに閉じる
-- ★**既存の全 `Debug.Print` を一度に書き換えない**★ 移行済みは `Wv2Pane` の 11 本だけで、
-  `src/` にはまだ 1,623 本残っている
-- ★`Debug.Print` は CP932 で表示するので `?` になることがあるが、**String 自体は無傷**★
-  UTF-8 でファイルに書けば正しく残る（仕様事実45）。イミディエイトの `?` で早合点しない
+Also echoes to the Immediate window (`Wv2Log.LogEcho = False` turns that off). Files go to
+`%APPDATA%\Wv2Browser\logs\`, one per session, 20 kept. The 6-digit line prefix is a sequence
+number — a gap means lost log lines. Tests write their verdict (`*Verdicts n: OK x / FAIL y*`)
+to the log; read results from the log file, not the Immediate window.
 
 ---
 
-## 検査の定型 4 点セット
+## Facts that are easy to forget
 
-1. **整形・構文検査**: `python tools/check_vba.py`
-   BOM / CRLF / 裸 LF / 行末空白 / 引用符の偶奇 / 行継続の後のコメント /
-   ブロックの開閉 / Exit の対象 / `&H` リテラルの `&` サフィックス（設計原則29）
-   **＋ CP932 往復検査**（`python tools/check_cp932.py`。上記の制約）
-2. **JS が多い回は「VBA 内の JS を組み立て直して検証」**
-   ★**この PC に node は入っていない**★ 代わりに **Edge を headless で走らせる**
-   （WebView2 と同じ Chromium・実 DOM で確かめられる）:
+- **Spec fact 20 – never break into the debugger while WebView2 is starting or busy.** The
+  EBMode gate stub can only check the mode on entry; a break during an event burst crashes Excel
+  (access violation). This also applies while `EvalSync` is pumping `DoEvents`.
+- **Spec fact 14 – no `EvalSync` from inside an event handler.** It would deadlock; it now
+  returns immediately with `LastEvalError = "in-callback"`. Defer with `SafeTimer` instead.
+  All `Wv2Element` methods go through the same path.
+- **D-2 design:** the DOM generation id is issued by JS and JS is always the authority; no
+  injected JS registry (each query carries its own prologue, so navigation/SPA rewrites self-heal);
+  `Nothing` vs empty string is distinguished by `LastEvalOk` / `LastOk`.
+- **`WaitSettled` = True only means "quiet", not "the app finished".** For important actions, arm an
+  explicit signal (`ArmContentSignal` / `ArmNetworkSignal` / `ArmUrlSignal`) right before acting.
+- Network (N axis): requests served via `SetVirtualHostNameToFolderMapping` do not raise
+  `WebResourceRequested`; JS `fetch()` arrives as `XML_HTTP_REQUEST` (7), not `FETCH`; reading the
+  request `IStream` advances it (must `Seek(0)` back); `WebResourceResponseReceived` has no filter;
+  `GetContent` returns decoded bodies.
 
-   ```bash
-   "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu --no-first-run --user-data-dir=<temp> --dump-dom --virtual-time-budget=3000 file:///<page.html>
-   ```
+## API overview
 
-   ページ内の `<pre>` に結果 JSON を書き、`--dump-dom` の出力から抜いて照合する。
-   ★**Edge が起動しているとハンドオフされて何も出力しない**★（仕様事実55）。
-   見分け方は `msedge --version`（何も出なければハンドオフ）。Edge を閉じてから走らせる。
-   **VBA ソースに同じ断片が存在することを assert して取り違えを防ぐ。**
-   D-3 では**連結式そのものを読んで JS に展開するミニ評価器**を書き、
-   `View_ExecuteScriptSafe` + `EvalSync` の包みまで再現して `resultJson` ごと突き合わせた。
-3. **識別子チェック**: `python tools/check_idents.py LogE LogD ...`
-   予約語だけでなく**既存の全識別子**と小文字化して照合する。
-   ★仕様事実43★ 既存と同じ綴りを別の大小で宣言すると**プロジェクト全体が書き換わる**。
-4. **原典との全数照合**: 変換後のファイルを原典と `Counter` で突き合わせ、
-   消失行がすべて意図した削除であることを確認する
-5. **★ブック内部の検査★**: `python tools/check_book.py`
-   ★`CodeModule` 経由では見えない異常がある★ メンバー属性行の重複など。
-   **`import.ps1 -Apply` の後は必ず走らせる**（K-2 で実際にコンパイルエラーを作った）
+Page automation (D axis): `QuerySelector` / `GetElementById` → `Wv2Element`; `QuerySelectorAll` →
+`Collection`; `.Value =` / `.Click` / `.SetAttribute` (native setters, so React/Vue see them);
+`WaitFor` / `WaitGone` / `ImplicitWaitSec`; `WaitSettled` / `AutoWaitAfterAction`;
+`ArmContentSignal` / `ArmNetworkSignal` / `ArmUrlSignal`; `Wv2Maps.MapsGeocode` /
+`MapsGeocodeSheet` (address → coordinates via Google Maps).
 
-### アルゴリズムは Python で先に検証できる
+Network inspection (N axis): `NetCaptureStart` / `NetCaptureStop`, `NetLogDrain` / `NetLogLine(i)`,
+`NetDetailOn` + `NetDetail(i)` / `NetDetailHeaders(i)` / `NetDetailBody(i)`, `NetRedact`
+(cookies etc. redacted by default), `NetLogStatus(i)`, `NetRespOn`, `NetRespBodyOn` +
+`NetDetailRespBody(i)`.
 
-D-1 は `JsonPickStr`、D-2 は `JsonUnescape` を Python で再現し、実データで検証してから VBA に落とした。
+## Verification checklist
 
-※ **全 NG や一部 NG のときはまず検査側を疑うこと。**
-D-1 は `json.dumps` がコロンの後に空白を入れるのが原因、D-2 は Python の `str` 連結では
-サロゲートの片割れが再結合しないのが原因。**2 回とも検査側が原因だった。**
-
----
-
-## ★特に忘れやすい仕様事実★
-
-### 仕様事実 20（第9.22）— EBMode ゲートの原理的な窓
-`StartWebView2_Full` の実行中〜直後にデバッガでブレーク/ステップ実行すると Excel がクラッシュ（AV）。
-全 COM コールバックが通る 91 バイトの EBMode 判定スタブは「スタブ入場時の EBMode 値」でしか
-分岐できず、判定通過後にブレーク遷移が競合する一瞬の窓が構造上残る。
-**対策は回避（運用ルール）**: WebView2 のイベントバーストが静定するまでブレーク/ステップ実行しない。
-★D-1 以降は「`EvalSync` の DoEvents ループ中も止めない」が追加★
-
-### 仕様事実 14 と in-callback ガード（D-1）
-イベントハンドラ（`View_On*`）の中から `EvalSync` を呼ぶと、ランタイムはハンドラの復帰を待ち、
-こちらは JS の完了を待つのでタイムアウトまで固まる。D-1 のガードにより
-**今は即座に `LastEvalError = "in-callback"` で戻る**。
-ハンドラ内で JS の結果が要るときは SafeTimer で一拍置いてから呼ぶ（`RequestNewTabAsync` と同じ型）。
-★`Wv2Element` も全メソッドがこの経路を通る★（`LastError = "in-callback"`）
-
-### 仕様事実 30 / 33（D-1 / D-2）— 結果 JSON のエスケープ
-不等号の開き側は `<` にエスケープされて届くが、**閉じ側はそのまま届く**。
-`Wv2Json.JsonUnescapeAt` が復号するので VBA 側では素の文字列が得られるが、
-シミュレータを書くときは実物に合わせること。
-
-### D-2 の設計の要点
-- **世代は JS が発行する**（`'g' + Date.now() + '-' + Math.random()`）。
-  **判定の権威は常に JS 側**（設計原則91）。`Wv2Pane.CurrentDomGen` は
-  「安全側にしか外さない高速パス」でしかない
-- **JS 側レジストリは注入しない。** 全検索式の先頭に自己生成プロローグを埋め込む（設計原則92）。
-  ページ遷移・SPA 書き換え・`about:blank` で自己修復する
-- **`Nothing` と空文字の意味は `LastEvalOk` / `LastOk` で区別する**（設計原則93）
-
----
-
-## この環境（Windows / PowerShell）固有の罠
-
-- ★**`.ps1` は UTF-8 BOM 付きで保存する**★ Windows PowerShell 5.1 は BOM 無しの `.ps1` を
-  CP932 として読むので、日本語コメントが化けて構文エラーになる。
-- ★**PowerShell も識別子の大小を区別しない**★ ローカル変数 `$raw` が switch パラメータ
-  `$Raw` と衝突して型エラーになった。VBA の `eNum` / `Enum` と同じ型の事故。
-- **Python で日本語を print するときは `PYTHONIOENCODING=utf-8` を設定する。**
-  さもないとコンソールが CP932 で文字化けする（ファイル操作自体は正常）。
-- **Python でファイルを読むときは `newline=""` を付ける。** テキストモードの universal newlines が
-  CRLF を LF に正規化するため、CRLF での split が黙って機能しなくなる。
-- **編集は「Python で置換 + 一致件数を assert」。** 事故ゼロの実績があるので継続する。
-- **PowerShell 5.1 には `&&` も三項演算子も無い。** `;` と `if/else` を使う。
-
----
-
-## 現在地と次にやること
-
-**D 軸は D-7 まで、N 軸は N-4 まで完了・実機検証済み・開発メモ記録済み。**
-**D 軸は「読む・書く・待つ・止める」が揃い、その上に★実用 (住所 → 座標) が 1 本載った★。**
-**N 軸は★1 本の通信が要求から応答本文まで丸ごと手に入る★ところまで来た。**
-着手中の作業は無い。
-
-D 軸で使えるもの:
-
-- `QuerySelector` / `GetElementById` → `Wv2Element`（D-2）
-- `QuerySelectorAll` → `Collection`（D-6。★0 件でも Nothing にしない★ / `ElementCount`）
-- `.Value =` / `.Click` / `.SetAttribute`（D-3。★ネイティブ setter 経由なので React / Vue にも効く★）
-- `WaitFor` / `WaitGone` / `ImplicitWaitSec`（D-3。DOM 条件待ち）
-- `WaitSettled` / `AutoWaitAfterAction`（D-4。静穏待ち）
-- `ArmContentSignal` / `ArmNetworkSignal` / `ArmUrlSignal`（D-4。★arm してから act する★）
-- `AddIgnoreNetwork` / `IgnoreSelectors` / `StaleInflightMs`（D-4。ノイズと居座りの除外）
-- `SpaProbeLogging` / `SpaProbeDrainLog`（D-4。★何を待つべきかを観測で決める診断ログ★）
-- `Test_D4_Dom`（★今開いているタブに何があるか列挙する道具★）
-- `Wv2Maps.MapsOpen` / `MapsGeocode`（D-5。★住所 → 座標 + 正規化住所★ が 1 行）
-- `Wv2Maps.MapsGeocodeSheet`（D-5b。★シートの住所列をまとめて座標に★ 再開もできる）
-
-N 軸で使えるもの:
-
-- `NetCaptureStart` / `NetCaptureStop`（N-1。★Navigate の前に始めれば初回の DOCUMENT から捕まる★）
-- `NetLogDrain` / `NetLogLine(i)`（N-1。ログへ流す / 流さずに 1 件読む）
-- `NetLogCount` / `NetLogTotal` / `NetLogDropped` / `NetLogCapacity`（N-1。★溢れを黙って隠さない★）
-- `Test_N1_Watch` / `Test_N1_Drain` / `Test_N1_Stop`
-  （★手で 1 回操作して、何をどの順で叩いているかを見る道具★）
-- `NetDetailOn`（N-2。★詳細（ヘッダとボディ）は既定 OFF★ True にすると取る）
-- `NetDetail(i)` / `NetDetailAll` / `NetDetailHeaders(i)` / `NetDetailBody(i)`（N-2）
-- `NetRedact` / `AddRedactHeader`（N-2。★Cookie 等は既定で伏せる。出すときに伏せる★）
-- `NetBodyMaxBytes` / `NetDetailUriFilter` / `NetDetailCapacity`（N-2）
-- `NetLogStatus(i)`（N-3。★一覧の行に結果が付く★ 0 = まだ来ていない）
-- `NetDetailRespHeaders(i)`（N-3。応答ヘッダ。`Set-Cookie` は既定で伏せる）
-- `NetRespOn` / `NetRespUnmatched`（N-3。拾えているか / 対応が無かった応答の数）
-- `NetRespBodyOn`（N-4。★応答本文は更に別のスイッチ★ 既定 OFF）
-- `NetDetailRespBody(i)` / `NetDetailRespLine(i)`（N-4。本文 / 素性）
-- `NetRespBodyMaxBytes` / `NetRespBodyOrphan`（N-4）
-
-★**N-1 で踏んだ 2 つの落とし穴**★
-- ★仕様事実69★ `SetVirtualHostNameToFolderMapping` で配信した要求は
-  **`WebResourceRequested` に乗らない**（配信自体は問題ない）。検証の的は外に置く。
-- ★仕様事実70★ JS の `fetch()` は `FETCH`(8) ではなく **`XML_HTTP_REQUEST`(7)** で届く。
-- ★仕様事実72★ `get_Content` の `IStream` は**読むと位置が進む**。
-  `Seek(0)` で戻さないと★空のボディが飛ぶ★（= 見るだけのつもりが通信を壊す）。
-- ★仕様事実74★ フォーム POST の日本語は **percent-encoded** で載る。
-- ★仕様事実76★ ヘッダの `GetIterator` は**要求側 8 / 応答側 7** でずれる。
-- ★仕様事実77★ `WebResourceResponseReceived` には**フィルタが無い**（全部来る）。
-- ★仕様事実79★ `GetContent` は**復号済み**を返す。`content-encoding` を見て
-  「圧縮されている」と判断してはいけない。
-
-★**`WaitSettled` が True でも「アプリの処理が終わった」証明ではない**★
-静かなだけ。重要な操作では明示シグナルを操作の直前に arm すること。
-
-次の候補は `開発メモ_0_索引.md` 末尾の「未解決 / 次段の宿題」を参照。
-★**N-5（PowerShell コード生成）**★ が N 軸の本命。材料は揃った
-（URL / メソッド / 要求ヘッダ / 要求ボディ / ステータス / 応答ヘッダ / 応答本文）。
-ほかに ★実際の住所録で回して出てくる要望★、
-★K-4 の残り（フォームを閉じたときの解放が遅い・原因未特定）★、
-機構としては ★Shadow DOM / iframe★。
+1. `python tools/check_vba.py` (format/syntax) and `python tools/check_ascii.py` (encoding).
+2. `python tools/check_idents.py <new identifiers>`.
+3. After a pure comment/message change: `python tools/check_translation.py <old_dir> src` proves
+   the code is unchanged.
+4. After `import.ps1 -Apply`: `python tools/check_book.py`.
+5. Real-machine tests: run `Test_*` subs from the Immediate window (with `UserForm1` shown) and read
+   the verdict lines in the log.

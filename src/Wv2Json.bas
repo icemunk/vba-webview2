@@ -1,95 +1,95 @@
 Attribute VB_Name = "Wv2Json"
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Json.bas  D-2 段階 (JSON 文字列の復号を共通化) ---
+' --- Wv2Json.bas  Stage D-2 (shared decoding of JSON strings) ---
 '
-'   D-2 の追加事項 (論点6 案b):
-'     ★JsonUnescapeAt / JsonUnescape / JsonPickStr を新設した★
-'       D-1 で Wv2Pane に Private として置いた JsonPickStr を、このモジュールへ
-'       移設して Public にした。D-2 では Wv2Pane (EvalSync の結果ほどき) と
-'       Wv2Element (プロパティ値の取り出し) の 2 箇所が同じ復号を必要とするため、
-'       状態を持たない純粋な変換としてここに集約する (設計原則70)。
+'   Additions in D-2 (issue 6, option b):
+'     *Added JsonUnescapeAt / JsonUnescape / JsonPickStr*
+'       JsonPickStr, which D-1 placed in Wv2Pane as Private, was moved into this module
+'       and made Public. In D-2 two places, Wv2Pane (unpacking EvalSync results) and
+'       Wv2Element (extracting property values), need the same decoding, so it is
+'       gathered here as a stateless pure transformation (design principle 70).
 '
 '     JsonUnescapeAt(json, startPos, outVal) As Long
-'       JSON 文字列リテラルの★中身★を startPos から走査し、エスケープを解いて
-'       outVal に入れる。戻り値は閉じ引用符の位置 (見つからなければ 0)。
-'       startPos は「開き引用符の★次★の文字」を指すこと。
+'       Scans the *contents* of a JSON string literal from startPos, resolves the escapes
+'       and puts the result in outVal. The return value is the position of the closing quote (0 if not found).
+'       startPos must point at the character *after* the opening quote.
 '
 '     JsonUnescape(raw) As String
-'       まるごと 1 個の JSON 値を受け取り、それが文字列リテラルなら引用符を外して
-'       エスケープを解く。文字列でなければ (数値 / true / null / オブジェクト等)
-'       ★そのまま素通しする★。EvalSync の戻り値をそのまま渡せる形にしてある。
+'       Takes one whole JSON value and, if it is a string literal, strips the quotes and
+'       resolves the escapes. If it is not a string (number / true / null / object, etc.)
+'       *it passes it through unchanged*. Shaped so the EvalSync return value can be passed straight in.
 '
 '     JsonPickStr(json, key, outVal) As Boolean
-'       "key":"value" の value を、エスケープを解いて取り出す。
+'       Extracts the value of "key":"value" with the escapes resolved.
 '
-'   ★JsonGetStr との使い分け★
-'     JsonGetStr は★エスケープを解かない★軽い実装で、自前 JS が送る cmd / index の
-'     ように「エスケープが入りえない値」を取り出すためのもの (設計原則64)。
-'     ページ由来の文字列 (innerText / innerHTML / 属性値) は必ずエスケープを含むので、
-'     そちらには JsonPickStr / JsonUnescape を使うこと。JsonGetStr は既存の
-'     呼び出し元があるため★一切変更していない★。
+'   *When to use JsonGetStr vs. these*
+'     JsonGetStr is a light implementation that *does not resolve escapes*, meant for pulling out
+'     values that "cannot contain escapes", such as the cmd / index sent by our own JS
+'     (design principle 64). Strings that come from pages (innerText / innerHTML / attribute values)
+'     always contain escapes, so use JsonPickStr / JsonUnescape for those. JsonGetStr has
+'     existing callers, so it has been *left completely unchanged*.
 '
-'   ★復号が必須である理由 (仕様事実30)★
-'     結果 JSON では < が \u003C にエスケープされて届く。D-2 で innerHTML を取ると
-'     全タグがこの形で来るため、\uXXXX の復号は保険ではなく必須。
+'   *Why decoding is mandatory (spec fact 30)*
+'     In result JSON, < arrives escaped as <. When D-2 takes innerHTML,
+'     every tag arrives in this form, so decoding \uXXXX is not insurance but a necessity.
 '
-'   ★サロゲートペア★
-'     \uD83D\uDE00 のような 2 個組は、ChrW$ を 2 回呼んで連結すれば正しく戻る
-'     (VBA の String は UTF-16 コードユニット列なので、片割れ同士を足せばペアになる)。
-'     ★Python でシミュレートするときは注意★ Python の str 連結では再結合しないため、
-'     コードユニット列として持って最後に一括デコードしないと偽の NG が出る。
+'   *Surrogate pairs*
+'     A pair such as U+1F600 (an emoji) comes back correctly if you call ChrW$ twice and concatenate
+'     (a VBA String is a sequence of UTF-16 code units, so adding the two halves forms the pair).
+'     *Be careful when simulating in Python* Python str concatenation does not recombine them, so unless you
+'     hold code units as a sequence and decode all at once at the end, you get false NGs.
 '
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Json.bas  第9.13 段階 (整理: JSON ヘルパーの共通化) ---
+' --- Wv2Json.bas  Stage 9.13 (cleanup: shared JSON helpers) ---
 '
-'   ★VBA⇔JS 通信で使う最小限の JSON ヘルパー★
+'   *The minimal JSON helpers used for VBA<->JS communication*
 '
-'   第9.11c～9.12d で Wv2TabBar と Wv2NavBar が各々 Private に同じ関数を持って
-'   しまっていた (JsonEscape / GetJsonStr / GetJsonNum / BoolToJson)。3 つ目の UI が
-'   出る前に共通モジュールへ抽出する (合意済みのクリーンアップ)。
+'   In stages 9.11c-9.12d, Wv2TabBar and Wv2NavBar each ended up holding the same functions
+'   as Private (JsonEscape / GetJsonStr / GetJsonNum / BoolToJson). They are extracted into a
+'   shared module before a third UI appears (an agreed cleanup).
 '
-'   ★なぜ Wv2Thunks.bas に入れないか★
-'     Wv2Thunks.bas は「マシンコードサンク・手製 vtable・SAFEARRAY メモリプリミティブ」
-'     という低レベル層のモジュールであり、既に 2600 行超。JSON 文字列処理は明らかに
-'     別の関心事なので、責務を混ぜず独立したモジュールにする。
+'   *Why not put them in Wv2Thunks.bas*
+'     Wv2Thunks.bas is a low-level-layer module of "machine-code thunks, hand-built vtables and SAFEARRAY
+'     memory primitives" and is already over 2600 lines. JSON string handling is clearly a
+'     separate concern, so it gets its own module instead of mixing responsibilities.
 '
-'   ★設計原則 64★ 自前 HTML の JS とだけ通信するので、汎用 JSON パーサは作らない。
-'     送信側は自分で書いた JS に限られるため入力は完全に信頼でき、ネスト・配列・
-'     エスケープを含む一般形への対応は不要。必要なキーを取り出す最小関数で足りる。
-'     (VBA に標準 JSON パーサがなく、外部 COM も本プロジェクトの方針で使えない)
+'   *Design principle 64* We only talk to the JS in our own HTML, so we do not build a general JSON parser.
+'     The sender is limited to JS we wrote ourselves, so the input is fully trusted and there is no need to
+'     handle the general form with nesting, arrays and escapes. A minimal function that extracts the needed keys is enough.
+'     (VBA has no standard JSON parser, and external COM is not usable under this project's policy)
 '
-'   ★命名規則★ 標準モジュールの Public 関数なので、他モジュールとの名前衝突を
-'     避けるため Json プレフィックスで統一する:
-'       JsonEscape  … 文字列を JSON 文字列リテラルに安全に埋め込む
-'       JsonGetStr  … "key":"value" の value を取り出す
-'       JsonGetNum  … "key":123     の 123 を取り出す
-'       JsonBool    … Boolean を true/false リテラルにする
+'   *Naming rule* These are Public functions of a standard module, so to avoid name
+'     collisions with other modules we unify on the Json prefix:
+'       JsonEscape  ... safely embed a string in a JSON string literal
+'       JsonGetStr  ... extract the value of "key":"value"
+'       JsonGetNum  ... extract the 123 of "key":123
+'       JsonBool    ... turn a Boolean into a true/false literal
 '
-'   旧名との対応 (9.13 で改名):
-'       JsonEscape   ← JsonEscape  (変更なし)
-'       JsonGetStr   ← GetJsonStr
-'       JsonGetNum   ← GetJsonNum
-'       JsonBool     ← BoolToJson
+'   Correspondence with the old names (renamed in 9.13):
+'       JsonEscape   <- JsonEscape  (unchanged)
+'       JsonGetStr   <- GetJsonStr
+'       JsonGetNum   <- GetJsonNum
+'       JsonBool     <- BoolToJson
 ''''''''''''''''''''''''''''''''''
 
 Option Explicit
 
 
 ' ============================================================
-' JsonEscape ? 文字列を JSON 文字列リテラルに安全に埋め込む
+' JsonEscape ? safely embed a string in a JSON string literal
 '
-'   " と \ と制御文字 (0x00-0x1F) をエスケープする。
-'   タブタイトルや URL を JSON に埋め込むための最小限。
+'   Escapes " and \ and control characters (0x00-0x1F).
+'   The minimum needed to embed tab titles and URLs in JSON.
 '
-'   ★第9.13 で修正: 高位文字を素通しするようにした (仕様事実 16)★
-'     VBA の AscW は 0x8000 以上の文字を符号付き Integer として返す。
-'     例: 「進」U+9032 = 36914 → AscW は -28622 を返す。
-'     旧実装は制御文字判定を Case Is < 32 と書いていたため、日本語などの高位文字が
-'     負値としてこの分岐に落ち、\uXXXX 形式にエスケープされていた。
-'     ★結果は JSON として正しく、JS 側で正しい文字に戻るため実害はなかった★が、
-'     意図しない経路であり、ログが読みにくく送信バイト数も無駄に増えていた。
-'     → 共通化のタイミングで ch >= 0 And ch < 32 に直し、高位文字は素通しする。
-'       挙動 (JS 側での見え方) は変わらない。
+'   *Fixed in 9.13: high-range characters now pass through (spec fact 16)*
+'     VBA's AscW returns characters at 0x8000 and above as a signed Integer.
+'     Example: the kanji U+9032 ( = 36914) -> AscW returns -28622.
+'     The old implementation wrote the control-character test as Case Is < 32, so high-range characters such as Japanese
+'     fell into that branch as negative values and were escaped in \uXXXX form.
+'     *The result was valid JSON and came back as the correct character on the JS side, so there was no real harm*, but
+'     it was an unintended path, made the log hard to read and needlessly increased the bytes sent.
+'     -> At the time of consolidation we changed it to ch >= 0 And ch < 32, and high-range characters pass through.
+'       Behavior (how it looks on the JS side) is unchanged.
 ' ============================================================
 Public Function JsonEscape(ByVal s As String) As String
     Dim out As String
@@ -102,9 +102,9 @@ Public Function JsonEscape(ByVal s As String) As String
         c = Mid$(s, i, 1)
         ch = AscW(c)
         Select Case ch
-            Case 34            ' " (二重引用符)
+            Case 34            ' " (double quote)
                 out = out & "\"""
-            Case 92            ' \ (バックスラッシュ)
+            Case 92            ' \ (backslash)
                 out = out & "\\"
             Case 8             ' backspace
                 out = out & "\b"
@@ -117,9 +117,9 @@ Public Function JsonEscape(ByVal s As String) As String
             Case 13            ' CR
                 out = out & "\r"
             Case Else
-                ' ★第9.13 修正★ 制御文字だけを \uXXXX にする。
-                '   ch >= 0 の条件が要 (AscW が高位文字を負値で返すため。仕様事実 16)。
-                '   これがないと日本語などが \uXXXX に化ける。
+                ' *9.13 fix* Turn only control characters into \uXXXX.
+                '   The ch >= 0 condition is needed (because AscW returns high-range characters as negative values; spec fact 16).
+                '   Without it, Japanese and the like get mangled into \uXXXX.
                 If ch >= 0 And ch < 32 Then
                     out = out & "\u" & Right$("0000" & Hex$(ch), 4)
                 Else
@@ -133,18 +133,18 @@ End Function
 
 
 ' ============================================================
-' JsonGetStr ? "key":"value" の value を取り出す
+' JsonGetStr ? extract the value of "key":"value"
 '
-'   例: JsonGetStr("{""cmd"":""activate"",""index"":3}", "cmd") → "activate"
-'   見つからなければ空文字を返す。
+'   Example: JsonGetStr("{""cmd"":""activate"",""index"":3}", "cmd") -> "activate"
+'   Returns an empty string if not found.
 '
-'   ★エスケープは解かない★ 送信元は自前の JS で、cmd や url にエスケープが必要な
-'     文字は実質入らないため。厳密な復号が必要になったら拡張する (設計原則 64)。
+'   *Escapes are not resolved* The sender is our own JS, and cmd and url
+'     practically never contain characters that need escaping. Extend this if exact decoding becomes necessary (design principle 64).
 ' ============================================================
 Public Function JsonGetStr(ByVal json As String, ByVal key As String) As String
     Dim pat As String
     pat = """" & key & """:"""
-    ' pat の中身は  "key":"  という 7 文字 + キー長
+    ' the contents of pat are  "key":"  = 7 characters + key length
 
     Dim p As Long
     p = InStr(json, pat)
@@ -154,10 +154,10 @@ Public Function JsonGetStr(ByVal json As String, ByVal key As String) As String
     End If
 
     Dim st As Long
-    st = p + Len(pat)                ' 値の先頭
+    st = p + Len(pat)                ' start of the value
 
     Dim en As Long
-    en = InStr(st, json, """")       ' 閉じ引用符
+    en = InStr(st, json, """")       ' closing quote
     If en = 0 Then
         JsonGetStr = ""
         Exit Function
@@ -168,18 +168,18 @@ End Function
 
 
 ' ============================================================
-' JsonGetNum ? "key":123 の 123 を取り出す
+' JsonGetNum ? extract the 123 of "key":123
 '
-'   例: JsonGetNum("{""cmd"":""close"",""index"":2}", "index") → 2
-'   見つからなければ 0 を返す。
+'   Example: JsonGetNum("{""cmd"":""close"",""index"":2}", "index") -> 2
+'   Returns 0 if not found.
 '
-'   ★負数・小数は扱わない★ 現状 index (1-based の正整数) にしか使わないため。
-'     必要になったら拡張する (設計原則 64)。
+'   *Negative numbers and decimals are not handled* Currently it is only used for index (a 1-based positive integer).
+'     Extend it when needed (design principle 64).
 ' ============================================================
 Public Function JsonGetNum(ByVal json As String, ByVal key As String) As Long
     Dim pat As String
     pat = """" & key & """:"
-    ' pat の中身は  "key":  という 4 文字 + キー長
+    ' the contents of pat are  "key":  = 4 characters + key length
 
     Dim p As Long
     p = InStr(json, pat)
@@ -191,13 +191,13 @@ Public Function JsonGetNum(ByVal json As String, ByVal key As String) As Long
     Dim st As Long
     st = p + Len(pat)
 
-    ' 空白をスキップ (JSON.stringify は出さないが念のため)
+    ' skip whitespace (JSON.stringify does not emit it, but just in case)
     Do While st <= Len(json)
         If Mid$(json, st, 1) <> " " Then Exit Do
         st = st + 1
     Loop
 
-    ' 数字が続く限り読む
+    ' read while digits continue
     Dim buf As String
     Dim c As String
     Do While st <= Len(json)
@@ -209,6 +209,10 @@ Public Function JsonGetNum(ByVal json As String, ByVal key As String) As Long
 
     If Len(buf) = 0 Then
         JsonGetNum = 0
+    ElseIf Len(buf) > 10 Then
+        JsonGetNum = 2147483647   ' English fork: clamp (VBA does not short-circuit, so test length first)
+    ElseIf CDbl(buf) > 2147483647# Then
+        JsonGetNum = 2147483647   ' English fork: clamp (CLng raised overflow error 6 on page-supplied numbers)
     Else
         JsonGetNum = CLng(buf)
     End If
@@ -216,11 +220,11 @@ End Function
 
 
 ' ============================================================
-' JsonBool ? Boolean を JSON の true/false リテラルにする
+' JsonBool ? turn a Boolean into the JSON true/false literal
 '
-'   ★CStr(True) を使わない理由★ CStr(True) は "True" (先頭大文字) を返すうえ、
-'     ロケール依存の懸念もある。JSON は小文字の true/false でなければならないので
-'     明示的に変換する。
+'   *Why CStr(True) is not used* CStr(True) returns "True" (capitalized) and
+'     may also depend on the locale. JSON requires lowercase true/false, so
+'     we convert explicitly.
 ' ============================================================
 Public Function JsonBool(ByVal b As Boolean) As String
     If b Then
@@ -232,18 +236,18 @@ End Function
 
 
 ' ============================================================
-' JsonUnescapeAt (D-2) - JSON 文字列リテラルの中身を復号しながら読む
+' JsonUnescapeAt (D-2) - read the contents of a JSON string literal while decoding
 '
-'   引数:
-'     json     : 対象の JSON 文字列 (全体)
-'     startPos : 走査開始位置。★開き引用符の次の文字★を指すこと (1 始まり)
-'     outVal   : 取り出した値 (エスケープを解いたもの)
-'   戻り値:
-'     閉じ引用符の位置。閉じられていなければ 0 (このとき outVal は空文字)
+'   Arguments:
+'     json     : the target JSON string (whole)
+'     startPos : scan start position. Must point at *the character after the opening quote* (1-based)
+'     outVal   : the extracted value (escapes resolved)
+'   Return value:
+'     Position of the closing quote. 0 if not closed (outVal is then an empty string)
 '
-'   対応するエスケープ: 引用符 / バックスラッシュ / スラッシュ / b / f / n / r / t / uXXXX
-'   (いずれもバックスラッシュに続く 1 文字。uXXXX のみ 4 桁の 16 進が続く)
-'   それ以外の \x は x をそのまま採用する (JSON としては不正だが、落とさない)。
+'   Supported escapes: quote / backslash / slash / b / f / n / r / t / uXXXX
+'   (each is one character after the backslash; only uXXXX is followed by 4 hex digits)
+'   For any other \x, x is taken as is (invalid as JSON, but we do not fail).
 ' ============================================================
 Public Function JsonUnescapeAt(ByVal json As String, _
                                ByVal startPos As Long, _
@@ -282,10 +286,10 @@ Public Function JsonUnescapeAt(ByVal json As String, _
                 Case "t"
                     buf = buf & vbTab
                 Case "u"
-                    ' ★4 桁を超える値も正しく戻る★ CLng("&HD83D") は 16 ビットの
-                    '   符号付きとして -10179 になるが、ChrW$ は負値を 65536 + n と
-                    '   解釈するので 55357 (= D83D) の文字が得られる。
-                    '   サロゲートの片割れ同士を連結すればペアとして成立する。
+                    ' *Values beyond 4 digits also come back correctly* CLng("&HD83D") becomes -10179 as a 16-bit
+                    '   signed value, but ChrW$ interprets a negative value as 65536 + n,
+                    '   so you get the character 55357 (= D83D).
+                    '   Concatenating the two surrogate halves forms a valid pair.
                     buf = buf & ChrW$(CLng("&H" & Mid$(json, i + 2, 4)))
                     i = i + 4
                 Case Else
@@ -307,14 +311,14 @@ End Function
 
 
 ' ============================================================
-' JsonUnescape (D-2) - JSON 値 1 個を素の文字列に戻す
+' JsonUnescape (D-2) - turn one JSON value back into a plain string
 '
-'   文字列リテラル (先頭が引用符) なら引用符を外してエスケープを解く。
-'   それ以外 (数値 / true / false / null / undefined / オブジェクト / 配列) は
-'   ★そのまま返す★。EvalSync の戻り値をそのまま渡せる。
+'   If it is a string literal (starts with a quote), strip the quotes and resolve the escapes.
+'   Anything else (number / true / false / null / undefined / object / array) is
+'   *returned as is*. The EvalSync return value can be passed straight in.
 '
-'   閉じ引用符が見つからない壊れた入力は、原文をそのまま返す (握り潰さず、
-'   呼び出し側が異常に気づけるようにする)。
+'   Broken input with no closing quote is returned as the original text (not swallowed,
+'   so the caller can notice the anomaly).
 ' ============================================================
 Public Function JsonUnescape(ByVal raw As String) As String
     Dim v As String
@@ -340,16 +344,16 @@ End Function
 
 
 ' ============================================================
-' JsonPickStr (D-2、D-1 で Wv2Pane に置いたものを移設)
-'   "key":"value" の value を、エスケープを解いて取り出す。
+' JsonPickStr (D-2; moved here from Wv2Pane, where D-1 placed it)
+'   Extracts the value of "key":"value" with the escapes resolved.
 '
-'   引数:
-'     json   : 対象の JSON 文字列
-'     key    : 取り出すキー (値が文字列であること)
-'     outVal : 取り出した値 (エスケープを解いたもの)
-'   戻り値:
-'     True  = キーが見つかり、閉じ引用符まで読めた
-'     False = キーが無い、または閉じられていない
+'   Arguments:
+'     json   : the target JSON string
+'     key    : the key to extract (its value must be a string)
+'     outVal : the extracted value (escapes resolved)
+'   Return value:
+'     True  = the key was found and reading reached the closing quote
+'     False = no such key, or not closed
 ' ============================================================
 Public Function JsonPickStr(ByVal json As String, _
                             ByVal key As String, _

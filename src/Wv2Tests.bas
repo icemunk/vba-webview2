@@ -1,626 +1,626 @@
 Attribute VB_Name = "Wv2Tests"
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  N-4 段階 (レスポンス本文) ---
+' --- Wv2Tests.bas  Stage N-4 (response body) ---
 '
-'   Test_N4_Body … 回帰試験
-'   Test_N4_Help … 手順
+'   Test_N4_Body ... regression test
+'   Test_N4_Help ... procedure
 '
-'   ★N-4 で初めて非同期になる★
-'     GetContent はハンドラを渡して即座に戻り、本文は後から届く。
-'     判定は必ず ★N4Wait (本文が届くまで) ★ で待つこと。N-3 で
-'     「詳細が現れるまで」で待って空を読み、実機 3 回ぶんを溶かした
-'     (設計原則120)。同じ轍を踏まないための専用ヘルパーが N4Wait。
+'   *N-4 is the first stage that is asynchronous*
+'     GetContent takes a handler and returns immediately; the body arrives later.
+'     Verdicts must always wait with *N4Wait (until the body arrives)*. In N-3 we
+'     waited for "until the detail appears", read an empty value, and burned three real-machine runs
+'     (design principle 120). N4Wait is a dedicated helper so we do not repeat the same mistake.
 '
-'   ★最大の未知数は圧縮★
-'     GetContent が復号済みを返すかは SDK に書かれていない。httpbingo の
-'     /gzip は中身に "gzipped": true を持つので、★本文に読めるか / 先頭が
-'     1F 8B か★ のどちらか一方に必ず決まる。それを判定にしてある。
+'   *The biggest unknown is compression*
+'     The SDK does not say whether GetContent returns the decoded body. httpbingo's
+'     /gzip contains "gzipped": true in its payload, so exactly one of *the body
+'     reads as text / it starts with 1F 8B* must hold. That is what the verdict uses.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  N-3 段階 (レスポンスのステータスとヘッダ) ---
+' --- Wv2Tests.bas  Stage N-3 (response status and headers) ---
 '
-'   Test_N3_Status … 回帰試験。的は N-1 / N-2 と同じ 2 系統
-'   Test_N3_Help   … 手順
+'   Test_N3_Status ... regression test. Targets are the same 2 routes as N-1 / N-2
+'   Test_N3_Help   ... procedure
 '
-'   ★(1)～(4) は外部が要る★
-'     到達不能ローカル (案F) には★応答が来ない★ので、ステータスの検証には
-'     本物の送り先が要る。逆に言えば案F は「応答が来ないこと = 空欄」の
-'     対照になる ((5) がそれ)。
+'   *(1) to (4) need an external host*
+'     An unreachable local target (plan F) gets *no response*, so verifying the status
+'     needs a real destination. Conversely, plan F serves as the control for
+'     "no response = blank" (that is (5)).
 '
-'   ★このイベントにはフィルタが無い★
-'     画像も CSS も全部来る。一覧に居ない応答は NetRespUnmatched に数える
-'     だけで捨てる。★大きい数が出るのは正常★。
+'   *This event has no filter*
+'     Images and CSS all arrive. Responses not in the list are only counted in
+'     NetRespUnmatched and discarded. *Seeing large numbers is normal*.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  N-2 段階 (リクエストのヘッダとボディ) ---
+' --- Wv2Tests.bas  Stage N-2 (request headers and body) ---
 '
-'   Test_N2_Detail … 回帰試験。的は N-1 と同じ 2 系統 (案F / 案D)
-'   Test_N2_Help   … 手順
+'   Test_N2_Detail ... regression test. Same 2 routes as N-1 (plan F / plan D)
+'   Test_N2_Help   ... procedure
 '
-'   ★本丸は「読んでも通信が壊れていない」★
-'     IStream を読むと位置が進むので、Seek(0) で戻し損ねると空のボディが飛ぶ。
-'     「POST が成功したっぽい」では証拠にならないので、★送り先 (httpbingo) が
-'     返す本文と突き合わせて数える★ (設計原則112)。この 1 件だけは外部が要る。
+'   *The crux is "reading does not break the traffic"*
+'     Reading an IStream advances its position, so failing to Seek(0) back sends an
+'     empty body. "The POST seemed to succeed" is not evidence, so *count by matching
+'     against the body the destination (httpbingo) echoes back* (design principle 112). This one case needs an external host.
 '
-'   ★Cookie は的が到達不能だと作れない★ ので、伏せ字の機構そのものは
-'   「必ず在るヘッダ」= User-Agent を伏せる対象に足して確かめる。
+'   *A Cookie cannot be produced when the target is unreachable*, so the masking mechanism itself is
+'   checked by adding an "always present header" = User-Agent to the masked set.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  N-1c 段階 (種別の決めつけをやめる) ---
+' --- Wv2Tests.bas  Stage N-1c (stop assuming the type) ---
 '
-'   ★N-1b の実機で分かったこと★
-'     ★WebView2 は fetch() の要求を FETCH(8) ではなく XML_HTTP_REQUEST(7) として
-'     報告する★ (実機で fetch 10 本を撃って 10 本とも XHR で届いた)。
-'     N-1b のテストが「fetch なら種別は FETCH のはず」と決めつけていたため、
-'     ★捕まっているのに FAIL 3 件★ になっていた。実装は無傷。
+'   *What the N-1b real-machine run revealed*
+'     *WebView2 reports fetch() requests as XML_HTTP_REQUEST(7), not FETCH(8)*
+'     (we fired 10 fetches on the real machine and all 10 arrived as XHR).
+'     The N-1b test had assumed "for fetch the type should be FETCH", so
+'     *requests were captured yet 3 FAILs were reported*. The implementation is unharmed.
 '
-'   ■ 直したこと (テスト側だけ)
-'     1. 判定は「捕まったか」で行い、★種別は決めつけない★
-'        ついでに localOk / netOk の誤報 (「1 件も届いていない」) も消える
-'     2. ★「fetch は XHR 種別で届く」を数える判定を足した★
-'        見つけた仕様事実をそのまま回帰試験にする
-'     3. ★(3) の直後にドレインを 1 回挟む★
-'        N-1b では (4) で容量を 3 に落とした時点で (2) の中身が消えてしまい、
-'        「seq 1/2 は f-local と f-net だったはず」と★推測で埋める羽目になった★。
-'        次からは推測が要らない (設計原則112)。
+'   * What was fixed (test side only)
+'     1. The verdict is now "was it captured", and *the type is not assumed*
+'        As a bonus, the false alarm on localOk / netOk ("nothing arrived") is gone too
+'     2. *Added a verdict that counts "fetch arrives as XHR type"*
+'        The spec fact we found becomes a regression test as is
+'     3. *One drain is inserted right after (3)*
+'        In N-1b, dropping the capacity to 3 at (4) wiped the contents of (2), so
+'        we had to *fill in by guesswork* "seq 1/2 should have been f-local and f-net".
+'        From now on no guessing is needed (design principle 112).
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  N-1b 段階 (的を仮想ホストの外へ移す) ---
+' --- Wv2Tests.bas  Stage N-1b (move the targets outside the virtual host) ---
 '
-'   ★N-1 の初回実機で分かったこと★
-'     仮想ホスト (SetVirtualHostNameToFolderMapping) で配信した要求は
-'     WebResourceRequested に乗らない。初回の Test_N1_Capture が全滅したのは
-'     ★的が 1 本残らず仮想ホストだったから★ で、配線は最初から正しかった
-'     (Test_N1_Site では 10 件すべて捕まっていた)。
+'   *What the first N-1 real-machine run revealed*
+'     Requests served through a virtual host (SetVirtualHostNameToFolderMapping)
+'     do not show up in WebResourceRequested. The first Test_N1_Capture failed completely
+'     because *every single target was on the virtual host*, and the wiring was
+'     correct from the start (Test_N1_Site captured all 10).
 '
-'   ★的を 2 系統 + 対照 1 系統にした (論点1 案G)★
-'     案F  http://127.0.0.1:59999/…  到達不能なローカル (外部依存ゼロ)
-'     案D  https://httpbingo.org/…   外部サービス (ネットが要る)
-'     対照 仮想ホストの data.json    ★捕まらないことを数える★
-'   どちらの的が使えるかを 1 回の実機で両方確かめる。
+'   *Targets are now 2 routes + 1 control route (issue 1, plan G)*
+'     Plan F  http://127.0.0.1:59999/...  unreachable local (zero external dependency)
+'     Plan D  https://httpbingo.org/...   external service (needs the net)
+'     Control data.json on the virtual host   *count that it is NOT captured*
+'   One real-machine run checks both to see which targets are usable.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  N-1 段階 (ネットワーク要求のキャプチャ) ---
+' --- Wv2Tests.bas  Stage N-1 (network request capture) ---
 '
-'   Test_N1_Capture … ★自前 HTML だけで完結する回帰試験★ (論点8)
-'   Test_N1_Watch   … ★今開いているタブの通信を捕まえ始める★ (実用の入口)
-'   Test_N1_Drain   … 溜まった分をログへ流して空にする
-'   Test_N1_Stop    … 捕まえるのをやめる (フィルタも外す)
-'   Test_N1_Help    … 手順
+'   Test_N1_Capture ... *a regression test that is self-contained with its own HTML* (issue 8)
+'   Test_N1_Watch   ... *start capturing the traffic of the currently open tab* (practical entry point)
+'   Test_N1_Drain   ... flush the accumulated entries to the log and empty the buffer
+'   Test_N1_Stop    ... stop capturing (also removes the filter)
+'   Test_N1_Help    ... procedure
 '
-'   ★実サイトに頼らない★ 検証ページは %TEMP%\Wv2NetProbe に書き出して
-'   仮想ホスト https://appassets.netprobe/ で開く (第9.26b と同じ手口)。
-'   フォーム POST も fetch も XHR も、すべてこのフォルダの中で完結する。
+'   *Do not rely on real sites* The verification page is written out to %TEMP%\Wv2NetProbe
+'   and opened on the virtual host https://appassets.netprobe/ (same technique as 9.26b).
+'   Form POST, fetch and XHR all complete inside this folder.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  K-4a 段階 (解放が遅い原因の切り分け) ---
+' --- Wv2Tests.bas  Stage K-4a (isolating the cause of slow release) ---
 '
-'   Test_K4_Quiet … ★フォームを閉じる前に全タブを静める★
-'                   解放が遅いのは「ページが動き続けているから」なのかを測る。
-'   Test_K4_Help  … 手順。
+'   Test_K4_Quiet ... *quiet all tabs before closing the form*
+'                   Measures whether release is slow "because the pages keep running".
+'   Test_K4_Help  ... procedure.
 '
-'   ★実測で分かっていること (K-4a)★
-'     素の状態 (起動 → 即閉じ)     … 解放の全体 0.336 秒
-'     Maps を 1 枚開いた後          … 解放の全体 ★6.718 秒★ (20 倍)
-'     LogEcho = True / False の差   … ★ゼロ★ (Debug.Print は犯人ではない)
-'     遅いのは特定のステップではなく ★COM 往復が全部 300～500ms★
-'     (素の状態では 8～16ms)。Ctrl_Close 1 回はさらに重く 1.4 秒。
+'   *What the measurements have shown so far (K-4a)*
+'     Bare state (start -> close at once)  ... total release 0.336 s
+'     After opening one Maps page          ... total release *6.718 s* (20x)
+'     Difference LogEcho = True / False    ... *zero* (Debug.Print is not the culprit)
+'     The slowness is not in a specific step; *every COM round trip takes 300-500 ms*
+'     (8-16 ms in the bare state). One Ctrl_Close call is even heavier at 1.4 s.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  D-7e 段階 (進捗と中断の検証) ---
+' --- Wv2Tests.bas  Stage D-7e (verifying progress and abort) ---
 '
-'   D-7b の追加事項:
-'     Test_D7_StatusBar … ★プローブ★ 製品コードを通さずに Excel の生の挙動を
-'                         測る。D-7 で FAIL した StatusBar の判定が、判定側の
-'                         問題なのか Excel の仕様なのかを切り分ける (原則103)。
-'     Test_D7_Resume    … ★自動★ 中断された後の状態を人工的に作り、そこから
-'                         再開できるかを Esc 無しで確かめる (回帰確認用)。
+'   Additions in D-7b:
+'     Test_D7_StatusBar ... *probe* measures Excel's raw behavior without going through
+'                         product code. Separates whether the StatusBar verdict that FAILed in D-7
+'                         was a problem on the verdict side or Excel's specification (principle 103).
+'     Test_D7_Resume    ... *automatic* artificially builds the state after an abort and checks
+'                         without Esc that we can resume from it (for regression checks).
 '
-'   D-7 からの持ち越し:
-'     Test_D7_Cancel … ★ネットワーク不要★ 中断の口・入口でのクリア・分母の
-'                      数え方・0 件ならタブを開かないこと。
-'     Test_D7_Sheet  … ★実サイト + 手で Esc を押す★ 中断 → 再開まで。
-'     Test_D7_Help   … 手順。
+'   Carried over from D-7:
+'     Test_D7_Cancel ... *no network needed* the abort entry point, clearing at entry, how the
+'                      denominator is counted, and that no tab is opened when there are 0 items.
+'     Test_D7_Sheet  ... *real site + press Esc by hand* from abort through to resume.
+'     Test_D7_Help   ... procedure.
 '
-'   ■ ★D-7e: 人が観察する検証は、人に見える形にする★
-'     D-7d の実機で中断は成立していたのに、たーぼーさんには「止まっていない」
-'     ように見えた。★中断した直後に自動で 2 回目を走らせていたから★。
-'     さらに連打した Esc が 2 回目にも効いて、判定が 3 件 FAIL になった。
-'     → 中断したら★はっきり知らせて一拍置き、Esc が離れるのを待ってから★
-'       再開を試す (TestWaitEscReleased)。
-'     Test_D7_Key も同じ理由で作り直した。「これから 10 秒」と出しても、
-'     ★読む前に終わってしまう★ ので、押されるまで待つ形にした。
+'   * *D-7e: make verification that a human observes visible to the human*
+'     In the D-7d real-machine run the abort did work, yet to tarboh it looked
+'     as if "it had not stopped". *Because the second run was started automatically right after the abort*.
+'     Moreover the repeatedly pressed Esc also hit the second run, and 3 verdicts FAILed.
+'     -> After an abort, *announce it clearly, pause for a beat, and wait until Esc is released*
+'       before trying the resume (TestWaitEscReleased).
+'     Test_D7_Key was rebuilt for the same reason. Even when it said "10 seconds from now",
+'     *it finished before it could be read*, so it now waits until the key is pressed.
 '
-'   ★Esc そのものの検証は自動化していない★ SafeTimer で代わりにフラグを立てる
-'   案もあったが、SafeTimer は WithEvents が要る = クラスモジュールの新設が要る
-'   ので見送った。代わりに★中断後の状態からの再開★を Test_D7_Resume で自動化し、
-'   毎回の回帰確認はそちらで賄う。Esc 経路は Test_D7_Sheet で人が 1 回確かめる。
+'   *Verification of Esc itself is not automated* There was a plan to set a flag with SafeTimer
+'   instead, but SafeTimer needs WithEvents = a new class module would be required,
+'   so it was put off. Instead *resuming from the post-abort state* is automated in Test_D7_Resume,
+'   and that covers every regression check. The Esc path is checked once by a human in Test_D7_Sheet.
 ''''''''''''''''''''''''''''''''''
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  D-4a 段階 (ページ内 SPA プローブの検証) ---
+' --- Wv2Tests.bas  Stage D-4a (verifying the in-page SPA probe) ---
 '
-'   D-4a の追加事項:
-'     Test_D4_Probe … ★D-4 の初手★ プローブの設置・健康診断・作り直し・
-'                     数え上げ・往復コストを一括で検証する。
-'     Test_D4_Help  … 手順。
+'   Additions in D-4a:
+'     Test_D4_Probe ... *the first move of D-4* verifies in one batch the probe's installation,
+'                     health check, rebuild, enumeration and round-trip cost.
+'     Test_D4_Help  ... procedure.
 '
-'   ★何を測っているか (D-4 論点の未知 1～4)★
-'     未知1 ラップが生き残るか  … (6) で故意に壊して自動修復を確認
-'     未知2 観測の負荷          … (2) で往復時間を設置前後で比較
-'     未知3 遷移で消えるか      … (8) でページ遷移後に世代が振り出しに戻ることを確認
-'     未知4 余計な Pane に付かないか … (1) で「呼ぶまで作られない」ことを確認
+'   *What is being measured (unknowns 1-4 of the D-4 issues)*
+'     Unknown 1 Does the wrap survive?       ... (6) breaks it on purpose and confirms the automatic repair
+'     Unknown 2 Load of observation          ... (2) compares round-trip time before and after installation
+'     Unknown 3 Does it vanish on navigation? ... (8) confirms the generation restarts from scratch after page navigation
+'     Unknown 4 Does it avoid attaching to extra Panes ... (1) confirms it is "not created until called"
 '
-'   検証ページ (BuildD4ProbeHtml) は★読み込み直後は完全に静か★にしてある。
-'   ノイズ (定期的な DOM 書き換え) は startNoise() を撃ったときだけ始まる。
-'   D-4b の静穏待ちの検証でも同じページを使う。
+'   The verification page (BuildD4ProbeHtml) is made *completely quiet right after loading*.
+'   Noise (periodic DOM rewriting) starts only when startNoise() is fired.
+'   The same page is used for verifying the D-4b quiescence wait as well.
 '''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  D-3 段階 (書き込みと操作の検証) ---
+' --- Wv2Tests.bas  Stage D-3 (verifying writes and operations) ---
 '
-'   D-3 の追加事項:
-'     Test_D3_Probe_Promise … ★最初に走らせる★ 未知1 の実測。
-'                             ExecuteScript が Promise を待つかを確かめる。
-'                             ここの結果で「待ちループをどこで回すか」(論点3) が決まる。
-'     Test_D3_Write         … Value = / Click / SetAttribute を自前 HTML で一括検証。
-'     Test_D3_Framework     … ★ネイティブ setter 経由で書けているか★ を
-'                             React の value tracker を模した監視で確かめる (未知3)。
-'     Test_D3_Help          … 上 3 つの手順と、見るべきログの説明。
+'   Additions in D-3:
+'     Test_D3_Probe_Promise ... *run this first* measures unknown 1.
+'                             Checks whether ExecuteScript waits for a Promise.
+'                             This result decides "where to run the wait loop" (issue 3).
+'     Test_D3_Write         ... verifies Value = / Click / SetAttribute in one batch with its own HTML.
+'     Test_D3_Framework     ... checks *whether writes go through the native setter* using
+'                             monitoring that imitates React's value tracker (unknown 3).
+'     Test_D3_Help          ... procedure for the 3 above, and an explanation of the log to look at.
 '
-'   判定ヘルパー (TestEq / TestBool / D2El / D2WaitTitle) は D-2 のものを再利用する。
-'   ★D-3 で判定の出し先を Wv2Log に変え、D-1 / D-2 のテストもそれに乗せた★
-'   (イミディエイトは ExecuteScript の配管ログで流れて読めないため)。
-'   既存の Test_* は 1 つも変更していない。
+'   The verdict helpers (TestEq / TestBool / D2El / D2WaitTitle) are reused from D-2.
+'   *In D-3 the output target of verdicts was changed to Wv2Log, and the D-1 / D-2 tests were moved onto it too*
+'   (the Immediate window is flooded by the ExecuteScript plumbing log and cannot be read).
+'   Not a single existing Test_* was changed.
 '
-'   ★検証ページ (BuildD3ProbeHtml) は D-2 と同じく自前 HTML★
-'     D-2 のページとの違いは、ページ側に★監視用の JS★ を仕込んであること:
+'   *The verification page (BuildD3ProbeHtml) is its own HTML, as in D-2*
+'     The difference from the D-2 page is that *monitoring JS* is planted on the page side:
 '       window.__p = {inputs, changes, clicks, clickInfo,
 '                     trackedSet, notified, ignored}
-'     ・input / change の発火回数 (論点6 の「両方撃つ」の確認)
-'     ・click の回数とイベントの素性 (type / bubbles / isTrusted)
-'     ・★React 風の value tracker★ を #react に被せてあり、
-'       tracker 経由の代入 (trackedSet) と、フレームワークが
-'       変更に気づいた回数 (notified) / 気づけなかった回数 (ignored) を数える。
+'     - number of input / change firings (confirms "fire both" from issue 6)
+'     - number of clicks and the identity of the event (type / bubbles / isTrusted)
+'     - *a React-like value tracker* is laid over #react, and
+'       it counts assignments through the tracker (trackedSet), the number of times the framework
+'       noticed the change (notified) / failed to notice (ignored).
 '''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  D-2 段階 (要素レジストリ + Wv2Element の検証) ---
+' --- Wv2Tests.bas  Stage D-2 (element registry + verifying Wv2Element) ---
 '
-'   D-2 の追加事項:
-'     Test_D2_Find  … 自前の検証ページを開き、GetElementById / QuerySelector と
-'                     Wv2Element の読み取り 8 メンバを期待値付きで一括検証する。
-'     Test_D2_Stale … 要素を掴んだままページを遷移させ、世代が変わって
-'                     IsStale が True になること、読み取りが stale で失敗すること、
-'                     新しいページで取り直せることを確認する。
-'     Test_D2_Help  … 上 2 つの手順と、見るべきログの説明。
+'   Additions in D-2:
+'     Test_D2_Find  ... opens its own verification page and verifies GetElementById / QuerySelector and
+'                     the 8 read members of Wv2Element in one batch, with expected values.
+'     Test_D2_Stale ... navigates the page while holding an element and confirms that the generation
+'                     changes and IsStale becomes True, that reads fail when stale, and
+'                     that it can be re-acquired on the new page.
+'     Test_D2_Help  ... procedure for the 2 above, and an explanation of the log to look at.
 '
-'   ★検証ページは自前 HTML (論点8 案b)★
-'     外部サイトは落ちるうえ DOM が予告なく変わる (設計原則75、第9.28 の教訓)。
-'     NavigateToString で流し込むので外部依存もファイル I/O も無い。
-'     網羅しているもの: id / class / 任意属性 / 日本語 / 記号 / 改行 /
-'     タグを含む innerHTML (仕様事実30) / input・textarea・select の value /
-'     空要素 / 属性を持たない要素。
+'   *The verification page is its own HTML (issue 8, plan b)*
+'     External sites go down and their DOM changes without notice (design principle 75, the lesson of 9.28).
+'     It is fed in with NavigateToString, so there is neither an external dependency nor file I/O.
+'     What it covers: id / class / arbitrary attributes / Japanese / symbols / line breaks /
+'     innerHTML containing tags (spec fact 30) / value of input, textarea and select /
+'     empty elements / elements with no attributes.
 '
-'   既存の Test_* は 1 つも変更していない。
-'
-''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  D-1 段階 (EvalSync の検証) ---
-'
-'   ★段階番号の体系が変わりました★ 第9.32b までの 9.xx は「ブラウザとしての機能
-'     整備」という軸の里程標。D-1 からは軸ごとの記号 (D = DOM / ページ自動制御)。
-'
-'   D-1 の追加事項:
-'     Test_D1_Eval  … EvalSync の一括検証。型・日本語・エスケープ・例外・構文エラー・
-'                     タイムアウト・タイムアウト後の回復までを 1 発で流す。
-'     Test_D1_Guard … 論点7 の in-callback ガードの発火と ResetCallbackGuard の確認。
-'     Test_D1_Help  … 上 2 つの手順と、見るべきログの説明。
-'
-'   既存の Test_* は 1 つも変更していない。
+'   Not a single existing Test_* was changed.
 '
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.32b 段階 (ホイール横スクロールの検証手順) ---
+' --- Wv2Tests.bas  Stage D-1 (verifying EvalSync) ---
 '
-'   第9.32b の追加事項:
-'     ★Test_9_32b_Help (実機手順)★ JS のみの変更なので純ロジックのテストは無い。
-'       (1) ホイールでタブ列が横スクロールするか
-'       (2) タイトル更新の同期でスクロール位置が左端へ戻らないか
-'       (3) + で足した新しいタブが自動で見える位置に来るか
-'       (4) 回帰: 切替の体感 / D&D / 閉じる
+'   *The stage numbering scheme has changed* Up to 9.32b, the 9.xx numbers were milestones on the axis
+'     of "browser feature work". From D-1 on, a symbol per axis is used (D = DOM / page automation).
 '
-'   既存の Test_* は 1 つも変更していない。
+'   Additions in D-1:
+'     Test_D1_Eval  ... batch verification of EvalSync. Runs types, Japanese, escaping, exceptions, syntax errors,
+'                     timeouts and recovery after a timeout in one go.
+'     Test_D1_Guard ... checks that the in-callback guard of issue 7 fires and that ResetCallbackGuard works.
+'     Test_D1_Help  ... procedure for the 2 above, and an explanation of the log to look at.
+'
+'   Not a single existing Test_* was changed.
+'
+''''''''''''''''''''''''''''''''''
+' --- Wv2Tests.bas  Stage 9.32b (verification procedure for horizontal wheel scrolling) ---
+'
+'   Additions in 9.32b:
+'     *Test_9_32b_Help (real-machine procedure)* Only JS changed, so there is no pure-logic test.
+'       (1) Does the tab row scroll horizontally with the wheel?
+'       (2) Does the scroll position stay put (not jump back to the left edge) when the title update syncs?
+'       (3) Does a new tab added with + come into a visible position automatically?
+'       (4) Regression: switching feel / D&D / closing
+'
+'   Not a single existing Test_* was changed.
 '
 
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.32 段階 (タブ切替の体感とスクロールバーの検証手順) ---
+' --- Wv2Tests.bas  Stage 9.32 (verification procedure for tab-switch feel and scrollbar) ---
 '
-'   第9.32 の追加事項:
-'     ★Test_9_32_Help (実機手順)★
-'       第9.32 も JS と CSS のみの変更なので★純ロジックのテストは存在しない★
-'       (目視と体感で判定する)。見るもの:
-'         (1) クリックした瞬間にタブの色が変わり、本体の切替が後から追いつくか
-'         (2) タブを増やしても横スクロールバーが出ず、タブが潰れないか
-'         (3) ホイールでタブ列を横スクロールできるか
-'         (4) 回帰: D&D 並べ替え / 閉じる / 設定タブ が壊れていないか
+'   Additions in 9.32:
+'     *Test_9_32_Help (real-machine procedure)*
+'       9.32 also changes only JS and CSS, so *there is no pure-logic test*
+'       (judged by eye and by feel). What to look at:
+'         (1) Does the tab color change the instant it is clicked, with the body switch catching up afterwards?
+'         (2) Even with more tabs, no horizontal scrollbar appears and the tabs do not get squashed?
+'         (3) Can the tab row be scrolled horizontally with the wheel?
+'         (4) Regression: are D&D reordering / closing / the settings tab still intact?
 '
-'   既存の Test_* は 1 つも変更していない。
-'
-
-''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.31 段階 (タブバーの見た目の検証手順) ---
-'
-'   第9.31 の追加事項:
-'     ★Test_9_31_Help (実機手順)★
-'       第9.31 は CSS のみの変更なので★純ロジックのテストは存在しない★
-'       (目視で判定する)。手順は 2 部構成:
-'         第 1 部 = (A-1) ホバー背景 / (A-2) 閉じるボタンの表示制御 の目視確認
-'         第 2 部 = ★第9.30 の宿題 1 = v0_5_2 の通し動作確認★
-'                   POST リンクの新タブ展開 / プリウォーム / ドラッグ並べ替え。
-'                   第9.30 でクリーンビルドした v0_5_2 は「コンパイル通過」と
-'                   「設定タブからの検索エンジン切替」しか確認していないため、
-'                   タブバーを触るこの回で残りをまとめて踏む。
-'
-'   既存の Test_* は 1 つも変更していない。
+'   Not a single existing Test_* was changed.
 '
 
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.29 段階 (カスタム検索エンジンの検証) ---
+' --- Wv2Tests.bas  Stage 9.31 (verification procedure for the tab bar's appearance) ---
 '
-'   第9.29 の追加事項:
-'     ★Test_9_29_Custom (純ロジック)★
-'       Wv2SettingsBridge の SetCustomEngine / GetCustomTemplate /
-'       PreviewUrlForTemplate と、custom の保存・読込 (engine + template の
-'       2 行) を照合する。WebView2 は起動しない。
-'       実ファイル (%APPDATA%\Wv2Browser\settings.txt) を触るので、冒頭で
-'       ★engine と template を対で★退避し、末尾で書き戻す。
+'   Additions in 9.31:
+'     *Test_9_31_Help (real-machine procedure)*
+'       9.31 changes only CSS, so *there is no pure-logic test*
+'       (judged by eye). The procedure has 2 parts:
+'         Part 1 = visual check of (A-1) hover background / (A-2) show/hide control of the close button
+'         Part 2 = *open item 1 from 9.30 = end-to-end check of v0_5_2*
+'                   new-tab expansion of POST links / pre-warm / drag reordering.
+'                   The clean-built v0_5_2 of 9.30 only had "passes compilation" and
+'                   "search engine switch from the settings tab" verified,
+'                   so this round, which touches the tab bar, steps through the rest together.
 '
-'     ★Test_9_29_Help (実機手順)★
-'       設定タブのカスタム入力欄 → 適用 → 検索 → 再起動で復元、まで。
-'
-'     ★Test_9_20_Persistence の退避/復元を custom 対応にした★
-'       第9.29 で settings.txt が 2 キーになったため、Debug_SaveEngineName で
-'       書き戻すと「元が custom だった人の template 行を消してしまう」。
-'       Debug_SaveSettings (engine + template) で退避・復元するよう変更。
-'
-' --- Wv2Tests.bas  第9.28b 段階 (POST プローブの送信先を 3 系統化 / 本命を httpbingo.org へ) ---
-'
-'   第9.28 の実機検証で httpbin.org が★サーバ側の都合で 503 を返し続け★、本丸の
-'   再確認ができなかった。素の GET (アドレスバー直打ち) でも 503 だったので、
-'   健全なら 405 が返るはずのところがサーバダウンで潰れていたと確定した。
-'   httpbin.org は無料の公開サービスで、周期的な 503 の報告が古くからある。
-'   → ★検証基盤を単一の外部サービスに依存させない★ ように送信先を 3 つに増やす。
-'
-'   ★変更点 (BuildPostProbeHtml と説明文のみ。本番ファイルは 1 行も触らない)★
-'     ボタン1 (本命 / POST + _blank)  : httpbin.org → ★httpbingo.org★
-'     ボタン2 (サニティ / POST 同一タブ): httpbin.org → ★httpbingo.org★
-'     ボタン3 (対照 / GET + _blank)   : httpbin.org/get → ★httpbingo.org/get★
-'                                        (本命と同じサーバに揃えて変数を 1 つに絞る)
-'     ボタン4 (予備1)                 : postman-echo.com → ★httpbin.org★ (旧本命を降格)
-'     ボタン5 (予備2)                 : ★新設★ postman-echo.com
-'
-'   ★httpbingo.org を本命にした理由と注意★
-'     ・GET で叩くと 405 Method Not Allowed を返す (実機確認済み)。職場の Tomcat と
-'       同じ構図がそのまま成立する。
-'     ・POST の応答 JSON に ★method フィールド★ があり、GET に化けていないことを
-'       画面上で直接確認できる (httpbin には無い利点)。
-'     ・★注意★ httpbingo のエラーページには title 要素が無く、Edge が URL を
-'       タイトル代用にする。そのため ★イミディエイトのログでは合否が読めない★
-'       (httpbin は 405 METHOD NOT ALLOWED をタイトルに出していた)。
-'       判定は必ず★画面表示★で行うこと。
-'
-'   ★JS はゼロのまま★ 素の form だけで組む方針は維持 (VBA 文字列内の JS は事故のもと)。
-'
-' --- Wv2Tests.bas  第9.28 段階 (プリウォーム委譲の既定化に伴う検証手順の更新) ---
-'
-'   第9.28 の追加/変更:
-'     ★Test_9_28_Help (新規)★
-'       既定が 2 (プリウォーム委譲) になった状態での実機手順。★モードを切り替えずに★
-'       POST リンクが自前タブで 200 になることを確認するのが主目的。
-'     ★Test_9_27_Help / Test_9_27_Status の文言を既定 2 前提に修正★
-'       9.27 の手順は「既定 0 → 対照を取ってから 2 に切替」を前提に書かれていた。
-'       既定が 2 になったので、対照 (405) を見るには先に Test_9_27_Mode_Legacy を
-'       打つ必要がある。その一点だけを直した。
-'
-'   ★Test_9_27_Mode_Legacy / _Popup / _Prewarm / _Status / _Handled_On / _Off は
-'     9.27 のまま無変更★ 既定が変わっただけで、口の意味は変わっていない。
-'
-' --- Wv2Tests.bas  第9.27 段階 (本丸: put_NewWindow によるプリウォーム委譲の検証) ---
-'
-'   第9.27 の追加:
-'     ★Test_9_27_Mode_Legacy / _Popup / _Prewarm (モード切替)★
-'       Wv2Browser.NewWindowMode を 0 / 1 / 2 に切り替える薄い口。起動中でも即時に効く。
-'     ★Test_9_27_Status (状態ダンプ)★
-'       予備タブ (プリウォーム) が温まっているかを 1 行で確認する。
-'     ★Test_9_27_Handled_On / _Off (論点5 の保険スイッチ)★
-'       put_NewWindow の後に put_Handled(TRUE) も立てるかどうかを切り替える。
-'       予備タブが白いまま / 二重に開く 等の症状が出たときの切り分け用。
-'     ★Test_9_27_Help (実機手順)★
-'       9.26b の POST プローブページ (Test_9_26_PostProbe) をそのまま流用する。
-'       ★委譲 OFF (モード 0) で 405 / モード 2 で 200 + form エコー★ が合格条件。
-'
-'   ★新しい検証ページは作らない★ 9.26b の postprobe.html が
-'     「GET なら 405 / POST なら 200 + ボディをエコー」という職場と同じ構図を
-'     そのまま持っているので、本丸の合否判定にも過不足なく使える。
-'
-' --- Wv2Tests.bas  第9.26b 段階 (POST プローブページの追加) ---
-'
-'   第9.26 の実機検証で分かったこと:
-'     プローブの機構 (トグル / 分岐 / ランタイム委譲 / 参照リークなし) はすべて成立した。
-'     しかし試したサイトのポップアップが★素の GET★ だったため、委譲 OFF でも自前タブで
-'     正常に開いてしまい (isSuccess: True)、405 の再現になっていなかった。
-'     つまり「委譲すれば POST が保たれるのか」という本命の判定材料は未取得。
-'
-'   ★この段の狙い★ 職場に行かずに 405 の構図を自宅で合成して本命を判定する。
-'     送信先を https://httpbin.org/post にすると
-'       ・GET  で叩く → 405 METHOD NOT ALLOWED   (= 職場の Tomcat とまったく同じ構図)
-'       ・POST で叩く → 200 + 送信ボディを JSON でエコー
-'     となるので、1 つのボタンで「405 の再現」と「ボディが運ばれた直接証拠」の両方が
-'     手に入る。委譲 OFF で 405 / ON で 200 になれば パターンA が確定する。
-'
-'   ★追加したもの (すべて Wv2Tests.bas 内で完結。本番ファイルは 1 行も触らない)★
-'     ・Test_9_26_PostProbe      : 検証ページを書き出して新タブで開く
-'     ・Test_9_26_PostProbe_Help : 手順と結果の読み方
-'     ・BuildPostProbeHtml       : 検証ページの HTML (private)
-'     ・WriteUtf8NoBom           : UTF-8 (BOM なし) 書き出しヘルパ (private)
-'
-'   ★設計判断のメモ★
-'     ・開き方は仮想ホストマッピング (https://appassets.postprobe/postprobe.html)。
-'       NavigateToString は origin が "null" になり Referer やフォーム送信の条件が
-'       本番と変わってしまうので、検証の純度を落とさないため採らない。
-'       既存の Wv2Browser.AddTabWithUrlForSpa にそのまま乗る。
-'     ・書き出しは ADODB.Stream で UTF-8 (BOM なし)。UserForm1.WriteSpaAppFolder は
-'       Print # による ANSI (CP932) 書き出しなので、meta charset=UTF-8 の HTML に
-'       日本語を入れると化ける。Wv2TabBar/Wv2NavBar で実績のある方式に揃えた。
-'       (ADODB.Stream は遅延バインドなので参照設定ゼロの方針には抵触しない)
-'     ・★JS はゼロ★ 素の <form> だけで組んだ。VBA 文字列内の JS は事故のもとなので、
-'       HTML だけで足りる要件にわざわざ JS を持ち込まない。
-'
-' --- Wv2Tests.bas  第9.26 段階 (NewWindowRequested 委譲プローブ) ---
-'
-'   第9.26 の追加:
-'     ★Test_9_26_Popup_On / Test_9_26_Popup_Off (実機スイッチ)★
-'       起動中の Wv2Browser の PopupDelegateMode を切り替えるだけの薄い口。
-'       UserForm1.CurrentBrowser (第9.17 の足場) を経由するので UserForm1.frm は無変更。
-'     ★Test_9_26_Popup_Help (実機手順)★
-'       職場の基幹システムで POST リンクを踏み、405 が消えるかを見る手順と、
-'       結果の読み方 (パターンA/B) を出力する。
-'
-'   ★この回は純ロジック検証が無い★ 見たいのは「WebView2 ランタイムが遷移を継続するか」
-'     という実機の挙動そのものなので、WebView2 を起動しない検証にはできない
-'     (9.21～9.25 と同じ判断)。
-'
-' --- Wv2Tests.bas  第9.25b 段階 (検証プローブの撤去 / 引数ゼロを恒久確定) ---
-'
-'   第9.25 の検証が「パターンA = 安全」で決着したため、Test_9_25_Probe_Help を削除した。
-'   プローブ本体 (Wv2NavBar の HostProbe / HostProbeMark と JS の probeParamless) も
-'   同時に撤去済みなので、手順 Sub だけ残しても実行できるものが無いため。
-'
-'   ★結論 (仕様事実 22。詳細は開発メモ)★
-'     hostObjects の sync プロキシは、メンバー取得の時点では VBA 側を呼び出さない。
-'     呼び出しは実際の () まで遅延される。したがって引数ゼロの Public Function も
-'     そのまま公開してよく、9.24 のダミー引数 reserved は不要だった。
-'     実測ログ: (1) 取得の直前 → (2) 取得の直後 → ★実行★ → (3) f() 成功 →
-'     ★実行★ → (5) 直呼び成功。(1)-(2) 間に実行が無く、通算 2 回ちょうど。
-
-''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.25 段階 (検証: 引数ゼロ Host メソッドの可否 + reserved 削除) ---
-'
-'   第9.25 の追加:
-'     ★Test_9_25_Probe_Help (実機手順)★
-'       9.24 の宿題「ダミー引数 reserved は本当に必要だったのか」を潰す回。
-'       NavBar から reserved を削除して引数ゼロに戻し、同時に副作用ゼロの検証専用
-'       プローブ (HostProbe / HostProbeMark) を仕込んだ (案C)。
-'
-'       ★この回は起動するだけで機構の答えが出る★ プローブは NavBar の JS が
-'       ready 送信の 500ms 後に自走するので、たーぼーさんは普通に起動して
-'       [PROBE] 行の並びを読むだけでよい。そのうえで ← → [更新] を 1 回ずつ押して
-'       実物が二重実行にならないかを確認する。
-
-''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.24 段階 (NavBar の hostObjects 化 + Host 一元化 検証) ---
-'
-'   第9.24 の追加:
-'     ★Test_9_24_HostNavBar_Help (実機手順)★
-'       NavBar の back/forward/reload/navigate を hostObjects 経路へ移し、処理を
-'       HostBack/HostForward/HostReload/HostNavigate へ一元化した回の実機手順。
-'       実 URL Navigate + JS 実行 + hostObjects 経路の成立を見るため、純ロジック
-'       検証は無い (9.21～9.23 と同じ判断)。
-'
-'       ★この回の判定は 3 本立て★
-'         (1) 4 コマンドが host 経由になったか (HostXxx ログが出て、OnPaneWebMessage
-'             の当該 cmd ログが出ない)
-'         (2) ★二重実行が起きていないか (論点4b)★ ← を 1 回押して HostBack が
-'             1 行だけか。2 行出たり、OnPaneWebMessage の back が続いたりしたら
-'             ダミー引数 reserved でも塞げていないということ (要報告)
-'         (3) ★文字列引数が無傷か (仕様事実 21 候補)★ 日本語の検索語・記号入り
-'             URL が HostNavigate のログに化けずに出るか
-'
-'       回帰確認は ready ハンドシェイク / Escape の編集破棄 / 編集中フラグ /
-'       TabBar 側 (9.21～9.23) が無傷であること。
-
-''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.23 段階 (整理: activate/close/reorder の Host 一元化 検証) ---
-'
-'   第9.23 の追加:
-'     ★Test_9_23_Consolidation_Help (実機手順)★
-'       9.23 は OnPaneWebMessage の activate/close/reorder ケースの中身を
-'       HostActivate/HostClose/HostReorder への呼び捨て委譲に一元化した整理
-'       ステージ (案C-1)。JS 側ハイブリッドは無変更なので、通常運用では
-'       hostObjects 経路が成立し Case (=フォールバック経路) はそもそも通らない。
-'       よって実機で見るべきは「回帰していないこと」= activate/close/reorder が
-'       従来どおり host 経由 (HostXxx ログ) で動き UX が不変であること、および
-'       ready/newtab/settings が無傷であること。純ロジック検証は WebView2 実起動が
-'       必須のため無し (9.21/9.22 と同じ判断)。
+'   Not a single existing Test_* was changed.
 '
 
 ''''''''''''''''''''''''''''''''''
-' --- Wv2Tests.bas  第9.22 段階 (試験: close / reorder の hostObjects 化 検証) ---
+' --- Wv2Tests.bas  Stage 9.29 (verifying custom search engines) ---
 '
-'   第9.22 の追加:
-'     ★Test_9_22_HostCloseReorder_Help (実機手順)★
-'       TabBar の close / reorder を hostObjects.sync.TabBar.HostClose /
-'       HostReorder 経由に移した回の実機手順。close の × / reorder のドラッグで
-'       host経由ログが出て OnPaneWebMessage が出ないこと、activate (9.21) も
-'       引き続き host経由であること、ready/newtab/settings は postMessage の
-'       ままであること (回帰なし) を確認する。実 URL Navigate + JS 実行 +
-'       hostObjects 経路の成立は実起動必須のため純ロジック検証は無し。
+'   Additions in 9.29:
+'     *Test_9_29_Custom (pure logic)*
+'       Checks SetCustomEngine / GetCustomTemplate of Wv2SettingsBridge,
+'       PreviewUrlForTemplate and the saving / loading of custom (2 lines: engine + template)
+'       against expected values. WebView2 is not started.
+'       It touches the real file (%APPDATA%\Wv2Browser\settings.txt), so at the top it
+'       saves *engine and template as a pair* and writes them back at the end.
 '
-' --- Wv2Tests.bas  第9.21 段階 (試験: activate の hostObjects 化 検証) ---
+'     *Test_9_29_Help (real-machine procedure)*
+'       Custom input box on the settings tab -> apply -> search -> restore on restart, end to end.
 '
-'   第9.21 の追加:
-'     ★Test_9_21_HostActivate_Help (実機手順)★
-'       TabBar の activate を hostObjects.sync.TabBar.HostActivate 経由に
-'       試験移行した結果を実機で確かめる手順。純ロジック検証は無い (実 URL
-'       Navigate + JS 実行 + hostObjects 経路の成立を見るため、WebView2 の
-'       実起動が必須)。タブを複数開いてクリックで切替え、イミディエイトに
-'       『HostActivate: index=N (host経由)』が出て、かつ従来の
-'       『OnPaneWebMessage: msg={"cmd":"activate"...}』が出ないことを確認する。
+'     *Test_9_20_Persistence's save/restore was made custom-aware*
+'       In 9.29 settings.txt became 2 keys, so writing back with Debug_SaveEngineName would
+'       "erase the template line of someone whose original was custom".
+'       Changed to save and restore with Debug_SaveSettings (engine + template).
 '
-' --- Wv2Tests.bas  第9.20 段階 (検索エンジン選択の永続化 検証) ---
+' --- Wv2Tests.bas  Stage 9.28b (POST probe destinations made 3 routes / main one moved to httpbingo.org) ---
 '
-'   第9.20 の追加:
-'     ★Test_9_20_Persistence (純ロジック)★
-'       Wv2SettingsBridge の Debug_SaveEngineName / LoadEngineName /
-'       LoadEngineTemplate を直接叩き、保存→読込の往復と、ファイル
-'       が無いとき/未知エンジン名のフォールバックを照合する。
-'       WebView2 は起動しない。実ファイル (%APPDATA%\Wv2Browser\
-'       settings.txt) を触るので、冒頭で現在の保存値を退避し、
-'       末尾で書き戻してユーザー設定を壊さないようにする。
+'   In the 9.28 real-machine run httpbin.org *kept returning 503 for server-side reasons*, so the main
+'   re-check could not be done. A plain GET (typed directly into the address bar) also gave 503, which
+'   confirmed that the 405 that should have come back from a healthy server was masked by server downtime.
+'   httpbin.org is a free public service with long-standing reports of periodic 503s.
+'   -> *Do not make the verification base depend on a single external service*: increase destinations to 3.
 '
-'     ★Test_9_20_Persistence_Help (実機手順)★
-'       起動→設定でエンジン変更→Excel 完全終了→再起動で検索が
-'       前回エンジンで始まることを確かめる (復元は Class_Initialize
-'       の実行を伴うので実機手順で確認)。
+'   *Changes (BuildPostProbeHtml and the explanatory text only. Not one line of production files is touched)*
+'     Button 1 (main / POST + _blank)        : httpbin.org -> *httpbingo.org*
+'     Button 2 (sanity / POST same tab)      : httpbin.org -> *httpbingo.org*
+'     Button 3 (control / GET + _blank)      : httpbin.org/get -> *httpbingo.org/get*
+'                                        (aligned to the same server as the main one to narrow the variables to one)
+'     Button 4 (spare 1)                     : postman-echo.com -> *httpbin.org* (former main one demoted)
+'     Button 5 (spare 2)                     : *newly added* postman-echo.com
 '
-' --- Wv2Tests.bas  第9.19 段階 (設定タブの重複防止 検証手順) ---
+'   *Why httpbingo.org was made the main one, and a caution*
+'     - GET returns 405 Method Not Allowed (confirmed on the real machine). The same picture as the
+'       workplace Tomcat holds as is.
+'     - The POST response JSON has a *method field*, so you can confirm directly on screen
+'       that it has not turned into a GET (an advantage httpbin lacks).
+'     - *Caution* httpbingo's error page has no title element, and Edge uses the URL as
+'       a substitute title. Hence *pass/fail cannot be read from the Immediate log*
+'       (httpbin showed 405 METHOD NOT ALLOWED in the title).
+'       Always judge by *what is shown on screen*.
 '
-'   第9.19 の追加事項:
-'     ★Test_9_19_SettingsTabDedup_Help を追加★
-'       設定タブの重複防止 ([歯車] 連打で設定タブが増えない) は WebView2 の実際の
-'       タブ生成・アクティブ化を伴うため、純ロジック検証ではなく実機手順で
-'       確認する。イミディエイトで Test_9_19_SettingsTabDedup_Help と打つと
-'       手順が出る。ロジックの要 (IsSettings フラグ立て + m_tabs 走査による
-'       重複回避) は Wv2Pane / Wv2Browser のコードレビューで担保する。
+'   *JS stays at zero* The policy of building with a plain form only is kept (JS inside VBA strings invites accidents).
 '
-' --- Wv2Tests.bas  第9.18 段階 (Wv2SettingsBridge の純ロジック検証) ---
+' --- Wv2Tests.bas  Stage 9.28 (updating verification procedures for pre-warm delegation becoming the default) ---
 '
-'   第9.18 の追加: Test_9_18_BridgeLogic を追加。Wv2SettingsBridge を new し、
-'   実 Wv2Browser を BindBrowser で結び付けてから、設定画面の JS が呼ぶのと同じ
-'   メソッド (SetEngine / GetEngine / PreviewUrl / PreviewUrlFor / EngineList) を
-'   直接叩いて、名前⇔テンプレート解決・プレビュー URL 生成・副作用なしを照合する。
-'   WebView2 は起動しない (ブリッジ + Browser の Debug_* を叩くだけ)。
-'   ※hostObjects 経路が実機で通るか (順序A) の確認は Help の実機手順で行う。
-'   汎用ヘルパー CheckEq (文字列一致) / CheckBool (真偽) を追加。
+'   Additions / changes in 9.28:
+'     *Test_9_28_Help (new)*
+'       Real-machine procedure with the default now 2 (pre-warm delegation). The main aim is to confirm *without switching modes*
+'       that POST links give 200 in our own tab.
+'     *The wording of Test_9_27_Help / Test_9_27_Status was fixed to assume default 2*
+'       The 9.27 procedure was written on the premise "default 0 -> take the control, then switch to 2".
+'       With the default now 2, to see the control (405) you must first run Test_9_27_Mode_Legacy.
+'       Only that one point was fixed.
 '
-' --- Wv2Tests.bas  第9.17 段階 (検索エンジンのプリセット解決を検証) ---
+'   *Test_9_27_Mode_Legacy / _Popup / _Prewarm / _Status / _Handled_On / _Off are
+'     unchanged from 9.27* Only the default changed; the meaning of the entry points did not.
 '
-'   第9.17 の追加: Test_9_17_SearchPresets を追加。UserForm1.UseSearchEngine が
-'   プリセット名 ("google"/"bing"/"duckduckgo"/"yahoo") を解決する先の
-'   テンプレート文字列を、Wv2Browser に直接 Let したときに検索 URL がそのエンジンへ
-'   正しく追従するかを純ロジックで照合する。UserForm を起動せず (m_browser 非依存)、
-'   Browser を new して Debug_NormalizeUrl / Debug_SearchEngine を叩くだけ。
-'   ※UseSearchEngine 自体 (名前→テンプレート解決 + 未起動ガード) の確認は実機
-'     (CurrentBrowser 経由) で行う。ここではプリセット値の正しさを担保する。
+' --- Wv2Tests.bas  Stage 9.27 (main target: verifying pre-warm delegation via put_NewWindow) ---
 '
-' --- Wv2Tests.bas  第9.16 段階 (整理: フィーチャー検証 Sub の集約) ---
+'   Additions in 9.27:
+'     *Test_9_27_Mode_Legacy / _Popup / _Prewarm (mode switching)*
+'       Thin entry points that switch Wv2Browser.NewWindowMode between 0 / 1 / 2. Effective immediately even while running.
+'     *Test_9_27_Status (state dump)*
+'       Confirms in one line whether the spare tab (pre-warm) is warmed up.
+'     *Test_9_27_Handled_On / _Off (insurance switch for issue 5)*
+'       Toggles whether put_Handled(TRUE) is also set after put_NewWindow.
+'       For isolating symptoms such as the spare tab staying white / opening twice.
+'     *Test_9_27_Help (real-machine procedure)*
+'       Reuses as is the POST probe page of 9.26b (Test_9_26_PostProbe).
+'       The pass condition is *delegation OFF (mode 0) gives 405 / mode 2 gives 200 + form echo*.
 '
-'   WebView2 を起動しない「純ロジック検証 Sub」を集める標準モジュール。
-'   Wv2Browser の公開検証口 (Debug_NormalizeUrl / Debug_SearchEngine /
+'   *No new verification page is made* The postprobe.html of 9.26b already has
+'     the same picture as the workplace, "GET gives 405 / POST gives 200 + echoes the body",
+'     so it is exactly adequate for judging the main target as well.
+'
+' --- Wv2Tests.bas  Stage 9.26b (adding the POST probe page) ---
+'
+'   What the 9.26 real-machine verification revealed:
+'     The probe mechanism (toggle / branching / runtime delegation / no reference leak) all held.
+'     However, the popups of the sites tried were *plain GETs*, so even with delegation OFF they opened normally in
+'     our own tab (isSuccess: True), and the 405 was not reproduced.
+'     In other words, the evidence for the main question "does delegation preserve the POST?" has not been obtained yet.
+'
+'   *Aim of this step* Synthesize the 405 picture at home without going to the workplace, and judge the main question.
+'     With https://httpbin.org/post as the destination
+'       - hitting it with GET  -> 405 METHOD NOT ALLOWED   (= exactly the same picture as the workplace Tomcat)
+'       - hitting it with POST -> 200 + the sent body echoed as JSON
+'     so a single button yields both "reproduction of 405" and "direct evidence that the body was carried".
+'     If delegation OFF gives 405 / ON gives 200, pattern A is confirmed.
+'
+'   *What was added (all self-contained in Wv2Tests.bas. Not one line of production files is touched)*
+'     - Test_9_26_PostProbe      : writes out the verification page and opens it in a new tab
+'     - Test_9_26_PostProbe_Help : the procedure and how to read the results
+'     - BuildPostProbeHtml       : HTML of the verification page (private)
+'     - WriteUtf8NoBom           : UTF-8 (no BOM) write-out helper (private)
+'
+'   *Design decision notes*
+'     - It is opened via a virtual host mapping (https://appassets.postprobe/postprobe.html).
+'       NavigateToString makes the origin "null", changing the Referer and form-submission
+'       conditions from production, so it is not used, to keep the verification pure.
+'       It plugs straight into the existing Wv2Browser.AddTabWithUrlForSpa.
+'     - Writing uses ADODB.Stream with UTF-8 (no BOM). UserForm1.WriteSpaAppFolder writes
+'       ANSI (CP932) with Print #, so putting Japanese into an HTML with meta charset=UTF-8
+'       garbles it. Aligned with the approach proven in Wv2TabBar/Wv2NavBar.
+'       (ADODB.Stream is late-bound, so it does not violate the zero-references policy)
+'     - *Zero JS* Built with a plain <form> only. JS inside VBA strings invites accidents, so
+'       JS is not brought in needlessly for a requirement that HTML alone satisfies.
+'
+' --- Wv2Tests.bas  Stage 9.26 (NewWindowRequested delegation probe) ---
+'
+'   Additions in 9.26:
+'     *Test_9_26_Popup_On / Test_9_26_Popup_Off (real-machine switches)*
+'       Thin entry points that only toggle PopupDelegateMode of the running Wv2Browser.
+'       They go through UserForm1.CurrentBrowser (the 9.17 scaffold), so UserForm1.frm is unchanged.
+'     *Test_9_26_Popup_Help (real-machine procedure)*
+'       Outputs the procedure for stepping on a POST link in the workplace core system to see whether the 405 disappears, and
+'       how to read the results (pattern A/B).
+'
+'   *This round has no pure-logic verification* What we want to see is the real-machine behavior itself:
+'     "does the WebView2 runtime continue the navigation?", so it cannot be made a
+'     verification that does not start WebView2 (same judgment as 9.21-9.25).
+'
+' --- Wv2Tests.bas  Stage 9.25b (removing the verification probe / making zero arguments permanent) ---
+'
+'   Since the 9.25 verification concluded with "pattern A = safe", Test_9_25_Probe_Help was deleted.
+'   The probe itself (HostProbe / HostProbeMark of Wv2NavBar and probeParamless in JS) was also
+'   removed at the same time, so leaving only the procedure Sub would leave nothing runnable.
+'
+'   *Conclusion (spec fact 22. Details in the development notes)*
+'     The sync proxy of hostObjects does not call into the VBA side at member-fetch time.
+'     The call is deferred until the actual (). Hence a Public Function with zero arguments can
+'     be exposed as is, and the dummy argument "reserved" of 9.24 was unnecessary.
+'     Measured log: (1) just before fetch -> (2) just after fetch -> *execution* -> (3) f() succeeded ->
+'     *execution* -> (5) direct call succeeded. No execution between (1) and (2); exactly 2 in total.
+
+''''''''''''''''''''''''''''''''''
+' --- Wv2Tests.bas  Stage 9.25 (verification: whether a zero-argument Host method is possible + removing reserved) ---
+'
+'   Additions in 9.25:
+'     *Test_9_25_Probe_Help (real-machine procedure)*
+'       The round that settles the 9.24 open item "was the dummy argument reserved really necessary?".
+'       Removed reserved from NavBar to return to zero arguments, and at the same time planted a verification-only
+'       probe with zero side effects (HostProbe / HostProbeMark) (plan C).
+'
+'       *In this round the answer about the mechanism comes out just by starting up* The probe is run by NavBar's JS on its own
+'       500ms after the ready message is sent, so tarboh only has to start normally and
+'       read the sequence of [PROBE] lines. Then press <- -> [Reload] once each to check that
+'       the real thing is not executed twice.
+
+''''''''''''''''''''''''''''''''''
+' --- Wv2Tests.bas  Stage 9.24 (verification of NavBar moving to hostObjects + Host consolidation) ---
+'
+'   Additions in 9.24:
+'     *Test_9_24_HostNavBar_Help (real-machine procedure)*
+'       Real-machine procedure for the round that moved NavBar's back/forward/reload/navigate to the hostObjects route and consolidated the processing into
+'       HostBack/HostForward/HostReload/HostNavigate.
+'       It checks a real URL Navigate + JS execution + the hostObjects route working, so there is no pure-logic
+'       verification (same judgment as 9.21-9.23).
+'
+'       *The verdict of this round has three parts*
+'         (1) Did the 4 commands go via host? (HostXxx log appears and the corresponding cmd log
+'             of OnPaneWebMessage does not)
+'         (2) *Is there no double execution? (issue 4b)* Press <- once and check HostBack
+'             appears on only 1 line. If 2 lines appear, or the back of OnPaneWebMessage follows,
+'             even the dummy argument reserved did not block it (report it)
+'         (3) *Are string arguments intact? (spec fact 21 candidate)* Check whether a Japanese search term and a URL with
+'             symbols appear in the HostNavigate log without garbling
+'
+'       For regression checks: the ready handshake / discarding edits on Escape / the editing flag /
+'       the TabBar side (9.21-9.23) must be intact.
+
+''''''''''''''''''''''''''''''''''
+' --- Wv2Tests.bas  Stage 9.23 (cleanup: verifying the Host consolidation of activate/close/reorder) ---
+'
+'   Additions in 9.23:
+'     *Test_9_23_Consolidation_Help (real-machine procedure)*
+'       9.23 is a cleanup stage (plan C-1) that consolidated the bodies of the activate/close/reorder cases of OnPaneWebMessage into
+'       fire-and-forget delegation to HostActivate/HostClose/HostReorder. The JS-side hybrid is unchanged, so in
+'       normal operation the hostObjects route works and the Case (= fallback route) is not taken at all.
+'       Hence what to look at on the real machine is "no regression" = activate/close/reorder
+'       still work via host as before (HostXxx log) with the UX unchanged, and
+'       still work via host as before (HostXxx log) with the UX unchanged, and that
+'       ready/newtab/settings are intact. There is no pure-logic verification because a real WebView2 start is
+'       required (same judgment as 9.21/9.22).
+'
+
+''''''''''''''''''''''''''''''''''
+' --- Wv2Tests.bas  Stage 9.22 (trial: verifying close / reorder moved to hostObjects) ---
+'
+'   Additions in 9.22:
+'     *Test_9_22_HostCloseReorder_Help (real-machine procedure)*
+'       Real-machine procedure for the round that moved the TabBar's close / reorder to go through hostObjects.sync.TabBar.HostClose /
+'       HostReorder. Confirms that the close x and reorder drag
+'       produce the via-host log and no OnPaneWebMessage, that activate (9.21) is
+'       still via host, and that ready/newtab/settings are still
+'       postMessage (no regression). A real URL Navigate + JS execution +
+'       the hostObjects route working require a real start, so there is no pure-logic verification.
+'
+' --- Wv2Tests.bas  Stage 9.21 (trial: verifying activate moved to hostObjects) ---
+'
+'   Additions in 9.21:
+'     *Test_9_21_HostActivate_Help (real-machine procedure)*
+'       Procedure for checking on the real machine the result of the trial migration of the TabBar's activate to go through
+'       hostObjects.sync.TabBar.HostActivate. There is no pure-logic verification (it checks a real URL
+'       Navigate + JS execution + the hostObjects route working, so a real
+'       WebView2 start is required). Open several tabs and switch by clicking, and confirm that the Immediate window shows
+'       "HostActivate: index=N (via host)" and does not show the former
+'       "OnPaneWebMessage: msg={"cmd":"activate"...}".
+'
+' --- Wv2Tests.bas  Stage 9.20 (verifying persistence of the search engine selection) ---
+'
+'   Additions in 9.20:
+'     *Test_9_20_Persistence (pure logic)*
+'       Directly calls Debug_SaveEngineName / LoadEngineName /
+'       LoadEngineTemplate of Wv2SettingsBridge, and checks the save -> load round trip and the fallback
+'       for a missing file / an unknown engine name.
+'       WebView2 is not started. It touches the real file (%APPDATA%\Wv2Browser\
+'       settings.txt), so at the top it saves the current stored value aside, and
+'       writes it back at the end so as not to break the user's settings.
+'
+'     *Test_9_20_Persistence_Help (real-machine procedure)*
+'       Start -> change the engine in settings -> fully quit Excel -> restart and confirm that search starts with
+'       the previous engine (restoring involves running Class_Initialize,
+'       so it is confirmed by the real-machine procedure).
+'
+' --- Wv2Tests.bas  Stage 9.19 (verification procedure for preventing duplicate settings tabs) ---
+'
+'   Additions in 9.19:
+'     *Added Test_9_19_SettingsTabDedup_Help*
+'       Preventing duplicate settings tabs (mashing [gear] does not add settings tabs) involves WebView2's actual
+'       tab creation and activation, so it is confirmed by a real-machine procedure, not pure-logic
+'       verification. Typing Test_9_19_SettingsTabDedup_Help in the Immediate window shows the
+'       procedure. The crux of the logic (setting the IsSettings flag + avoiding duplicates by scanning m_tabs)
+'       is covered by code review of Wv2Pane / Wv2Browser.
+'
+' --- Wv2Tests.bas  Stage 9.18 (pure-logic verification of Wv2SettingsBridge) ---
+'
+'   Additions in 9.18: added Test_9_18_BridgeLogic. Creates a Wv2SettingsBridge, binds a
+'   real Wv2Browser with BindBrowser, then directly calls the same methods
+'   the settings screen's JS calls (SetEngine / GetEngine / PreviewUrl / PreviewUrlFor / EngineList)
+'   and checks name <-> template resolution, preview URL generation, and absence of side effects.
+'   WebView2 is not started (it only calls the bridge + Browser's Debug_*).
+'   NOTE: whether the hostObjects route works on the real machine (order A) is confirmed by the real-machine procedure in Help.
+'   Added the generic helpers CheckEq (string match) / CheckBool (boolean).
+'
+' --- Wv2Tests.bas  Stage 9.17 (verifying search engine preset resolution) ---
+'
+'   Additions in 9.17: added Test_9_17_SearchPresets. Checks in pure logic whether the search URL
+'   follows that engine correctly when the template strings that UserForm1.UseSearchEngine resolves
+'   preset names ("google"/"bing"/"duckduckgo"/"yahoo") to are Let directly into Wv2Browser.
+'   Does not start the UserForm (independent of m_browser),
+'   it only news a Browser and calls Debug_NormalizeUrl / Debug_SearchEngine.
+'   NOTE: UseSearchEngine itself (name -> template resolution + not-started guard) is confirmed on the real machine
+'     (via CurrentBrowser). Here we only guarantee the correctness of the preset values.
+'
+' --- Wv2Tests.bas  Stage 9.16 (cleanup: consolidating feature verification Subs) ---
+'
+'   A standard module that collects the "pure-logic verification Subs" that do not start WebView2.
+'   Only calls Wv2Browser's public verification entry points (Debug_NormalizeUrl / Debug_SearchEngine /
 '   Debug_TabOrderTitles / Debug_SeedDummyTabs / Debug_ActiveIndex / MoveTab)
-'   を叩くだけで、サンク基盤や WebView2 本体には一切触れない。
+'   and never touches the thunk foundation or WebView2 itself.
 '
-'   ★なぜ分けたか (案1-A)★
-'     これらの検証はもともと Wv2Thunks.bas に溜まっていたが、Wv2Thunks は
-'     「機械語サンク・vtable・メモリプリミティブ」の心臓部モジュールであり、
-'     サンクと無関係なフィーチャー検証が同居するのは責任範囲の侵食だった
-'     (Wv2Json を切り出した「関心事で分ける」原則との不整合)。そこで検証専用の
-'     受け皿としてこのモジュールを新設し、Test_9_14 以降をここへ集約した。
-'     以後の Test_9_17, Test_9_18… もここに足す (ファイルはもう増やさない)。
+'   *Why it was separated (plan 1-A)*
+'     These verifications had originally piled up in Wv2Thunks.bas, but Wv2Thunks is the heart module of
+'     "machine-code thunks, vtables and memory primitives", and having feature verification unrelated to
+'     thunks live there was an encroachment on its responsibility
+'     (inconsistent with the principle of "splitting by concern" that split out Wv2Json). So this module was created as a
+'     receptacle dedicated to verification, and everything from Test_9_14 on was consolidated here.
+'     Later Test_9_17, Test_9_18... are added here too (no more new files).
 '
-'   ★移植性★ このモジュールは検証コード専用なので、本番移植時に「テストが
-'     要らなければ Wv2Tests.bas はインポートしない」判断ができる。本番コードと
-'     テストコードが物理的に分離するため、むしろ移植性は上がる。
+'   *Portability* This module is verification code only, so at production porting one can decide "if tests are
+'     not needed, do not import Wv2Tests.bas". Production code and
+'     test code are physically separated, so portability actually goes up.
 '
-'   ★ここに置くもの / 置かないもの★
-'     置く  : Wv2Browser の Debug_* を叩くだけの純ロジック検証 (WebView2 起動不要)。
-'     置かない: サンク基盤自体の検証 (Test_VirtualAllocFree_Roundtrip 等) は
-'              Wv2Thunks の Private と密結合するため Wv2Thunks に残す。
-'              実機起動を伴う検証 (StartWebView2_Full 等) は UserForm1 に残す
-'              (UserForm のインスタンス状態 m_browser 等を握るため)。
+'   *What goes here / what does not*
+'     Goes here  : pure-logic verification that only calls Wv2Browser's Debug_* (no WebView2 start needed).
+'     Does not   : verification of the thunk foundation itself (Test_VirtualAllocFree_Roundtrip etc.) stays in
+'              Wv2Thunks because it is tightly coupled to its Private members.
+'              Verification involving a real start (StartWebView2_Full etc.) stays in UserForm1
+'              (because it holds the UserForm's instance state m_browser etc.).
 ''''''''''''''''''''''''''''''''''
 
 Option Explicit
 
-' --- 判定カウンタ (TestBool / TestEq / D1Case が数え、TestCountPrint が出す) ---
-'     ★イミディエイトは ExecuteScript の配管ログで流れてしまうので、
-'     判定はログファイルにも残す (K-1 の Wv2Log 経由)。★
+' --- Verdict counters (counted by TestBool / TestEq / D1Case, printed by TestCountPrint) ---
+'     *The Immediate window gets flooded by the ExecuteScript plumbing log,
+'     so verdicts are also kept in the log file (via K-1's Wv2Log).*
 Private m_okCount As Long
 Private m_ngCount As Long
 
-' --- N-1: 検証ページを置く仮想ホスト名とフォルダ名 ---
+' --- N-1: virtual host name and folder name for placing the verification page ---
 Private Const N1_HOST   As String = "appassets.netprobe"
 Private Const N1_FOLDER As String = "Wv2NetProbe"
 
-' --- N-1b: 検証の的 (★どちらも仮想ホストの外★) ---
-'   N1_LOCAL … 到達不能なローカルアドレス。接続は必ず失敗するが、要求は飛ぶ。
-'     ★ポートは Chromium が塞いでいる番号を避ける★ (1/7/9/11/13/…/10080 など)
-'     ★http でも混在コンテンツで止まらない★ 127.0.0.1 は仕様上
-'     「潜在的に信頼できるオリジン」なので https のページから呼べる。
-'   N1_NET   … 外部サービス。ネットが要る代わりに素直に届く。
+' --- N-1b: verification targets (*both outside the virtual host*) ---
+'   N1_LOCAL ... an unreachable local address. The connection always fails, but the request is sent.
+'     *Pick a port that avoids the numbers Chromium blocks* (1/7/9/11/13/.../10080 etc.)
+'     *It is not stopped as mixed content even with http* 127.0.0.1 is by spec a
+'     "potentially trustworthy origin", so it can be called from an https page.
+'   N1_NET   ... an external service. It needs the net, but in exchange it arrives cleanly.
 Private Const N1_LOCAL  As String = "http://127.0.0.1:59999"
 Private Const N1_NET    As String = "https://httpbingo.org"
 
 
 ' ============================================================
-' Test_9_14_SearchFallback  (第9.14 検索語フォールバックのロジック検証)
+' Test_9_14_SearchFallback  (Stage 9.14 logic verification of the search-term fallback)
 '
-'   ★イミディエイトウィンドウで  Test_9_14_SearchFallback  と打つだけ★
+'   *Just type  Test_9_14_SearchFallback  in the Immediate window*
 '
-'   WebView2 は起動しない。Wv2Browser を new して Debug_NormalizeUrl を叩き、
-'   入力が「URL」と「Google 検索」に正しく振り分けられるか、および日本語・記号の
-'   percent-encoding が正しいかを一括で確認する。
-'   期待値と一致すれば [OK]、違えば [NG] を Debug.Print する。末尾に合否サマリ。
+'   WebView2 is not started. Creates a Wv2Browser and calls Debug_NormalizeUrl to check in one batch
+'   that input is correctly routed to "URL" vs "Google search", and that percent-encoding of
+'   Japanese and symbols is correct.
+'   Prints [OK] when it matches the expected value and [NG] when not. A pass/fail summary at the end.
 ' ============================================================
 Public Sub Test_9_14_SearchFallback()
     Dim b As Wv2Browser
     Set b = New Wv2Browser
-    ' ※ Wv2Browser の Initialize は不要 (Debug_NormalizeUrl は NormalizeUrl を
-    '    呼ぶだけで、タブ・Environment・ウィンドウに一切触れないため)。
+    ' NOTE: Initialize of Wv2Browser is not needed (Debug_NormalizeUrl only calls NormalizeUrl,
+    '    and never touches tabs, the Environment or windows).
 
     Dim total As Long, pass As Long
     total = 0: pass = 0
 
-    Debug.Print "==== Test_9_14_SearchFallback 開始 ===="
+    Debug.Print "==== Test_9_14_SearchFallback start ===="
 
-    ' --- (1) スキーム有り → そのまま ---
+    ' --- (1) has a scheme -> as is ---
     Check b, "https://example.com", "https://example.com", total, pass
     Check b, "http://example.com/a?b=1", "http://example.com/a?b=1", total, pass
     Check b, "about:blank", "about:blank", total, pass
     Check b, "file:///C:/tmp/x.html", "file:///C:/tmp/x.html", total, pass
 
-    ' --- (2) ドット有り・空白なし → URL (https:// 前置) ---
+    ' --- (2) has a dot, no whitespace -> URL (https:// prefixed) ---
     Check b, "example.com", "https://example.com", total, pass
     Check b, "www.google.co.jp", "https://www.google.co.jp", total, pass
     Check b, "192.168.0.1", "https://192.168.0.1", total, pass
-    Check b, "localhost:8080", "localhost:8080", total, pass          ' コロン前が英字のみ→スキーム扱いで素通し(Edge が http:// を補う)
+    Check b, "localhost:8080", "localhost:8080", total, pass          ' only letters before the colon -> treated as a scheme and passed through (Edge adds http://)
 
-    ' --- (3) 空白あり or ドットなし → Google 検索 ---
+    ' --- (3) has whitespace or no dot -> Google search ---
     Check b, "hello world", "https://www.google.com/search?q=hello%20world", total, pass
     Check b, "localhost", "https://www.google.com/search?q=localhost", total, pass
     Check b, "excel vba webview2", "https://www.google.com/search?q=excel%20vba%20webview2", total, pass
 
-    ' --- (4) 日本語・記号のエンコード (encodeURIComponent 相当) ---
-    Check b, "日本 天気", "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
-    Check b, "C++ 入門", "https://www.google.com/search?q=C%2B%2B%20%E5%85%A5%E9%96%80", total, pass
+    ' --- (4) encoding of Japanese and symbols (equivalent to encodeURIComponent) ---
+    Check b, (ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&)), "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
+    Check b, ("C++ " & ChrW(&H5165&) & ChrW(&H9580&)), "https://www.google.com/search?q=C%2B%2B%20%E5%85%A5%E9%96%80", total, pass
     Check b, "100% pure", "https://www.google.com/search?q=100%25%20pure", total, pass
-    Check b, "a.b-c_d~e f", "https://www.google.com/search?q=a.b-c_d~e%20f", total, pass  ' 空白ありで検索、-_.~ は素通し
+    Check b, "a.b-c_d~e f", "https://www.google.com/search?q=a.b-c_d~e%20f", total, pass  ' search because of the space; -_.~ pass through
 
-    ' --- (5) 前後空白トリム ---
+    ' --- (5) trimming leading/trailing whitespace ---
     Check b, "  example.com  ", "https://example.com", total, pass
-    Check b, "", "", total, pass   ' 空入力は空 (NavigateActive 側で無視される)
+    Check b, "", "", total, pass   ' empty input stays empty (ignored on the NavigateActive side)
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]") & " ===="
 
     Set b = Nothing
 End Sub
 
-' 検証ヘルパー: 期待値と比較して Debug.Print (Test_9_14_SearchFallback 専用)
+' Verification helper: compares with the expected value and Debug.Prints (dedicated to Test_9_14_SearchFallback)
 Private Sub Check(ByRef b As Wv2Browser, ByVal inp As String, _
                   ByVal expected As String, ByRef total As Long, ByRef pass As Long)
     total = total + 1
@@ -637,102 +637,102 @@ Private Sub Check(ByRef b As Wv2Browser, ByVal inp As String, _
 End Sub
 
 ' ============================================================
-' Test_9_15_Reorder  (第9.15 タブ並べ替えのロジック検証)
+' Test_9_15_Reorder  (Stage 9.15 logic verification of tab reordering)
 '
-'   ★イミディエイトウィンドウで  Test_9_15_Reorder  と打つだけ★
+'   *Just type  Test_9_15_Reorder  in the Immediate window*
 '
-'   WebView2 は起動しない。Wv2Browser を new し、Debug_SeedDummyTabs で
-'   タグ付きダミータブ ("A","B","C",...) を仕込んでから MoveTab を色々な
-'   from/to で叩き、並べ替え後のタブ順 (Debug_TabOrderTitles) と
-'   アクティブ index の追従 (Debug_ActiveIndex) を期待値と照合する。
-'   末尾に合否サマリ。
+'   WebView2 is not started. Creates a Wv2Browser, seeds tagged dummy tabs ("A","B","C",...) with Debug_SeedDummyTabs,
+'   then calls MoveTab with various from/to values and checks the tab order after reordering (Debug_TabOrderTitles) and
+'   how the active index follows (Debug_ActiveIndex)
+'   against expected values.
+'   A pass/fail summary at the end.
 '
-'   ★アクティブ追従の確認★ seed 直後は activeIndex=1 (=タブ"A")。以降 MoveTab
-'   を重ねても「"A" がいる位置」に activeIndex が追従することを確認する
-'   (MoveTab はオブジェクト参照でアクティブを逆引きするため)。
+'   *Checking that the active tab is followed* Right after the seed, activeIndex=1 (= tab "A"). Even as MoveTab
+'   is repeated, we confirm that activeIndex follows "the position where A is"
+'   (because MoveTab looks up the active tab backwards by object reference).
 '
-'   ※ ダミー Pane は View を持たないため、MoveTab 内の ActivateTab が
-'     PutIsVisible 失敗ログを出すが、順序・activeIndex 追従には影響しない。
+'   NOTE: Dummy Panes have no View, so ActivateTab inside MoveTab
+'     writes a PutIsVisible failure log, but this does not affect the order or the activeIndex following.
 ' ============================================================
 Public Sub Test_9_15_Reorder()
     Dim total As Long, pass As Long
     total = 0: pass = 0
-    Debug.Print "==== Test_9_15_Reorder 開始 ===="
+    Debug.Print "==== Test_9_15_Reorder start ===="
 
     Dim b As Wv2Browser
 
-    ' --- ケース1: [A,B,C,D] で A(1) を末尾(4)へ → [B,C,D,A], active は A に追従=4 ---
+    ' --- Case 1: in [A,B,C,D] move A(1) to the end (4) -> [B,C,D,A], active follows A = 4 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 4
     b.MoveTab 1, 4
-    CheckOrder b, "case1 A->末尾", "B|C|D|A", 4, total, pass
+    CheckOrder b, "case1 A->end", "B|C|D|A", 4, total, pass
 
-    ' --- ケース2: [A,B,C,D] で D(4) を先頭(1)へ → [D,A,B,C], active(A) は 2 ---
+    ' --- Case 2: in [A,B,C,D] move D(4) to the front (1) -> [D,A,B,C], active (A) is 2 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 4
     b.MoveTab 4, 1
-    CheckOrder b, "case2 D->先頭", "D|A|B|C", 2, total, pass
+    CheckOrder b, "case2 D->front", "D|A|B|C", 2, total, pass
 
-    ' --- ケース3: [A,B,C,D] で B(2) を C の後ろ(3)へ → [A,C,B,D], active(A) は 1 ---
+    ' --- Case 3: in [A,B,C,D] move B(2) behind C (3) -> [A,C,B,D], active (A) is 1 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 4
     b.MoveTab 2, 3
     CheckOrder b, "case3 B->3", "A|C|B|D", 1, total, pass
 
-    ' --- ケース4: [A,B,C,D] で C(3) を B の前(2)へ → [A,C,B,D], active(A) は 1 ---
+    ' --- Case 4: in [A,B,C,D] move C(3) before B (2) -> [A,C,B,D], active (A) is 1 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 4
     b.MoveTab 3, 2
     CheckOrder b, "case4 C->2", "A|C|B|D", 1, total, pass
 
-    ' --- ケース5: from==to は無変化 (成功扱い) → [A,B,C,D], active 1 ---
+    ' --- Case 5: from==to is no change (treated as success) -> [A,B,C,D], active 1 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 4
     b.MoveTab 2, 2
-    CheckOrder b, "case5 同一", "A|B|C|D", 1, total, pass
+    CheckOrder b, "case5 same", "A|B|C|D", 1, total, pass
 
-    ' --- ケース6: 範囲外 from=0 は無変化 → [A,B,C], active 1 ---
+    ' --- Case 6: out-of-range from=0 is no change -> [A,B,C], active 1 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 3
     b.MoveTab 0, 2
-    CheckOrder b, "case6 範囲外from", "A|B|C", 1, total, pass
+    CheckOrder b, "case6 from out of range", "A|B|C", 1, total, pass
 
-    ' --- ケース7: 範囲外 to=99 は無変化 → [A,B,C], active 1 ---
+    ' --- Case 7: out-of-range to=99 is no change -> [A,B,C], active 1 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 3
     b.MoveTab 2, 99
-    CheckOrder b, "case7 範囲外to", "A|B|C", 1, total, pass
+    CheckOrder b, "case7 to out of range", "A|B|C", 1, total, pass
 
-    ' --- ケース8: アクティブ自身を動かす。[A,B,C] active=1(A)、A(1)を3へ ---
-    '   → [B,C,A], active は A に追従して 3 ---
+    ' --- Case 8: move the active tab itself. [A,B,C] active=1(A), move A(1) to 3 ---
+    '   -> [B,C,A], active follows A to 3 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 3
     b.MoveTab 1, 3
-    CheckOrder b, "case8 active移動", "B|C|A", 3, total, pass
+    CheckOrder b, "case8 move active", "B|C|A", 3, total, pass
 
-    ' --- ケース9: 2タブ入れ替え [A,B] → B(2)を1へ → [B,A], active(A)=2 ---
+    ' --- Case 9: swap 2 tabs [A,B] -> move B(2) to 1 -> [B,A], active(A)=2 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 2
     b.MoveTab 2, 1
-    CheckOrder b, "case9 2タブ入替", "B|A", 2, total, pass
+    CheckOrder b, "case9 swap 2 tabs", "B|A", 2, total, pass
 
-    ' --- ケース10: 5タブ多段。[A,B,C,D,E] で C(3)を1へ → [C,A,B,D,E], active(A)=2 ---
+    ' --- Case 10: 5 tabs, multi-step. in [A,B,C,D,E] move C(3) to 1 -> [C,A,B,D,E], active(A)=2 ---
     Set b = New Wv2Browser
     b.Debug_SeedDummyTabs 5
     b.MoveTab 3, 1
-    CheckOrder b, "case10 C->先頭", "C|A|B|D|E", 2, total, pass
+    CheckOrder b, "case10 C->front", "C|A|B|D|E", 2, total, pass
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]")
 End Sub
 
 
 ' ------------------------------------------------------------
-' CheckOrder ? MoveTab 後のタブ順と activeIndex を期待値と照合する (第9.15)
-'   b            : 対象 Browser
-'   label        : ケース名 (ログ表示用)
-'   expectOrder  : 期待するタブ順 ("B|C|D|A" のような "|" 連結タグ)
-'   expectActive : 期待する activeIndex
+' CheckOrder - checks the tab order and activeIndex after MoveTab against expected values (Stage 9.15)
+'   b            : target Browser
+'   label        : case name (for log display)
+'   expectOrder  : expected tab order (tags joined with "|", like "B|C|D|A")
+'   expectActive : expected activeIndex
 ' ------------------------------------------------------------
 Private Sub CheckOrder(ByRef b As Wv2Browser, ByVal label As String, _
                        ByVal expectOrder As String, ByVal expectActive As Long, _
@@ -744,297 +744,297 @@ Private Sub CheckOrder(ByRef b As Wv2Browser, ByVal label As String, _
     gotActive = b.Debug_ActiveIndex()
     If gotOrder = expectOrder And gotActive = expectActive Then
         pass = pass + 1
-        Debug.Print "[OK] " & label & " -> 順=" & gotOrder & " active=" & gotActive
+        Debug.Print "[OK] " & label & " -> order=" & gotOrder & " active=" & gotActive
     Else
         Debug.Print "[NG] " & label & vbCrLf & _
-                    "      got     : 順=" & gotOrder & " active=" & gotActive & vbCrLf & _
-                    "      expected: 順=" & expectOrder & " active=" & expectActive
+                    "      got     : order=" & gotOrder & " active=" & gotActive & vbCrLf & _
+                    "      expected: order=" & expectOrder & " active=" & expectActive
     End If
 End Sub
 
 ' ============================================================
-' Test_9_16_SearchEngine  (第9.16 検索エンジン切替のロジック検証)
+' Test_9_16_SearchEngine  (Stage 9.16 logic verification of search engine switching)
 '
-'   ★イミディエイトウィンドウで  Test_9_16_SearchEngine  と打つだけ★
+'   *Just type  Test_9_16_SearchEngine  in the Immediate window*
 '
-'   WebView2 は起動しない。Wv2Browser を new し、SearchEngine (Property Let) で
-'   検索テンプレートを切り替えながら、検索語入力が各エンジンの検索 URL に正しく
-'   変換されるか (Debug_NormalizeUrl の第3分岐) を Check で照合する。
-'   Debug_SearchEngine で現在のテンプレートも確認する。末尾に合否サマリ。
+'   WebView2 is not started. Creates a Wv2Browser and, while switching the search template with SearchEngine (Property Let),
+'   checks with Check that search-term input is correctly converted to each engine's
+'   search URL (the 3rd branch of Debug_NormalizeUrl).
+'   Also confirms the current template with Debug_SearchEngine. A pass/fail summary at the end.
 '
-'   ★確認する軸★
-'     (1) 既定 (無設定) は Google のまま (9.14 と同一挙動)。
-'     (2) Bing / DuckDuckGo に切り替えると検索 URL がそのエンジンに追従する。
-'     (3) 空文字を Let すると既定 (Google) にフォールバックする (空ガード)。
-'     (4) エンジン切替後も日本語エンコード (UTF-8 percent-encoding) が正しい。
-'     (5) URL / スキーム入力は分岐 (1)(2) に落ちるのでエンジン設定の影響を受けない。
+'   *Axes being checked*
+'     (1) The default (no setting) stays Google (same behavior as 9.14).
+'     (2) Switching to Bing / DuckDuckGo makes the search URL follow that engine.
+'     (3) Letting an empty string falls back to the default (Google) (empty guard).
+'     (4) Japanese encoding (UTF-8 percent-encoding) is still correct after switching engines.
+'     (5) URL / scheme input falls into branches (1)(2), so it is unaffected by the engine setting.
 ' ============================================================
 Public Sub Test_9_16_SearchEngine()
     Dim b As Wv2Browser
     Set b = New Wv2Browser
-    ' ※ Init 不要 (Debug_NormalizeUrl / SearchEngine は NormalizeUrl と
-    '    m_searchTemplate に触れるだけで、タブ・Environment に一切触れないため)。
+    ' NOTE: Init is not needed (Debug_NormalizeUrl / SearchEngine only touch NormalizeUrl and
+    '    m_searchTemplate, and never touch tabs or the Environment).
 
     Dim total As Long, pass As Long
     total = 0: pass = 0
 
-    Debug.Print "==== Test_9_16_SearchEngine 開始 ===="
+    Debug.Print "==== Test_9_16_SearchEngine start ===="
 
-    ' --- (1) 既定は Google (Class_Initialize でセット済み) ---
-    Debug.Print "  現在のエンジン = " & b.Debug_SearchEngine()
+    ' --- (1) the default is Google (set in Class_Initialize) ---
+    Debug.Print "  Current engine = " & b.Debug_SearchEngine()
     Check b, "hello world", "https://www.google.com/search?q=hello%20world", total, pass
-    Check b, "日本 天気", "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
+    Check b, (ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&)), "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
 
-    ' --- (2) Bing に切り替え ---
+    ' --- (2) switch to Bing ---
     b.SearchEngine = "https://www.bing.com/search?q="
-    Debug.Print "  現在のエンジン = " & b.Debug_SearchEngine()
+    Debug.Print "  Current engine = " & b.Debug_SearchEngine()
     Check b, "hello world", "https://www.bing.com/search?q=hello%20world", total, pass
     Check b, "excel vba", "https://www.bing.com/search?q=excel%20vba", total, pass
-    ' 切替後も日本語エンコードが正しいこと
-    Check b, "日本 天気", "https://www.bing.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
-    ' Debug_SearchEngine が現在値を返すこと
+    ' Japanese encoding must still be correct after the switch
+    Check b, (ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&)), "https://www.bing.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
+    ' Debug_SearchEngine must return the current value
     total = total + 1
     If b.Debug_SearchEngine() = "https://www.bing.com/search?q=" Then
         pass = pass + 1
-        Debug.Print "[OK] Debug_SearchEngine = Bing テンプレート"
+        Debug.Print "[OK] Debug_SearchEngine = Bing template"
     Else
         Debug.Print "[NG] Debug_SearchEngine = " & b.Debug_SearchEngine()
     End If
 
-    ' --- (3) DuckDuckGo に切り替え ---
+    ' --- (3) switch to DuckDuckGo ---
     b.SearchEngine = "https://duckduckgo.com/?q="
     Check b, "privacy", "https://duckduckgo.com/?q=privacy", total, pass
 
-    ' --- (4) 空文字を Let → 既定 (Google) にフォールバック (空ガード) ---
+    ' --- (4) Let an empty string -> fall back to the default (Google) (empty guard) ---
     b.SearchEngine = ""
-    Debug.Print "  空 Let 後のエンジン = " & b.Debug_SearchEngine()
+    Debug.Print "  Engine after empty Let = " & b.Debug_SearchEngine()
     Check b, "hello world", "https://www.google.com/search?q=hello%20world", total, pass
     total = total + 1
     If b.Debug_SearchEngine() = "https://www.google.com/search?q=" Then
         pass = pass + 1
-        Debug.Print "[OK] 空 Let で Google にフォールバック"
+        Debug.Print "[OK] empty Let falls back to Google"
     Else
-        Debug.Print "[NG] 空 Let 後 = " & b.Debug_SearchEngine()
+        Debug.Print "[NG] after empty Let = " & b.Debug_SearchEngine()
     End If
 
-    ' --- (5) 空白のみを Let → これも空ガードで Google に戻る ---
-    b.SearchEngine = "https://www.bing.com/search?q="   ' 一旦 Bing に
-    b.SearchEngine = "   "                              ' 空白のみ → Google に戻るはず
+    ' --- (5) Let whitespace only -> the empty guard also returns to Google ---
+    b.SearchEngine = "https://www.bing.com/search?q="   ' switch to Bing once
+    b.SearchEngine = "   "                              ' whitespace only -> should return to Google
     total = total + 1
     If b.Debug_SearchEngine() = "https://www.google.com/search?q=" Then
         pass = pass + 1
-        Debug.Print "[OK] 空白のみ Let で Google にフォールバック"
+        Debug.Print "[OK] whitespace-only Let falls back to Google"
     Else
-        Debug.Print "[NG] 空白のみ Let 後 = " & b.Debug_SearchEngine()
+        Debug.Print "[NG] after whitespace-only Let = " & b.Debug_SearchEngine()
     End If
 
-    ' --- (6) エンジン設定は URL / スキーム入力に影響しない (第1・第2分岐) ---
-    b.SearchEngine = "https://duckduckgo.com/?q="   ' 検索は DDG に設定
-    Check b, "example.com", "https://example.com", total, pass          ' ドット有り→URL (影響なし)
-    Check b, "https://example.com", "https://example.com", total, pass  ' スキーム有り→素通し (影響なし)
-    Check b, "about:blank", "about:blank", total, pass                  ' スキーム有り→素通し (影響なし)
+    ' --- (6) the engine setting does not affect URL / scheme input (branches 1 and 2) ---
+    b.SearchEngine = "https://duckduckgo.com/?q="   ' set search to DDG
+    Check b, "example.com", "https://example.com", total, pass          ' has a dot -> URL (no effect)
+    Check b, "https://example.com", "https://example.com", total, pass  ' has a scheme -> as is (no effect)
+    Check b, "about:blank", "about:blank", total, pass                  ' has a scheme -> as is (no effect)
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]")
 End Sub
 
 
 ' ============================================================
-' Test_9_16_SearchEngine_Help  (第9.16 検証手順のヘルプ)
+' Test_9_16_SearchEngine_Help  (Stage 9.16 help for the verification procedure)
 '
-'   ★イミディエイトウィンドウで  Test_9_16_SearchEngine_Help  と打つと手順が出る★
+'   *Type  Test_9_16_SearchEngine_Help  in the Immediate window to show the procedure*
 ' ============================================================
 Public Sub Test_9_16_SearchEngine_Help()
-    Debug.Print "==== 第9.16 検索エンジン切替 検証手順 ===="
+    Debug.Print "==== Stage 9.16 search engine switching: verification procedure ===="
     Debug.Print ""
-    Debug.Print "【A. ロジック検証 (WebView2 起動不要)】"
-    Debug.Print "  イミディエイトに次を打つだけ:"
+    Debug.Print "[A. Logic verification (no WebView2 start needed)]"
+    Debug.Print "  Just type the following in the Immediate window:"
     Debug.Print "    Test_9_16_SearchEngine"
-    Debug.Print "  → 既定Google / Bing / DuckDuckGo 切替、空ガード、日本語エンコード、"
-    Debug.Print "     URL入力への非影響 を一括照合。末尾 [ALL OK] が出れば合格。"
+    Debug.Print "  -> Checks default Google / Bing / DuckDuckGo switching, the empty guard, Japanese encoding,"
+    Debug.Print "     and no effect on URL input, all in one batch. Pass if [ALL OK] appears at the end."
     Debug.Print ""
-    Debug.Print "【B. 実機 GUI 検証 (WebView2 起動)】"
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "  2) アドレスバーに  日本 天気  と打って Enter。"
-    Debug.Print "     → 既定のまま Google 検索結果が出ること。"
-    Debug.Print "  3) イミディエイトで検索エンジンを Bing に切り替える:"
-    Debug.Print "       Set gBrowser = <起動中の Wv2Browser 参照>   ' 起動 Sub が公開する参照"
+    Debug.Print "[B. Real-machine GUI verification (WebView2 started)]"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print ("  2) Type  " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "  in the address bar and press Enter.")
+    Debug.Print "     -> Google search results should appear with the default unchanged."
+    Debug.Print "  3) Switch the search engine to Bing in the Immediate window:"
+    Debug.Print "       Set gBrowser = <reference to the running Wv2Browser>   ' reference exposed by the startup Sub"
     Debug.Print "       gBrowser.SearchEngine = ""https://www.bing.com/search?q="""
-    Debug.Print "     ※ 起動中の Browser 参照の取り出し方は起動 Sub の実装による。"
-    Debug.Print "       参照を持っていない場合は BuildSearchUrl の既定値 (DEFAULT_"
-    Debug.Print "       SEARCH_TEMPLATE) を書き換えて再起動する方法でも確認できる。"
-    Debug.Print "  4) 再び  日本 天気  と打って Enter。"
-    Debug.Print "     → 今度は Bing の検索結果が出れば実機でも切替成功。"
+    Debug.Print "     NOTE: how to obtain the running Browser reference depends on the startup Sub's implementation."
+    Debug.Print "       If you do not hold a reference, you can also check by rewriting the default of BuildSearchUrl (DEFAULT_"
+    Debug.Print "       SEARCH_TEMPLATE) and restarting."
+    Debug.Print ("  4) Type  " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "  again and press Enter.")
+    Debug.Print "     -> If Bing search results appear this time, switching succeeded on the real machine too."
     Debug.Print ""
-    Debug.Print "  ※ B の 3) でグローバル参照の口が無い場合は、A のロジック検証で"
-    Debug.Print "     切替が正しいことは担保できる。実機は既定 Google の動作確認でよい。"
+    Debug.Print "  NOTE: if there is no way to get a global reference in step 3) of B, the logic verification in A"
+    Debug.Print "     guarantees that switching is correct. On the real machine, just checking the default Google behavior is enough."
 End Sub
 
 ' ============================================================
-' Test_9_17_SearchPresets  (第9.17 検索エンジンのプリセット解決を検証)
+' Test_9_17_SearchPresets  (Stage 9.17 verifying search engine preset resolution)
 '
-'   ★イミディエイトウィンドウで  Test_9_17_SearchPresets  と打つだけ★
+'   *Just type  Test_9_17_SearchPresets  in the Immediate window*
 '
-'   WebView2 は起動しない。UserForm1.UseSearchEngine が名前を解決する先の
-'   プリセットテンプレート (SE_GOOGLE 等と同一文字列) を Wv2Browser に直接 Let し、
-'   検索語入力がそのエンジンの検索 URL に変換されるか (Debug_NormalizeUrl の第3
-'   分岐) と、Debug_SearchEngine が設定値を返すかを Check で照合する。
+'   WebView2 is not started. Lets the preset templates (same strings as SE_GOOGLE etc.) that UserForm1.UseSearchEngine resolves names to
+'   directly into Wv2Browser, and checks with Check whether search-term input is converted to that engine's search URL
+'   (the 3rd branch of Debug_NormalizeUrl)
+'   and whether Debug_SearchEngine returns the set value.
 '
-'   ★ここで担保するもの★ 各プリセットの URL 前置テンプレートが正しく、そのまま
-'   Let すれば正しい検索 URL が生成されること。UseSearchEngine の名前解決
-'   ("bing" → SE_BING) と未起動ガードは実機 (CurrentBrowser 経由) で確認する。
+'   *What this guarantees* That each preset's URL prefix template is correct and that simply
+'   Letting it generates a correct search URL. The name resolution of UseSearchEngine
+'   ("bing" -> SE_BING) and the not-started guard are confirmed on the real machine (via CurrentBrowser).
 '
-'   ※プリセット文字列は UserForm1 の Private Const と重複するが、UserForm を
-'   起動せずに検証するための意図的な複製 (テスト側に期待値を直書きするのと同じ)。
+'   NOTE: the preset strings duplicate UserForm1's Private Const, but this is an intentional copy so that
+'   verification can run without starting the UserForm (the same as hard-coding expected values on the test side).
 ' ============================================================
 Public Sub Test_9_17_SearchPresets()
     Dim b As Wv2Browser
     Set b = New Wv2Browser
-    ' ※ Init 不要 (Test_9_16 と同じ。NormalizeUrl / m_searchTemplate にしか触れない)
+    ' NOTE: Init is not needed (same as Test_9_16. Only touches NormalizeUrl / m_searchTemplate)
 
     Dim total As Long, pass As Long
     total = 0: pass = 0
 
-    Debug.Print "==== Test_9_17_SearchPresets 開始 ===="
+    Debug.Print "==== Test_9_17_SearchPresets start ===="
 
-    ' --- google プリセット ---
+    ' --- google preset ---
     b.SearchEngine = "https://www.google.com/search?q="
     Debug.Print "  google  = " & b.Debug_SearchEngine()
     Check b, "hello world", "https://www.google.com/search?q=hello%20world", total, pass
-    Check b, "日本 天気", "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
+    Check b, (ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&)), "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
 
-    ' --- bing プリセット ---
+    ' --- bing preset ---
     b.SearchEngine = "https://www.bing.com/search?q="
     Debug.Print "  bing    = " & b.Debug_SearchEngine()
     Check b, "excel vba", "https://www.bing.com/search?q=excel%20vba", total, pass
-    Check b, "日本 天気", "https://www.bing.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
+    Check b, (ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&)), "https://www.bing.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
 
-    ' --- duckduckgo プリセット (パスが /?q= 型でも正しく連結されること) ---
+    ' --- duckduckgo preset (must concatenate correctly even when the path is of the /?q= type) ---
     b.SearchEngine = "https://duckduckgo.com/?q="
     Debug.Print "  ddg     = " & b.Debug_SearchEngine()
     Check b, "privacy", "https://duckduckgo.com/?q=privacy", total, pass
-    Check b, "日本 天気", "https://duckduckgo.com/?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
+    Check b, (ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&)), "https://duckduckgo.com/?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
 
-    ' --- yahoo プリセット (?p= 型のクエリキーでも前置テンプレートで表現できること) ---
+    ' --- yahoo preset (a ?p= type query key can also be expressed with a prefix template) ---
     b.SearchEngine = "https://search.yahoo.com/search?p="
     Debug.Print "  yahoo   = " & b.Debug_SearchEngine()
     Check b, "excel vba", "https://search.yahoo.com/search?p=excel%20vba", total, pass
 
-    ' --- プリセット切替は URL / スキーム入力に影響しない (第1・第2分岐) ---
-    b.SearchEngine = "https://search.yahoo.com/search?p="   ' 検索は Yahoo に設定
-    Check b, "example.com", "https://example.com", total, pass          ' ドット有り→URL
-    Check b, "https://example.com", "https://example.com", total, pass  ' スキーム有り→素通し
+    ' --- switching presets does not affect URL / scheme input (branches 1 and 2) ---
+    b.SearchEngine = "https://search.yahoo.com/search?p="   ' set search to Yahoo
+    Check b, "example.com", "https://example.com", total, pass          ' has a dot -> URL
+    Check b, "https://example.com", "https://example.com", total, pass  ' has a scheme -> as is
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]")
 End Sub
 
 
 ' ============================================================
-' Test_9_17_SearchPresets_Help  (第9.17 検証手順のヘルプ)
+' Test_9_17_SearchPresets_Help  (Stage 9.17 help for the verification procedure)
 '
-'   ★イミディエイトウィンドウで  Test_9_17_SearchPresets_Help  と打つと手順が出る★
+'   *Type  Test_9_17_SearchPresets_Help  in the Immediate window to show the procedure*
 ' ============================================================
 Public Sub Test_9_17_SearchPresets_Help()
-    Debug.Print "==== 第9.17 検索エンジン切替口 + CurrentBrowser 公開 検証手順 ===="
+    Debug.Print "==== Stage 9.17 search engine switching entry + CurrentBrowser exposure: verification procedure ===="
     Debug.Print ""
-    Debug.Print "【A. ロジック検証 (WebView2 起動不要)】"
-    Debug.Print "  イミディエイトに次を打つだけ:"
+    Debug.Print "[A. Logic verification (no WebView2 start needed)]"
+    Debug.Print "  Just type the following in the Immediate window:"
     Debug.Print "    Test_9_17_SearchPresets"
-    Debug.Print "  → google / bing / duckduckgo / yahoo の各プリセットで検索 URL が"
-    Debug.Print "     正しく生成され、日本語エンコードも保たれること、URL 入力に影響"
-    Debug.Print "     しないことを一括照合。末尾 [ALL OK] が出れば合格。"
+    Debug.Print "  -> Checks in one batch that the search URL is generated correctly for each of the google / bing / duckduckgo / yahoo presets,"
+    Debug.Print "     that Japanese encoding is preserved, and that URL input is"
+    Debug.Print "     unaffected. Pass if [ALL OK] appears at the end."
     Debug.Print ""
-    Debug.Print "【B. 実機 GUI 検証 (WebView2 起動)】 ★9.17 で参照の口ができた★"
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "  2) アドレスバーに  日本 天気  と打って Enter。"
-    Debug.Print "     → 既定のまま Google 検索結果が出ること。"
-    Debug.Print "  3) イミディエイトで検索エンジンを Bing に切り替える (どちらでも可):"
-    Debug.Print "       方法1 (プリセット名):  UserForm1.UseSearchEngine ""bing"""
-    Debug.Print "       方法2 (参照を掴む)  :  Set b = UserForm1.CurrentBrowser"
+    Debug.Print "[B. Real-machine GUI verification (WebView2 started)]  *9.17 made a reference entry point available*"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print ("  2) Type  " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "  in the address bar and press Enter.")
+    Debug.Print "     -> Google search results should appear with the default unchanged."
+    Debug.Print "  3) Switch the search engine to Bing in the Immediate window (either way works):"
+    Debug.Print "       Method 1 (preset name):  UserForm1.UseSearchEngine ""bing"""
+    Debug.Print "       Method 2 (grab a reference)  :  Set b = UserForm1.CurrentBrowser"
     Debug.Print "                              b.SearchEngine = ""https://www.bing.com/search?q="""
-    Debug.Print "  4) 再び  日本 天気  と打って Enter。"
-    Debug.Print "     → 今度は Bing の検索結果が出れば実機でも切替成功。"
-    Debug.Print "  5) 名前解決の確認:  UserForm1.UseSearchEngine ""duckduckgo""  → DDG、"
-    Debug.Print "       UserForm1.UseSearchEngine ""nonsense""  → 警告が出て Google に戻る。"
-    Debug.Print "  6) 未起動ガード:  StartWebView2_Full を実行する前に"
-    Debug.Print "       UserForm1.UseSearchEngine ""bing""  → 『Browser が未起動』の注意が出る。"
+    Debug.Print ("  4) Type  " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "  again and press Enter.")
+    Debug.Print "     -> If Bing search results appear this time, switching succeeded on the real machine too."
+    Debug.Print "  5) Name resolution check:  UserForm1.UseSearchEngine ""duckduckgo""  -> DDG,"
+    Debug.Print "       UserForm1.UseSearchEngine ""nonsense""  -> a warning appears and it returns to Google."
+    Debug.Print "  6) Not-started guard:  before running StartWebView2_Full, run"
+    Debug.Print "       UserForm1.UseSearchEngine ""bing""  -> a notice 'Browser is not started' appears."
 End Sub
 
 
 ' ============================================================
-' Test_9_18_BridgeLogic  (第9.18 Wv2SettingsBridge の純ロジック検証)
+' Test_9_18_BridgeLogic  (Stage 9.18 pure-logic verification of Wv2SettingsBridge)
 '
-'   ★イミディエイトウィンドウで  Test_9_18_BridgeLogic  と打つだけ★
+'   *Just type  Test_9_18_BridgeLogic  in the Immediate window*
 '
-'   WebView2 は起動しない。Wv2SettingsBridge を new し、実 Wv2Browser を
-'   BindBrowser で結び付けてから、設定画面の JS が呼ぶのと同じメソッド
-'   (SetEngine / GetEngine / PreviewUrl / PreviewUrlFor / EngineList) を
-'   直接叩いて、名前⇔テンプレートの解決とプレビュー URL 生成を照合する。
+'   WebView2 is not started. Creates a Wv2SettingsBridge, binds a real Wv2Browser with
+'   BindBrowser, then directly calls the same methods the settings screen's JS calls
+'   (SetEngine / GetEngine / PreviewUrl / PreviewUrlFor / EngineList)
+'   and checks name <-> template resolution and preview URL generation.
 '
-'   ★これは何を保証するか★ 設定画面の JS は hostObjects.sync.Settings 経由で
-'     これらのメソッドを呼ぶだけなので、メソッドの戻り値がここで正しければ、
-'     残る不確実性は「hostObjects 経路が実機で通るか (順序A)」だけに絞られる。
-'     その実機疎通は Test_9_18_BridgeLogic_Help の手順で確認する。
+'   *What this guarantees* The settings screen's JS only calls these methods via hostObjects.sync.Settings,
+'     so if the methods' return values are correct here, the remaining uncertainty narrows to just
+'     "whether the hostObjects route works on the real machine (order A)".
+'     That real-machine connectivity is confirmed with the procedure in Test_9_18_BridgeLogic_Help.
 ' ============================================================
 Public Sub Test_9_18_BridgeLogic()
     Dim total As Long, pass As Long
     total = 0: pass = 0
-    Debug.Print "==== Test_9_18_BridgeLogic (Wv2SettingsBridge 純ロジック) ===="
+    Debug.Print "==== Test_9_18_BridgeLogic (Wv2SettingsBridge pure logic) ===="
 
     Dim b As Wv2Browser
-    Set b = New Wv2Browser          ' 既定 Google で初期化される
+    Set b = New Wv2Browser          ' initialized with the default Google
 
     Dim br As Wv2SettingsBridge
     Set br = New Wv2SettingsBridge
     br.BindBrowser b
 
-    ' --- 初期状態: 既定は google ---
-    CheckEq "GetEngine 初期", br.GetEngine(), "google", total, pass
+    ' --- initial state: the default is google ---
+    CheckEq "GetEngine initial", br.GetEngine(), "google", total, pass
 
-    ' --- SetEngine の戻り値と GetEngine の追従 ---
-    CheckEq "SetEngine bing 戻り値", br.SetEngine("bing"), "bing", total, pass
+    ' --- return value of SetEngine and GetEngine following it ---
+    CheckEq "SetEngine bing return value", br.SetEngine("bing"), "bing", total, pass
     CheckEq "GetEngine after bing", br.GetEngine(), "bing", total, pass
 
-    CheckEq "SetEngine DDG 別名 ddg", br.SetEngine("ddg"), "duckduckgo", total, pass
+    CheckEq "SetEngine DDG alias ddg", br.SetEngine("ddg"), "duckduckgo", total, pass
     CheckEq "GetEngine after ddg", br.GetEngine(), "duckduckgo", total, pass
 
-    ' --- 大小・前後空白の正規化 ---
+    ' --- normalization of case and leading/trailing whitespace ---
     CheckEq "SetEngine '  YAHOO '", br.SetEngine("  YAHOO "), "yahoo", total, pass
 
-    ' --- 未知名は Google に落ちる ---
-    CheckEq "SetEngine 未知名", br.SetEngine("nonsense"), "google", total, pass
-    CheckEq "GetEngine after 未知名", br.GetEngine(), "google", total, pass
+    ' --- an unknown name falls back to Google ---
+    CheckEq "SetEngine unknown name", br.SetEngine("nonsense"), "google", total, pass
+    CheckEq "GetEngine after unknown name", br.GetEngine(), "google", total, pass
 
-    ' --- PreviewUrl は「いまのエンジン (google)」で生成、日本語エンコード ---
-    CheckEq "PreviewUrl (google)", br.PreviewUrl("日本 天気"), _
+    ' --- PreviewUrl is generated with "the current engine (google)", with Japanese encoding ---
+    CheckEq "PreviewUrl (google)", br.PreviewUrl((ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&))), _
             "https://www.google.com/search?q=%E6%97%A5%E6%9C%AC%20%E5%A4%A9%E6%B0%97", total, pass
 
-    ' --- PreviewUrlFor は「指定エンジン」で生成 (現在エンジンを変えない) ---
+    ' --- PreviewUrlFor is generated with "the specified engine" (does not change the current engine) ---
     CheckEq "PreviewUrlFor bing", br.PreviewUrlFor("bing", "excel vba"), _
             "https://www.bing.com/search?q=excel%20vba", total, pass
     CheckEq "PreviewUrlFor yahoo", br.PreviewUrlFor("yahoo", "privacy"), _
             "https://search.yahoo.com/search?p=privacy", total, pass
-    ' PreviewUrlFor 後も現在エンジンは google のまま (副作用がないこと)
-    CheckEq "PreviewUrlFor 後の現在", br.GetEngine(), "google", total, pass
+    ' The current engine stays google even after PreviewUrlFor (no side effects)
+    CheckEq "current after PreviewUrlFor", br.GetEngine(), "google", total, pass
 
-    ' --- PreviewUrl は URL 入力を検索にしない (第1・第2分岐は素通し) ---
-    CheckEq "PreviewUrl URL入力", br.PreviewUrl("example.com"), "https://example.com", total, pass
+    ' --- PreviewUrl does not turn URL input into a search (branches 1 and 2 pass through) ---
+    CheckEq "PreviewUrl URL input", br.PreviewUrl("example.com"), "https://example.com", total, pass
 
-    ' --- EngineList が 4 エンジンを含む JSON を返す ---
+    ' --- EngineList returns JSON containing the 4 engines ---
     Dim js As String
     js = br.EngineList()
-    CheckBool "EngineList に google", (InStr(js, """id"":""google""") > 0), total, pass
-    CheckBool "EngineList に bing", (InStr(js, """id"":""bing""") > 0), total, pass
-    CheckBool "EngineList に duckduckgo", (InStr(js, """id"":""duckduckgo""") > 0), total, pass
-    CheckBool "EngineList に yahoo", (InStr(js, """id"":""yahoo""") > 0), total, pass
+    CheckBool "EngineList has google", (InStr(js, """id"":""google""") > 0), total, pass
+    CheckBool "EngineList has bing", (InStr(js, """id"":""bing""") > 0), total, pass
+    CheckBool "EngineList has duckduckgo", (InStr(js, """id"":""duckduckgo""") > 0), total, pass
+    CheckBool "EngineList has yahoo", (InStr(js, """id"":""yahoo""") > 0), total, pass
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]")
 End Sub
 
 
-' --- 第9.18: 文字列一致チェック (汎用) ---
+' --- Stage 9.18: string equality check (generic) ---
 Private Sub CheckEq(ByVal label As String, ByVal got As String, _
                     ByVal expected As String, ByRef total As Long, ByRef pass As Long)
     total = total + 1
@@ -1049,7 +1049,7 @@ Private Sub CheckEq(ByVal label As String, ByVal got As String, _
 End Sub
 
 
-' --- 第9.18: 真偽チェック (汎用) ---
+' --- Stage 9.18: boolean check (generic) ---
 Private Sub CheckBool(ByVal label As String, ByVal cond As Boolean, _
                       ByRef total As Long, ByRef pass As Long)
     total = total + 1
@@ -1057,394 +1057,394 @@ Private Sub CheckBool(ByVal label As String, ByVal cond As Boolean, _
         pass = pass + 1
         Debug.Print "[OK] " & label
     Else
-        Debug.Print "[NG] " & label & "  (条件が False)"
+        Debug.Print "[NG] " & label & "  (condition is False)"
     End If
 End Sub
 
 
 ' ============================================================
-' Test_9_18_BridgeLogic_Help  (第9.18 検証手順のヘルプ)
+' Test_9_18_BridgeLogic_Help  (Stage 9.18 help for the verification procedure)
 '
-'   ★イミディエイトウィンドウで  Test_9_18_BridgeLogic_Help  と打つと手順が出る★
+'   *Type  Test_9_18_BridgeLogic_Help  in the Immediate window to show the procedure*
 ' ============================================================
 Public Sub Test_9_18_BridgeLogic_Help()
-    Debug.Print "==== 第9.18 設定タブ + AddHostObjectToScript 検証手順 ===="
+    Debug.Print "==== Stage 9.18 settings tab + AddHostObjectToScript: verification procedure ===="
     Debug.Print ""
-    Debug.Print "【A. ブリッジ純ロジック検証 (WebView2 起動不要)】"
-    Debug.Print "  イミディエイトに次を打つだけ:"
+    Debug.Print "[A. Bridge pure-logic verification (no WebView2 start needed)]"
+    Debug.Print "  Just type the following in the Immediate window:"
     Debug.Print "    Test_9_18_BridgeLogic"
-    Debug.Print "  → Wv2SettingsBridge の SetEngine/GetEngine/PreviewUrl(For)/EngineList を"
-    Debug.Print "     直接叩き、名前解決・プレビュー URL・副作用なしを一括照合。"
-    Debug.Print "     末尾 [ALL OK] が出れば、残る不確実性は hostObjects 実機疎通だけ。"
+    Debug.Print "  -> Directly calls SetEngine/GetEngine/PreviewUrl(For)/EngineList of Wv2SettingsBridge"
+    Debug.Print "     and checks name resolution, preview URL and absence of side effects in one batch."
+    Debug.Print "     If [ALL OK] appears at the end, the only remaining uncertainty is hostObjects connectivity on the real machine."
     Debug.Print ""
-    Debug.Print "【B. 実機 hostObjects 疎通 + 設定画面 (WebView2 起動)】 ★9.18 の本命★"
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "  2) タブバー右端の [歯車] ボタンをクリックする。"
-    Debug.Print "     → 新しいタブが開き、検索エンジン選択のカード画面が出れば設定タブ生成 OK。"
-    Debug.Print "  3) ★順序A の実機判定★ カードが 4 枚 (Google/Bing/DuckDuckGo/Yahoo) 描かれ、"
-    Debug.Print "     現在エンジン (既定 Google) のカードが青く選択強調されていること。"
-    Debug.Print "     → これが出れば『Navigate 前 attach で JS 読み込み時に hostObjects が"
-    Debug.Print "        使える (順序A)』が実機で成立。カード枠に『ホストオブジェクト未接続』"
-    Debug.Print "        と出たら順序A 失敗 → 順序B (ready ハンドシェイク) へ切替を検討。"
-    Debug.Print "  4) カードにマウスを乗せる → 下の Preview 欄に『日本 天気 → 生成URL』が"
-    Debug.Print "     ライブ表示されること (PreviewUrlFor の同期呼び出し)。"
-    Debug.Print "  5) Bing のカードをクリック → Bing カードが選択強調に変わること。"
-    Debug.Print "  6) 設定タブとは別の通常タブに移り、アドレスバーに  日本 天気  と打つ。"
-    Debug.Print "     → Bing の検索結果が出れば、設定画面での切替が本番に反映されている。"
-    Debug.Print "  7) 設定タブは × で普通に閉じられること (通常タブとして振る舞う)。"
+    Debug.Print "[B. Real-machine hostObjects connectivity + settings screen (WebView2 started)]  *the main point of 9.18*"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print "  2) Click the [gear] button at the right end of the tab bar."
+    Debug.Print "     -> A new tab opens; if the search-engine selection card screen appears, settings tab creation is OK."
+    Debug.Print "  3) *Real-machine verdict for order A* 4 cards (Google/Bing/DuckDuckGo/Yahoo) are drawn, and"
+    Debug.Print "     the card of the current engine (default Google) is highlighted as selected in blue."
+    Debug.Print "     -> If this appears, 'attach before Navigate makes hostObjects available"
+    Debug.Print "        when the JS loads (order A)' holds on the real machine. If the card frame shows 'Host object not connected',"
+    Debug.Print "        order A failed -> consider switching to order B (ready handshake)."
+    Debug.Print "  4) Hover the mouse over a card -> the Preview field below should show"
+    Debug.Print "     'Japanese search -> generated URL' live (synchronous call of PreviewUrlFor)."
+    Debug.Print "  5) Click the Bing card -> the Bing card should change to the selected highlight."
+    Debug.Print ("  6) Move to a normal tab other than the settings tab and type  " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "  in the address bar.")
+    Debug.Print "     -> If Bing search results appear, the switch made on the settings screen is reflected in production."
+    Debug.Print "  7) The settings tab can be closed normally with x (it behaves as a normal tab)."
     Debug.Print ""
-    Debug.Print "  ※ 通常タブが無い状態で [歯車] を押しても設定タブは開く (最後の1タブでも可)。"
+    Debug.Print "  NOTE: the settings tab opens even when you press [gear] with no normal tab (even as the last 1 tab)."
 End Sub
 
 
 ' ============================================================
-' Test_9_19_SettingsTabDedup_Help  (第9.19 設定タブ重複防止の検証手順)
+' Test_9_19_SettingsTabDedup_Help  (Stage 9.19 verification procedure for preventing duplicate settings tabs)
 '
-'   ★イミディエイトウィンドウで  Test_9_19_SettingsTabDedup_Help  と打つと手順が出る★
+'   *Type  Test_9_19_SettingsTabDedup_Help  in the Immediate window to show the procedure*
 '
-'   ロジックの要点 (コードレビューで担保):
-'     ・OpenSettingsTab の冒頭で m_tabs を走査し、IsSettings=True の Pane が
-'       あればそれを ActivateTab して Exit Sub (新規生成しない)。
-'     ・生成時は pane.IsSettings = True を立てる。
-'     ・閉じられた設定タブは m_tabs から外れるので走査で見つからず、次の [歯車] で
-'       新規に開き直せる (生存確認が走査と一体)。
+'   Key points of the logic (covered by code review):
+'     - At the top of OpenSettingsTab, scan m_tabs, and if there is a Pane with IsSettings=True,
+'       ActivateTab it and Exit Sub (do not create a new one).
+'     - On creation, set pane.IsSettings = True.
+'     - A closed settings tab is removed from m_tabs so the scan does not find it, and the next [gear]
+'       can open a new one (the aliveness check is integrated with the scan).
 ' ============================================================
 Public Sub Test_9_19_SettingsTabDedup_Help()
-    Debug.Print "==== 第9.19 設定タブ重複防止 検証手順 (WebView2 起動) ===="
+    Debug.Print "==== Stage 9.19 preventing duplicate settings tabs: verification procedure (WebView2 started) ===="
     Debug.Print ""
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "  2) タブバー右端の [歯車] を 1 回押す。"
-    Debug.Print "     → 設定タブが 1 枚開き、アクティブになること。"
-    Debug.Print "  3) ★重複防止の本命★ 続けて [歯車] をもう 2～3 回連打する。"
-    Debug.Print "     → 設定タブが増えず、既存の設定タブがアクティブになるだけであること。"
-    Debug.Print "       (イミディエイトに『既存の設定タブ(index N)をアクティブ化』が出る)"
-    Debug.Print "  4) 別の通常タブをクリックして設定タブから離れる。"
-    Debug.Print "     → その状態で [歯車] を押すと、既存の設定タブへ切り替わる (新規は開かない)。"
-    Debug.Print "  5) ★閉じてから開き直し★ 設定タブの × を押して閉じる。"
-    Debug.Print "     → その後もう一度 [歯車] を押すと、設定タブが新規に 1 枚開くこと。"
-    Debug.Print "       (閉じたら m_tabs から外れるので、走査で見つからず開き直せる)"
-    Debug.Print "  6) 設定画面のカード操作 (エンジン選択・hover プレビュー・切替の本番反映) が"
-    Debug.Print "     9.18 と同じく動くこと (重複防止で設定機能が壊れていないことの確認)。"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print "  2) Press the [gear] at the right end of the tab bar once."
+    Debug.Print "     -> One settings tab should open and become active."
+    Debug.Print "  3) *The main point of duplicate prevention* Next, mash [gear] 2-3 more times."
+    Debug.Print "     -> No more settings tabs should be added; the existing settings tab should merely become active."
+    Debug.Print "       (The Immediate window shows 'activated existing settings tab (index N)')"
+    Debug.Print "  4) Click another normal tab to leave the settings tab."
+    Debug.Print "     -> Pressing [gear] in that state switches to the existing settings tab (no new one is opened)."
+    Debug.Print "  5) *Close, then reopen* Press x on the settings tab to close it."
+    Debug.Print "     -> Pressing [gear] once more after that should open 1 new settings tab."
+    Debug.Print "       (Once closed it is removed from m_tabs, so the scan does not find it and it can be reopened)"
+    Debug.Print "  6) The settings screen's card operations (engine selection, hover preview, reflecting the switch in production)"
+    Debug.Print "     should work the same as in 9.18 (confirms duplicate prevention did not break the settings feature)."
     Debug.Print ""
-    Debug.Print "  ※ 期待挙動まとめ: 設定タブは常に高々 1 枚。[歯車] は「無ければ開く/あれば移動」。"
+    Debug.Print "  NOTE: expected behavior in summary: there is always at most 1 settings tab. [gear] means 'open if absent / move to it if present'."
 End Sub
 
 
 ' ============================================================
-' Test_9_20_Persistence  (第9.20 検索エンジン永続化の純ロジック検証)
+' Test_9_20_Persistence  (Stage 9.20 pure-logic verification of search engine persistence)
 '
-'   ★イミディエイトで  Test_9_20_Persistence  と打つだけ★
+'   *Just type  Test_9_20_Persistence  in the Immediate window*
 '
-'   Wv2SettingsBridge の保存/読込を直接叩く。WebView2 は起動しない。
-'   実ファイルを触るため、先頭で現在の保存値を退避し、末尾で
-'   書き戻してユーザーの実設定を壊さない。
+'   Directly calls Wv2SettingsBridge's save/load. WebView2 is not started.
+'   Because it touches the real file, it saves the current stored value aside at the top and, at the end,
+'   writes it back so as not to break the user's real settings.
 ' ============================================================
 Public Sub Test_9_20_Persistence()
     Dim total As Long, pass As Long
     total = 0: pass = 0
-    Debug.Print "==== Test_9_20_Persistence (永続化 純ロジック) ===="
+    Debug.Print "==== Test_9_20_Persistence (persistence, pure logic) ===="
 
     Dim br As Wv2SettingsBridge
     Set br = New Wv2SettingsBridge
 
-    ' --- 現在の保存値を退避 (テスト後に戻す) ---
-    '   ★第9.29: engine だけでなく template も対で退避する★ 元が custom だった
-    '     場合に engine 行だけ書き戻すと template 行が消えてしまうため。
+    ' --- save the current stored value aside (restored after the test) ---
+    '   *9.29: save the template as a pair, not only the engine* If the original was custom,
+    '     writing back only the engine line would erase the template line.
     Dim savedBefore As String, savedTplBefore As String
     savedBefore = br.LoadEngineName()
     savedTplBefore = br.LoadCustomTemplate()
-    Debug.Print "  (退避) 現在の保存値 = '" & savedBefore & "'" & _
+    Debug.Print "  (saved aside) current stored value = '" & savedBefore & "'" & _
                 IIf(Len(savedTplBefore) > 0, " / template = '" & savedTplBefore & "'", "")
 
-    ' --- 保存→読込の往復 (bing) ---
+    ' --- save -> load round trip (bing) ---
     br.Debug_SaveEngineName "bing"
-    CheckEq "保存 bing → LoadEngineName", br.LoadEngineName(), "bing", total, pass
-    CheckEq "保存 bing → LoadEngineTemplate", br.LoadEngineTemplate(), _
+    CheckEq "save bing -> LoadEngineName", br.LoadEngineName(), "bing", total, pass
+    CheckEq "save bing -> LoadEngineTemplate", br.LoadEngineTemplate(), _
             "https://www.bing.com/search?q=", total, pass
 
-    ' --- 別エンジンで上書き (duckduckgo) ---
+    ' --- overwrite with another engine (duckduckgo) ---
     br.Debug_SaveEngineName "duckduckgo"
-    CheckEq "上書き ddg → LoadEngineName", br.LoadEngineName(), "duckduckgo", total, pass
-    CheckEq "上書き ddg → LoadEngineTemplate", br.LoadEngineTemplate(), _
+    CheckEq "overwrite ddg -> LoadEngineName", br.LoadEngineName(), "duckduckgo", total, pass
+    CheckEq "overwrite ddg -> LoadEngineTemplate", br.LoadEngineTemplate(), _
             "https://duckduckgo.com/?q=", total, pass
 
-    ' --- 未知名を保存したら LoadEngineTemplate は "" に落ちる ---
-    '   (LoadEngineName は生値を返すが、テンプレート解決で "" になる)
+    ' --- after saving an unknown name, LoadEngineTemplate falls back to "" ---
+    '   (LoadEngineName returns the raw value, but template resolution makes it "")
     br.Debug_SaveEngineName "nonsense"
-    CheckEq "未知名 → LoadEngineName (生値)", br.LoadEngineName(), "nonsense", total, pass
-    CheckEq "未知名 → LoadEngineTemplate (空)", br.LoadEngineTemplate(), "", total, pass
+    CheckEq "unknown name -> LoadEngineName (raw value)", br.LoadEngineName(), "nonsense", total, pass
+    CheckEq "unknown name -> LoadEngineTemplate (empty)", br.LoadEngineTemplate(), "", total, pass
 
-    ' --- 退避値を書き戻す (ユーザー設定の復元) ---
+    ' --- write back the saved-aside value (restoring the user settings) ---
     If Len(savedBefore) > 0 Then
         br.Debug_SaveSettings savedBefore, savedTplBefore
-        Debug.Print "  (復元) 保存値を '" & savedBefore & "' に戻した。"
+        Debug.Print "  (restored) stored value put back to '" & savedBefore & "'."
     Else
-        Debug.Print "  (復元) 元々保存は空だったので、ファイルにはテスト最終値"
-        Debug.Print "         (nonsense) が残るが、LoadEngineTemplate は '' に落ちるので"
-        Debug.Print "         次回起動は既定 (Google) で始まり実害なし。気になれば"
-        Debug.Print "         設定画面で任意のエンジンを選べば上書きされる。"
+        Debug.Print "  (restored) The stored value was originally empty, so the test's final value"
+        Debug.Print "         (nonsense) remains in the file, but LoadEngineTemplate falls back to '', so"
+        Debug.Print "         the next start begins with the default (Google) and no harm is done. If it bothers you,"
+        Debug.Print "         choosing any engine on the settings screen will overwrite it."
     End If
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]")
 End Sub
 
 
 ' ============================================================
-' Test_9_20_Persistence_Help  (第9.20 永続化の実機検証手順)
+' Test_9_20_Persistence_Help  (Stage 9.20 real-machine verification procedure for persistence)
 '
-'   ★イミディエイトで  Test_9_20_Persistence_Help  と打つと手順が出る★
+'   *Type  Test_9_20_Persistence_Help  in the Immediate window to show the procedure*
 '
-'   復元は Wv2Browser.Class_Initialize の実行を伴うため、純ロジックでは
-'   なく実機手順で確認する (Excel を完全に終了→再起動が鍵)。
+'   Restoring involves running Wv2Browser.Class_Initialize, so it is confirmed by a
+'   real-machine procedure, not pure logic (the key is fully quitting Excel -> restarting).
 ' ============================================================
 Public Sub Test_9_20_Persistence_Help()
-    Debug.Print "==== 第9.20 検索エンジン選択の永続化 実機検証手順 ===="
+    Debug.Print "==== Stage 9.20 persistence of search engine selection: real-machine verification procedure ===="
     Debug.Print ""
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "  2) [歯車] を押して設定タブを開き、Bing のカードをクリックする。"
-    Debug.Print "     → イミディエイトに次の 2 行が出ること:"
-    Debug.Print "         Wv2SettingsBridge.SetEngine: 'bing' → 'bing'"
-    Debug.Print "         Wv2SettingsBridge.SaveSettingsFile: 保存 'bing' -> ...\settings.txt"
-    Debug.Print "  3) 別の通常タブでアドレスバーに   日本 天気   と打ち、Bing の検索結果が"
-    Debug.Print "     出ることを確認 (ここまでは 9.18 と同じ)。"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print "  2) Press [gear] to open the settings tab and click the Bing card."
+    Debug.Print "     -> The following 2 lines should appear in the Immediate window:"
+    Debug.Print "         Wv2SettingsBridge.SetEngine: 'bing' -> 'bing'"
+    Debug.Print "         Wv2SettingsBridge.SaveSettingsFile: saved 'bing' -> ...\settings.txt"
+    Debug.Print ("  3) In another normal tab type   " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "   in the address bar and confirm that Bing search results")
+    Debug.Print "     appear (up to here it is the same as 9.18)."
     Debug.Print ""
-    Debug.Print "  --- ★ここからが 9.20 の本命★ ---"
-    Debug.Print "  4) Excel を 完全に終了 する (ブックを閉じるだけでなく Excel ごと)。"
-    Debug.Print "  5) Excel を再起動し、ブックを開いて StartWebView2_Full を実行する。"
-    Debug.Print "     → イミディエイトに次の 1 行が出ること (復元の証):"
-    Debug.Print "         Wv2Browser.Class_Initialize: 保存済みエンジンを復元 = https://www.bing.com/search?q="
-    Debug.Print "  6) 設定タブを開かずに、いきなり通常タブで   日本 天気   と打つ。"
-    Debug.Print "     → 前回選んだ Bing の検索結果がすぐに出れば永続化成功。"
-    Debug.Print "  7) (任意) 設定タブを開くと Bing カードが選択強調になっていることも確認。"
+    Debug.Print "  --- *From here is the main point of 9.20* ---"
+    Debug.Print "  4) Fully quit Excel (not just close the workbook, but Excel itself)."
+    Debug.Print "  5) Restart Excel, open the workbook and run StartWebView2_Full."
+    Debug.Print "     -> The following 1 line should appear in the Immediate window (proof of restoring):"
+    Debug.Print "         Wv2Browser.Class_Initialize: restored saved engine = https://www.bing.com/search?q="
+    Debug.Print ("  6) Without opening the settings tab, immediately type   " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "   in a normal tab.")
+    Debug.Print "     -> If Bing search results from the previously chosen engine appear right away, persistence succeeded."
+    Debug.Print "  7) (Optional) Opening the settings tab, also confirm that the Bing card is highlighted as selected."
     Debug.Print ""
-    Debug.Print "  ※ 保存先: %APPDATA%\Wv2Browser\settings.txt (中身は  engine=bing  の 1 行)。"
-    Debug.Print "     メモ帳や手作業で中身を見たいときはエクスプローラーで開ける。"
-    Debug.Print "  ※ ファイルを手で削除して再起動すれば、既定 (Google) に戻ることも確かめられる。"
+    Debug.Print "  NOTE: storage location: %APPDATA%\Wv2Browser\settings.txt (the content is the 1 line  engine=bing )."
+    Debug.Print "     If you want to see the contents in Notepad or by hand, you can open it in Explorer."
+    Debug.Print "  NOTE: you can also confirm that deleting the file by hand and restarting returns to the default (Google)."
 End Sub
 
 
 ' ============================================================
-' Test_9_21_HostActivate_Help  (第9.21 activate の hostObjects 化 実機手順)
+' Test_9_21_HostActivate_Help  (Stage 9.21 real-machine procedure for moving activate to hostObjects)
 '
-'   ★イミディエイトで  Test_9_21_HostActivate_Help  と打つと手順が出る★
+'   *Type  Test_9_21_HostActivate_Help  in the Immediate window to show the procedure*
 '
-'   実 URL (appassets.tabbar) への View_Navigate でも仕様事実 18 が効くか
-'   (= Navigate 前 attach で JS 初回から hostObjects を掴めるか) を実機で見る。
+'   Check on the real machine whether spec fact 18 also holds for View_Navigate to a real URL (appassets.tabbar)
+'   (= whether attach before Navigate lets the JS grab hostObjects from the very first time).
 ' ============================================================
 Public Sub Test_9_21_HostActivate_Help()
-    Debug.Print "==== 第9.21 activate の hostObjects 化 実機検証手順 ===="
+    Debug.Print "==== Stage 9.21 moving activate to hostObjects: real-machine verification procedure ===="
     Debug.Print ""
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "     → 起動ログに次の 1 行が出ること (attach 成功の証):"
-    Debug.Print "         Wv2TabBar.Init: TabBar ブリッジを attach OK (activate は hostObjects 優先)"
-    Debug.Print "       ※ 代わりに『AddHostObjectToScript(TabBar) 失敗』が出た場合は"
-    Debug.Print "         attach が通っておらず、以降 activate は postMessage に落ちる。"
-    Debug.Print "  2) ＋ ボタンでタブを 3～4 枚に増やす。"
-    Debug.Print "  3) 別のタブ (今アクティブでないタブ) の本体をクリックして切替える。"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print "     -> The following 1 line should appear in the startup log (proof the attach succeeded):"
+    Debug.Print "         Wv2TabBar.Init: TabBar bridge attached OK (activate prefers hostObjects)"
+    Debug.Print "       NOTE: if 'AddHostObjectToScript(TabBar) failed' appears instead,"
+    Debug.Print "         the attach did not go through, and activate falls back to postMessage from then on."
+    Debug.Print "  2) Increase the tabs to 3-4 with the + button."
+    Debug.Print "  3) Click the body of another tab (one that is not active now) to switch."
     Debug.Print ""
-    Debug.Print "  --- ★ここが 9.21 の判定★ ---"
-    Debug.Print "  4) クリックのたびにイミディエイトへ次の 1 行が出れば hostObjects 経路成立:"
-    Debug.Print "         Wv2TabBar.HostActivate: index=N (host経由)"
-    Debug.Print "     かつ、従来の postMessage 経路のログ"
+    Debug.Print "  --- *This is the 9.21 verdict* ---"
+    Debug.Print "  4) If the following 1 line appears in the Immediate window on every click, the hostObjects route holds:"
+    Debug.Print "         Wv2TabBar.HostActivate: index=N (via host)"
+    Debug.Print "     and confirm that the former postMessage-route log"
     Debug.Print "         Wv2TabBar.OnPaneWebMessage: msg={""cmd"":""activate"",...}"
-    Debug.Print "     が activate では出ない ことを確認する (close/newtab/reorder/settings"
-    Debug.Print "     では従来どおり OnPaneWebMessage が出る = それらは postMessage のまま)。"
-    Debug.Print "  5) 切替のたびにアクティブ強調とナビバー (URL 欄・戻る/進む) が"
-    Debug.Print "     そのタブに追従することを確認 (全体同期は不変なので触り心地は同じはず)。"
+    Debug.Print "     does not appear for activate (for close/newtab/reorder/settings"
+    Debug.Print "     OnPaneWebMessage still appears as before = those remain postMessage)."
+    Debug.Print "  5) On every switch, confirm that the active highlight and the nav bar (URL box, back/forward) follow"
+    Debug.Print "     that tab (the whole-state sync is unchanged, so it should feel the same)."
     Debug.Print ""
-    Debug.Print "  --- 回帰確認 (9.18/9.19/9.20 に影響がないこと) ---"
-    Debug.Print "  6) × でタブを閉じる / ＋ で開く / ドラッグで並べ替える がすべて従来どおり動く。"
-    Debug.Print "  7) [歯車] で設定タブが開き、エンジンを変えると検索に反映され、"
-    Debug.Print "     Excel 再起動後もそのエンジンが持ち越される (9.20 の永続化) ことを確認。"
+    Debug.Print "  --- Regression check (9.18/9.19/9.20 must be unaffected) ---"
+    Debug.Print "  6) Closing a tab with x / opening with + / reordering by drag all work as before."
+    Debug.Print "  7) The settings tab opens with [gear], changing the engine is reflected in search, and"
+    Debug.Print "     confirm that the engine carries over after restarting Excel (9.20 persistence)."
     Debug.Print ""
-    Debug.Print "  ※ ブラウザの DevTools コンソールを開ける場合は、タブクリック時に"
-    Debug.Print "     [host] activate N が出る (postMessage 落ち時は [postmsg] activate N)。"
-    Debug.Print "     VBA 側ログだけでも host経由 か postMessage経由 かは判別できる。"
+    Debug.Print "  NOTE: if you can open the browser's DevTools console, on a tab click"
+    Debug.Print "     [host] activate N appears ([postmsg] activate N when falling back to postMessage)."
+    Debug.Print "     The VBA-side log alone also tells whether it went via host or via postMessage."
 End Sub
 
 
 ' ============================================================
-' Test_9_22_HostCloseReorder_Help  (第9.22 close/reorder の hostObjects 化 実機手順)
+' Test_9_22_HostCloseReorder_Help  (Stage 9.22 real-machine procedure for moving close/reorder to hostObjects)
 '
-'   ★イミディエイトで  Test_9_22_HostCloseReorder_Help  と打つと手順が出る★
+'   *Type  Test_9_22_HostCloseReorder_Help  in the Immediate window to show the procedure*
 '
-'   activate に続き close / reorder も hostObjects 直呼びへ移した。実 URL
-'   (appassets.tabbar) でも仕様事実 19 (Navigate 前 attach) の射程が close/reorder
-'   に及ぶこと、および activate/ready/newtab/settings が無傷なことを実機で見る。
+'   Following activate, close / reorder were also moved to direct hostObjects calls. Check on the real machine that spec fact 19
+'   (attach before Navigate) reaches close/reorder
+'   even with a real URL (appassets.tabbar), and that activate/ready/newtab/settings are intact.
 ' ============================================================
 Public Sub Test_9_22_HostCloseReorder_Help()
-    Debug.Print "==== 第9.22 close / reorder の hostObjects 化 実機検証手順 ===="
+    Debug.Print "==== Stage 9.22 moving close / reorder to hostObjects: real-machine verification procedure ===="
     Debug.Print ""
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "     → 起動ログに 9.21 と同じ attach 成功行が出ること:"
-    Debug.Print "         Wv2TabBar.Init: TabBar ブリッジを attach OK (activate は hostObjects 優先)"
-    Debug.Print "       ※ attach は TabBar 全体 (activate/close/reorder) で共有する 1 回の登録。"
-    Debug.Print "  2) ＋ ボタンでタブを 4～5 枚に増やす。"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print "     -> The same attach-success line as 9.21 should appear in the startup log:"
+    Debug.Print "         Wv2TabBar.Init: TabBar bridge attached OK (activate prefers hostObjects)"
+    Debug.Print "       NOTE: the attach is a single registration shared by the whole TabBar (activate/close/reorder)."
+    Debug.Print "  2) Increase the tabs to 4-5 with the + button."
     Debug.Print ""
-    Debug.Print "  --- ★ここが 9.22 の判定 (close)★ ---"
-    Debug.Print "  3) 適当なタブの × をクリックして閉じる。次の 1 行が出れば host経由成立:"
-    Debug.Print "         Wv2TabBar.HostClose: index=N (host経由)"
-    Debug.Print "     かつ、従来の postMessage 経路のログ"
+    Debug.Print "  --- *This is the 9.22 verdict (close)* ---"
+    Debug.Print "  3) Click the x of any tab to close it. If the following 1 line appears, via-host holds:"
+    Debug.Print "         Wv2TabBar.HostClose: index=N (via host)"
+    Debug.Print "     and confirm that the former postMessage-route log"
     Debug.Print "         Wv2TabBar.OnPaneWebMessage: msg={""cmd"":""close"",...}"
-    Debug.Print "     が close では出ない ことを確認する。閉じた後のアクティブ補正 (残った"
-    Debug.Print "     タブへ強調が移る) とナビバー追従が従来どおりであることも確認。"
+    Debug.Print "     does not appear for close. Also confirm that the active correction after closing (the highlight moving to a remaining"
+    Debug.Print "     tab) and the nav bar following are as before."
     Debug.Print ""
-    Debug.Print "  --- ★ここが 9.22 の判定 (reorder)★ ---"
-    Debug.Print "  4) タブをドラッグして並べ替える。次の 1 行が出れば host経由成立:"
-    Debug.Print "         Wv2TabBar.HostReorder: from=A to=B (host経由)"
-    Debug.Print "     かつ、従来の postMessage 経路のログ"
+    Debug.Print "  --- *This is the 9.22 verdict (reorder)* ---"
+    Debug.Print "  4) Drag a tab to reorder. If the following 1 line appears, via-host holds:"
+    Debug.Print "         Wv2TabBar.HostReorder: from=A to=B (via host)"
+    Debug.Print "     and confirm that the former postMessage-route log"
     Debug.Print "         Wv2TabBar.OnPaneWebMessage: msg={""cmd"":""reorder"",...}"
-    Debug.Print "     が reorder では出ない ことを確認する。並べ替え後の順序で"
-    Debug.Print "     タブバーが再描画され、掴んだタブがアクティブ強調のまま追従すること。"
+    Debug.Print "     does not appear for reorder. The tab bar should be redrawn in the reordered order, and"
+    Debug.Print "     the grabbed tab should follow with its active highlight kept."
     Debug.Print ""
-    Debug.Print "  --- 9.21 の activate が引き続き host経由であること ---"
-    Debug.Print "  5) 別タブの本体をクリックして切替える。従来どおり次が出ること:"
-    Debug.Print "         Wv2TabBar.HostActivate: index=N (host経由)"
+    Debug.Print "  --- Activate of 9.21 must still be via host ---"
+    Debug.Print "  5) Click the body of another tab to switch. As before, the following should appear:"
+    Debug.Print "         Wv2TabBar.HostActivate: index=N (via host)"
     Debug.Print ""
-    Debug.Print "  --- 回帰確認 (ready/newtab/settings は postMessage のまま) ---"
-    Debug.Print "  6) ＋ で新規タブ → OnPaneWebMessage: msg={""cmd"":""newtab""} が出る"
-    Debug.Print "     (SafeTimer 経由の従来動作。host経由ではない=正しい)。"
-    Debug.Print "  7) [歯車] で設定タブ → OnPaneWebMessage: msg={""cmd"":""settings""} が出て"
-    Debug.Print "     設定タブが開く。エンジン変更→検索反映→再起動持ち越し (9.20) も従来どおり。"
-    Debug.Print "  8) 起動直後の初期同期で OnPaneWebMessage: msg={""cmd"":""ready""} が出る"
-    Debug.Print "     (ready は通知なので postMessage のまま=正しい)。"
+    Debug.Print "  --- Regression check (ready/newtab/settings remain postMessage) ---"
+    Debug.Print "  6) + for a new tab -> OnPaneWebMessage: msg={""cmd"":""newtab""} appears"
+    Debug.Print "     (the former behavior via SafeTimer. Not via host = correct)."
+    Debug.Print "  7) [gear] for the settings tab -> OnPaneWebMessage: msg={""cmd"":""settings""} appears and"
+    Debug.Print "     the settings tab opens. Engine change -> search reflection -> carry-over across restart (9.20) is also as before."
+    Debug.Print "  8) In the initial sync right after startup, OnPaneWebMessage: msg={""cmd"":""ready""} appears"
+    Debug.Print "     (ready is a notification, so it remains postMessage = correct)."
     Debug.Print ""
-    Debug.Print "  ※ 期待: activate/close/reorder は host経由 (HostXxx ログ)、"
-    Debug.Print "     ready/newtab/settings は postMessage経由 (OnPaneWebMessage ログ)。"
-    Debug.Print "     この住み分けが 9.22 の狙い。DevTools が開けるなら × クリックで"
-    Debug.Print "     [host] close N、ドラッグで [host] reorder A->B が出る。"
+    Debug.Print "  NOTE: expected: activate/close/reorder go via host (HostXxx log),"
+    Debug.Print "     ready/newtab/settings go via postMessage (OnPaneWebMessage log)."
+    Debug.Print "     This division is the aim of 9.22. If DevTools can be opened, clicking x gives"
+    Debug.Print "     [host] close N, and dragging gives [host] reorder A->B."
 End Sub
 
 
 ' ============================================================
-' Test_9_23_Consolidation_Help  (第9.23 activate/close/reorder の Host 一元化 実機手順)
+' Test_9_23_Consolidation_Help  (Stage 9.23 real-machine procedure for Host consolidation of activate/close/reorder)
 '
-'   ★イミディエイトで  Test_9_23_Consolidation_Help  と打つと手順が出る★
+'   *Type  Test_9_23_Consolidation_Help  in the Immediate window to show the procedure*
 '
-'   9.23 は「処理の置き場所」だけを変えた整理ステージ。activate/close/reorder の
-'   ActivateTab/CloseTab/MoveTab 呼び出しと失敗ログを Host メソッド 1 箇所へ集約し、
-'   OnPaneWebMessage の Case はフォールバック時に Host メソッドへ委譲する薄い
-'   アダプタになった。機能は 9.22 と完全に同一のはずで、狙いは回帰ゼロの確認。
+'   9.23 is a cleanup stage that changed only "where the processing lives". The ActivateTab/CloseTab/MoveTab calls and failure logs
+'   of activate/close/reorder were gathered into one place in the Host methods, and
+'   the Cases of OnPaneWebMessage became thin adapters that delegate to the Host methods when falling back.
+'   The functionality should be exactly the same as 9.22, and the aim is to confirm zero regressions.
 ' ============================================================
 Public Sub Test_9_23_Consolidation_Help()
-    Debug.Print "==== 第9.23 activate/close/reorder の Host 一元化 実機検証手順 ===="
+    Debug.Print "==== Stage 9.23 Host consolidation of activate/close/reorder: real-machine verification procedure ===="
     Debug.Print ""
-    Debug.Print "  【前提】9.23 は処理の置き場所を変えただけ。機能は 9.22 と同一。"
-    Debug.Print "     通常運用では hostObjects が成立するため、Case activate/close/reorder"
-    Debug.Print "     (=フォールバック経路) は通常は通らない。よって主眼は回帰ゼロ確認。"
+    Debug.Print "  [Premise] 9.23 only changed where the processing lives. The functionality is the same as 9.22."
+    Debug.Print "     In normal operation hostObjects holds, so the Case activate/close/reorder"
+    Debug.Print "     (= fallback route) is normally not taken. So the main point is confirming zero regressions."
     Debug.Print ""
-    Debug.Print "  1) StartWebView2_Full で通常起動する。"
-    Debug.Print "     → 起動ログに 9.21/9.22 と同じ attach 成功行が出ること:"
-    Debug.Print "         Wv2TabBar.Init: TabBar ブリッジを attach OK (activate は hostObjects 優先)"
-    Debug.Print "  2) ＋ ボタンでタブを 4～5 枚に増やす。"
+    Debug.Print "  1) Start normally with StartWebView2_Full."
+    Debug.Print "     -> The same attach-success line as 9.21/9.22 should appear in the startup log:"
+    Debug.Print "         Wv2TabBar.Init: TabBar bridge attached OK (activate prefers hostObjects)"
+    Debug.Print "  2) Increase the tabs to 4-5 with the + button."
     Debug.Print ""
-    Debug.Print "  --- ★回帰確認: 3 コマンドが従来どおり host 経由★ ---"
-    Debug.Print "  3) 別タブの本体クリック → Wv2TabBar.HostActivate: index=N (host経由)"
-    Debug.Print "  4) タブの × クリック    → Wv2TabBar.HostClose: index=N (host経由)"
-    Debug.Print "  5) タブをドラッグ並べ替え → Wv2TabBar.HostReorder: from=A to=B (host経由)"
-    Debug.Print "     いずれも従来どおり動き、UX (アクティブ補正/再描画/ナビバー追従) が"
-    Debug.Print "     9.22 と一切変わらないこと。この 3 つで OnPaneWebMessage の"
-    Debug.Print "     activate/close/reorder ログが出ない のも 9.22 と同じ (host 経由のため)。"
+    Debug.Print "  --- *Regression check: the 3 commands still go via host as before* ---"
+    Debug.Print "  3) Click the body of another tab -> Wv2TabBar.HostActivate: index=N (via host)"
+    Debug.Print "  4) Click x on a tab    -> Wv2TabBar.HostClose: index=N (via host)"
+    Debug.Print "  5) Drag a tab to reorder -> Wv2TabBar.HostReorder: from=A to=B (via host)"
+    Debug.Print "     All should work as before, and the UX (active correction / redraw / nav bar following) should be"
+    Debug.Print "     exactly the same as 9.22. That the OnPaneWebMessage"
+    Debug.Print "     activate/close/reorder logs do not appear with these 3 is also the same as 9.22 (because they go via host)."
     Debug.Print ""
-    Debug.Print "  --- 回帰確認: ready/newtab/settings は postMessage のまま ---"
-    Debug.Print "  6) ＋ で新規タブ → OnPaneWebMessage: msg={""cmd"":""newtab""} (SafeTimer 経由)"
-    Debug.Print "  7) [歯車] で設定タブ → OnPaneWebMessage: msg={""cmd"":""settings""} → 設定タブが開く"
-    Debug.Print "  8) 起動直後の初期同期 → OnPaneWebMessage: msg={""cmd"":""ready""}"
+    Debug.Print "  --- Regression check: ready/newtab/settings remain postMessage ---"
+    Debug.Print "  6) + for a new tab -> OnPaneWebMessage: msg={""cmd"":""newtab""} (via SafeTimer)"
+    Debug.Print "  7) [gear] for the settings tab -> OnPaneWebMessage: msg={""cmd"":""settings""} -> the settings tab opens"
+    Debug.Print "  8) Initial sync right after startup -> OnPaneWebMessage: msg={""cmd"":""ready""}"
     Debug.Print ""
-    Debug.Print "  --- (任意) フォールバック経路の生存確認 ---"
-    Debug.Print "  9) 通常環境ではフォールバックは踏めない。もし DevTools で"
-    Debug.Print "     window.chrome.webview.hostObjects を一時的に無効化できる場合のみ、"
-    Debug.Print "     × クリックで次の 2 行が続けて出れば委譲が生きている:"
+    Debug.Print "  --- (Optional) Checking the fallback route is alive ---"
+    Debug.Print "  9) In a normal environment the fallback cannot be reached. Only if you can temporarily disable"
+    Debug.Print "     window.chrome.webview.hostObjects in DevTools,"
+    Debug.Print "     if the following 2 lines appear in succession on clicking x, the delegation is alive:"
     Debug.Print "         Wv2TabBar.OnPaneWebMessage: msg={""cmd"":""close"",...}"
-    Debug.Print "         → close(index=N) [postmsg fallback → HostClose]"
-    Debug.Print "         Wv2TabBar.HostClose: index=N (host経由)   ※Host に委譲された証跡"
-    Debug.Print "     (無効化できない環境ではこの手順は省略してよい。9.23 の本質は回帰ゼロ。)"
+    Debug.Print "         -> close(index=N) [postmsg fallback -> HostClose]"
+    Debug.Print "         Wv2TabBar.HostClose: index=N (via host)   NOTE: evidence of delegation to Host"
+    Debug.Print "     (In an environment where it cannot be disabled, this step may be skipped. The essence of 9.23 is zero regressions.)"
     Debug.Print ""
-    Debug.Print "  ※ 期待: 見た目・触り心地は 9.22 と完全同一。ログの住み分け"
-    Debug.Print "     (activate/close/reorder=HostXxx、ready/newtab/settings=OnPaneWebMessage)"
-    Debug.Print "     も 9.22 と同一。何も変わって見えなければ 9.23 は成功。"
+    Debug.Print "  NOTE: expected: appearance and feel are exactly the same as 9.22. The log division"
+    Debug.Print "     (activate/close/reorder=HostXxx, ready/newtab/settings=OnPaneWebMessage)"
+    Debug.Print "     is also the same as 9.22. If nothing looks changed, 9.23 is a success."
 End Sub
 
 
 
 ' ============================================================
-' Test_9_24_HostNavBar_Help  (第9.24 NavBar の hostObjects 化 実機手順)
+' Test_9_24_HostNavBar_Help  (Stage 9.24 real-machine procedure for moving NavBar to hostObjects)
 '
-'   ★イミディエイトで  Test_9_24_HostNavBar_Help  と打つと手順が出る★
+'   *Type  Test_9_24_HostNavBar_Help  in the Immediate window to show the procedure*
 '
-'   9.24 は TabBar (9.21～9.23) で確立した型を NavBar へ同型展開した回。
-'   JS はハイブリッド (hostObjects 優先・postMessage フォールバック)、VBA は
-'   処理を Host メソッド 4 本へ一元化、Select Case は薄いアダプタ。
+'   9.24 is the round that rolled out to NavBar, in the same form, the pattern established with the TabBar (9.21-9.23).
+'   The JS is a hybrid (hostObjects first, postMessage fallback), VBA consolidated the
+'   processing into 4 Host methods, and the Select Case is a thin adapter.
 ' ============================================================
 Public Sub Test_9_24_HostNavBar_Help()
-    Debug.Print "==== 第9.24 NavBar の hostObjects 化 実機検証手順 ===="
+    Debug.Print "==== Stage 9.24 moving NavBar to hostObjects: real-machine verification procedure ===="
     Debug.Print ""
-    Debug.Print "  【前提】StartWebView2_Full で通常起動する。"
-    Debug.Print "     → 起動ログに TabBar/NavBar 両方の attach 行が出ること:"
-    Debug.Print "         Wv2TabBar.Init: TabBar ブリッジを attach OK (...)"
-    Debug.Print "         Wv2NavBar.Init: NavBar ブリッジを attach OK (back/forward/reload/navigate は hostObjects 優先)"
-    Debug.Print "       ★NavBar 側の行が出なければ以降は全部 postMessage 経路になる"
-    Debug.Print "         (機能は動くが 9.24 の狙いは未達)。hr をメモして報告のこと。"
+    Debug.Print "  [Premise] Start normally with StartWebView2_Full."
+    Debug.Print "     -> The startup log should show attach lines for both TabBar and NavBar:"
+    Debug.Print "         Wv2TabBar.Init: TabBar bridge attached OK (...)"
+    Debug.Print "         Wv2NavBar.Init: NavBar bridge attached OK (back/forward/reload/navigate prefer hostObjects)"
+    Debug.Print "       *If the NavBar line does not appear, everything from here on goes via postMessage"
+    Debug.Print "         (it works, but the aim of 9.24 is not met). Note the hr and report it."
     Debug.Print ""
-    Debug.Print "  --- ★判定1: navigate が host 経由か (文字列引数の初成立)★ ---"
-    Debug.Print "  1) URL 欄に  example.com  と打って Enter。次の 1 行が出れば成立:"
-    Debug.Print "         Wv2NavBar.HostNavigate: url=example.com (host経由)"
-    Debug.Print "     かつ、従来の postMessage 経路のログ"
+    Debug.Print "  --- *Verdict 1: does navigate go via host? (first time a string argument works)* ---"
+    Debug.Print "  1) Type  example.com  in the URL box and press Enter. If the following 1 line appears, it holds:"
+    Debug.Print "         Wv2NavBar.HostNavigate: url=example.com (via host)"
+    Debug.Print "     and confirm that the former postMessage-route log"
     Debug.Print "         Wv2NavBar.OnPaneWebMessage: msg={""cmd"":""navigate"",...}"
-    Debug.Print "     が出ない こと。スキーム補完 (https://) が効いて遷移することも確認。"
+    Debug.Print "     does not appear. Also confirm that scheme completion (https://) works and it navigates."
     Debug.Print ""
-    Debug.Print "  --- ★判定2: back/forward/reload が host 経由か + 二重実行チェック★ ---"
-    Debug.Print "  2) 同じタブでもう 1 ページ遷移してから ← を『1 回だけ』クリック。"
-    Debug.Print "     期待は次の 1 行『だけ』:"
-    Debug.Print "         Wv2NavBar.HostBack: (host経由)"
-    Debug.Print "     ★★ここが今回いちばん大事★★ 次のどれかが起きたら二重実行:"
-    Debug.Print "         ・HostBack の行が 2 行出る"
-    Debug.Print "         ・HostBack の後に OnPaneWebMessage: msg={""cmd"":""back""} が続く"
-    Debug.Print "         ・1 回のクリックで 2 ページ分戻ってしまう"
-    Debug.Print "       (ダミー引数 reserved で塞いだつもりの現象。出たら即報告のこと)"
-    Debug.Print "  3) → を 1 回クリック → Wv2NavBar.HostForward: (host経由) が 1 行だけ。"
-    Debug.Print "  4) 再読み込みボタンを 1 回クリック → Wv2NavBar.HostReload: (host経由) が"
-    Debug.Print "     1 行だけ。ページが 1 回だけリロードされること。"
+    Debug.Print "  --- *Verdict 2: do back/forward/reload go via host? + double-execution check* ---"
+    Debug.Print "  2) Navigate one more page in the same tab, then click <- 'only once'."
+    Debug.Print "     The expectation is the following 1 line 'only':"
+    Debug.Print "         Wv2NavBar.HostBack: (via host)"
+    Debug.Print "     **This is the most important point this time** If any of the following happens, it is double execution:"
+    Debug.Print "         - the HostBack line appears twice"
+    Debug.Print "         - OnPaneWebMessage: msg={""cmd"":""back""} follows after HostBack"
+    Debug.Print "         - one click goes back 2 pages"
+    Debug.Print "       (A phenomenon that the dummy argument reserved was supposed to block. Report it immediately if it appears.)"
+    Debug.Print "  3) Click -> once -> Wv2NavBar.HostForward: (via host) appears on only 1 line."
+    Debug.Print "  4) Click the reload button once -> Wv2NavBar.HostReload: (via host) appears on"
+    Debug.Print "     only 1 line. The page should reload only once."
     Debug.Print ""
-    Debug.Print "  --- ★判定3: 文字列引数が無傷か (仕様事実 21 候補)★ ---"
-    Debug.Print "  5) URL 欄に日本語を打って Enter (例: 北海道 天気)。"
-    Debug.Print "     → HostNavigate のログに日本語がそのまま出ること (文字化け・欠落なし)。"
-    Debug.Print "         Wv2NavBar.HostNavigate: url=北海道 天気 (host経由)"
-    Debug.Print "       設定中の検索エンジンで検索されること (9.14/9.16～9.20 の経路)。"
-    Debug.Print "  6) 記号入り URL も試す (例: https://www.google.com/search?q=a&b=c#x )。"
-    Debug.Print "     → ? & # がログでそのまま出て、そのページへ遷移すること。"
-    Debug.Print "     ※ postMessage 経路では JSON エスケープを通っていた箇所。hostObjects"
-    Debug.Print "        では BSTR 直渡しになるので、むしろ安全になっているはず。"
+    Debug.Print "  --- *Verdict 3: are string arguments intact? (spec fact 21 candidate)* ---"
+    Debug.Print ("  5) Type Japanese in the URL box and press Enter (e.g. " & ChrW(&H5317&) & ChrW(&H6D77&) & ChrW(&H9053&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & ").")
+    Debug.Print "     -> The Japanese should appear as is in the HostNavigate log (no garbling or loss)."
+    Debug.Print ("         Wv2NavBar.HostNavigate: url=" & ChrW(&H5317&) & ChrW(&H6D77&) & ChrW(&H9053&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & " (via host)")
+    Debug.Print "       It should be searched with the currently set search engine (the route of 9.14/9.16-9.20)."
+    Debug.Print "  6) Also try a URL with symbols (e.g. https://www.google.com/search?q=a&b=c#x )."
+    Debug.Print "     -> ? & # should appear as is in the log, and it should navigate to that page."
+    Debug.Print "     NOTE: this was the spot that went through JSON escaping on the postMessage route. With hostObjects"
+    Debug.Print "        the BSTR is passed directly, so it should actually be safer."
     Debug.Print ""
-    Debug.Print "  --- 回帰確認 (触っていない経路) ---"
-    Debug.Print "  7) 起動直後に OnPaneWebMessage: msg={""cmd"":""ready""} が出て URL 欄と"
-    Debug.Print "     ボタン活性が初期同期されること (ready は postMessage のまま=正しい)。"
-    Debug.Print "  8) URL 欄に何か打ってから Escape → 打った文字が消えて元の URL に戻る"
-    Debug.Print "     (lastUrl からの即復元。9.12d の挙動が無傷か)。"
-    Debug.Print "  9) 編集中に裏で遷移が起きても入力中の文字列が消えないこと (editing フラグ)。"
-    Debug.Print " 10) タブ切替 / × / ドラッグ並べ替えが 9.23 のまま動くこと"
-    Debug.Print "     (HostActivate / HostClose / HostReorder のログ)。ナビバーの URL 欄が"
-    Debug.Print "     タブ切替に追従すること (ActiveChanged → PushNavSyncToJs)。"
+    Debug.Print "  --- Regression check (routes not touched) ---"
+    Debug.Print "  7) Right after startup OnPaneWebMessage: msg={""cmd"":""ready""} appears and the URL box and"
+    Debug.Print "     the button enabled states are initially synced (ready remains postMessage = correct)."
+    Debug.Print "  8) Type something in the URL box and press Escape -> the typed characters vanish and the original URL returns"
+    Debug.Print "     (immediate restore from lastUrl. The behavior of 9.12d must be intact)."
+    Debug.Print "  9) Even if a navigation happens in the background while editing, the string being typed must not vanish (editing flag)."
+    Debug.Print " 10) Tab switching / x / drag reordering must still work as in 9.23"
+    Debug.Print "     (HostActivate / HostClose / HostReorder logs). The nav bar's URL box must"
+    Debug.Print "     follow tab switching (ActiveChanged -> PushNavSyncToJs)."
     Debug.Print ""
-    Debug.Print "  --- (任意) フォールバック経路の生存確認 ---"
-    Debug.Print " 11) 通常環境では踏めない。DevTools で hostObjects を一時無効化できる場合のみ、"
-    Debug.Print "     ← クリックで次の 2 行が続けて出れば委譲が生きている:"
+    Debug.Print "  --- (Optional) Checking the fallback route is alive ---"
+    Debug.Print " 11) Cannot be reached in a normal environment. Only if you can temporarily disable hostObjects in DevTools,"
+    Debug.Print "     if the following 2 lines appear in succession on clicking <-, the delegation is alive:"
     Debug.Print "         Wv2NavBar.OnPaneWebMessage: msg={""cmd"":""back""}"
-    Debug.Print "         → back [postmsg fallback → HostBack]"
-    Debug.Print "         Wv2NavBar.HostBack: (host経由)   ※Host に委譲された証跡"
+    Debug.Print "         -> back [postmsg fallback -> HostBack]"
+    Debug.Print "         Wv2NavBar.HostBack: (via host)   NOTE: evidence of delegation to Host"
     Debug.Print ""
-    Debug.Print "  ※ 期待: 見た目・触り心地は 9.23 と完全同一。違いはログの住み分けだけ"
-    Debug.Print "     (back/forward/reload/navigate=HostXxx、ready=OnPaneWebMessage)。"
+    Debug.Print "  NOTE: expected: appearance and feel are exactly the same as 9.23. The only difference is the log division"
+    Debug.Print "     (back/forward/reload/navigate=HostXxx, ready=OnPaneWebMessage)."
 End Sub
 ' ============================================================
-' Test_9_26_Popup_On / Test_9_26_Popup_Off (第9.26、実機スイッチ)
+' Test_9_26_Popup_On / Test_9_26_Popup_Off (Stage 9.26, real-machine switches)
 '
-'   起動中の Browser の委譲モードを切り替える。StartWebView2_Full の後に
-'   イミディエイトで Sub 名を打つだけでよい。
-'   ・On  : NewWindowRequested をランタイムへ委譲 (ポップアップで開く)
-'   ・Off : 現行動作 (put_Handled + 自前の新タブ)
-'   タブを開き直す必要はない。次に踏んだリンクから即座に効く。
+'   Switches the delegation mode of the running Browser. After StartWebView2_Full,
+'   just type the Sub name in the Immediate window.
+'   - On  : delegate NewWindowRequested to the runtime (opens as a popup)
+'   - Off : current behavior (put_Handled + our own new tab)
+'   There is no need to reopen tabs. It takes effect immediately from the next link clicked.
 ' ============================================================
 Public Sub Test_9_26_Popup_On()
     SetPopupDelegate True
@@ -1458,79 +1458,79 @@ Private Sub SetPopupDelegate(ByVal onOff As Boolean)
     Dim b As Wv2Browser
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Debug.Print "[9.26] Browser が起動していません。先に UserForm1.StartWebView2_Full を実行してください。"
+        Debug.Print "[9.26] Browser is not started. Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
     b.PopupDelegateMode = onOff
-    Debug.Print "[9.26] 現在の PopupDelegateMode = " & b.PopupDelegateMode
+    Debug.Print "[9.26] current PopupDelegateMode = " & b.PopupDelegateMode
 End Sub
 
 
 ' ============================================================
-' Test_9_26_Popup_Help (第9.26、実機手順)
+' Test_9_26_Popup_Help (Stage 9.26, real-machine procedure)
 '
-'   POST リンクの新タブ展開が 405 になる件について、「ランタイムに委譲すれば
-'   POST は保たれるのか」だけを確かめる回。実装の変更は分岐 1 個で、恒久策では
-'   ないことに注意 (ポップアップは自前タブ UI の外に出る)。
+'   About the 405 on the new-tab expansion of POST links, this round only checks "if we delegate to the runtime,
+'   is the POST preserved?". Note that the implementation change is a single branch and is not a permanent fix
+'   (the popup comes out of our own tab UI).
 ' ============================================================
 Public Sub Test_9_26_Popup_Help()
-    Debug.Print "==== 第9.26 実機手順 (NewWindowRequested 委譲プローブ) ===="
+    Debug.Print "==== Stage 9.26 real-machine procedure (NewWindowRequested delegation probe) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    put_Handled を立てずに WebView2 ランタイムへ委譲すれば、"
-    Debug.Print "    元の POST (メソッド + ボディ + Referer) が保たれて 405 が消えるのか。"
-    Debug.Print "    → 消えるなら、次段の本丸 (args.put_NewWindow で別タブの CoreWebView2 を"
-    Debug.Print "       渡す方式) が効くことがほぼ確定する。消えないなら原因は POST ボディ"
-    Debug.Print "       以外 (Referer/Cookie/セッション) なので、本丸の前に方向転換する。"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    If we delegate to the WebView2 runtime without setting put_Handled,"
+    Debug.Print "    is the original POST (method + body + Referer) preserved and the 405 gone?"
+    Debug.Print "    -> If it is gone, it is almost certain that the next stage's main approach (passing another tab's CoreWebView2"
+    Debug.Print "       via args.put_NewWindow) will work. If not, the cause is something other than the POST body"
+    Debug.Print "       (Referer/Cookie/session), so we change direction before the main approach."
     Debug.Print ""
-    Debug.Print "  --- 手順 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "  2) 基幹システムにログインする (この時点ではまだ現行動作 = 委譲 OFF)"
-    Debug.Print "  3) ★対照★ 委譲 OFF のまま『アポイント管理』をクリック"
-    Debug.Print "       → 期待: 自前の新タブが開き、HTTP 405 が表示される (現状の再現)"
-    Debug.Print "       → ログ: Wv2Pane.View_OnNewWindowRequested → put_Handled OK"
-    Debug.Print "                → 新タブ生成を Timer に依頼 (RequestNewTabAsync)"
-    Debug.Print "  4) 405 のタブを閉じ、元の画面に戻る"
-    Debug.Print "  5) Test_9_26_Popup_On            ' 委譲モードへ"
-    Debug.Print "  6) もう一度『アポイント管理』をクリック"
-    Debug.Print "       → ログ: [9.26 委譲モード] put_Handled を立てずにランタイムへ委譲する"
-    Debug.Print "          ※ put_Handled OK / RequestNewTabAsync の行は出ない (出たら報告)"
-    Debug.Print "  7) 開いたポップアップウィンドウの中身を確認する"
-    Debug.Print "  8) 確認できたらポップアップを × で閉じ、Test_9_26_Popup_Off で元に戻す"
+    Debug.Print "  --- Procedure ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "  2) Log in to the core system (at this point it is still the current behavior = delegation OFF)"
+    Debug.Print ("  3) *Control* With delegation still OFF, click '" & ChrW(&H30A2&) & ChrW(&H30DD&) & ChrW(&H30A4&) & ChrW(&H30F3&) & ChrW(&H30C8&) & ChrW(&H7BA1&) & ChrW(&H7406&) & "' (Appointment Management)")
+    Debug.Print "       -> Expected: our own new tab opens and HTTP 405 is displayed (reproduces the current state)"
+    Debug.Print "       -> Log: Wv2Pane.View_OnNewWindowRequested -> put_Handled OK"
+    Debug.Print "                -> new tab creation requested of the Timer (RequestNewTabAsync)"
+    Debug.Print "  4) Close the 405 tab and return to the original screen"
+    Debug.Print "  5) Test_9_26_Popup_On            ' switch to delegation mode"
+    Debug.Print ("  6) Click '" & ChrW(&H30A2&) & ChrW(&H30DD&) & ChrW(&H30A4&) & ChrW(&H30F3&) & ChrW(&H30C8&) & ChrW(&H7BA1&) & ChrW(&H7406&) & "' (Appointment Management) once more")
+    Debug.Print "       -> Log: [9.26 delegation mode] delegating to the runtime without setting put_Handled"
+    Debug.Print "          NOTE: the put_Handled OK / RequestNewTabAsync lines should not appear (report it if they do)"
+    Debug.Print "  7) Check the contents of the popup window that opened"
+    Debug.Print "  8) When done, close the popup with x and restore with Test_9_26_Popup_Off"
     Debug.Print ""
-    Debug.Print "  --- 結果の読み方 ---"
-    Debug.Print "  ★パターンA: ポップアップに業務画面が正常に出た★"
-    Debug.Print "      = ランタイム委譲で POST は保たれる。原因の見立ては正しかった。"
-    Debug.Print "        次段は本丸 (put_NewWindow) へ。UX (自前タブに収める) の設計に集中できる。"
-    Debug.Print "  ★パターンB: ポップアップでも 405 のまま★"
-    Debug.Print "      = POST ボディ以外の要因 (Referer / Cookie / セッション / ユーザーエージェント)"
-    Debug.Print "        を疑う段に移る。本丸を作っても解決しない可能性が高いので、着手前に判明して"
-    Debug.Print "        得をした状態。405 ページの本文 (Tomcat のメッセージ全文) を控えること。"
-    Debug.Print "  ★パターンC: ポップアップが開かない / 別の症状★"
-    Debug.Print "      = ログをそのまま共有してください (put_Handled の行が出ていないかが分かれ目)。"
+    Debug.Print "  --- How to read the results ---"
+    Debug.Print "  *Pattern A: the business screen appeared normally in the popup*"
+    Debug.Print "      = The POST is preserved by runtime delegation. The assumption about the cause was correct."
+    Debug.Print "        The next stage is the main approach (put_NewWindow). We can concentrate on the design of the UX (fitting it into our own tab)."
+    Debug.Print "  *Pattern B: still 405 even in the popup*"
+    Debug.Print "      = Move on to suspecting factors other than the POST body (Referer / Cookie / session / user agent)."
+    Debug.Print "        Building the main approach would likely not solve it, so it is good that this was found before starting."
+    Debug.Print "        Make a note of the body of the 405 page (the full Tomcat message)."
+    Debug.Print "  *Pattern C: the popup does not open / another symptom*"
+    Debug.Print "      = Please share the log as is (whether the put_Handled line is absent is the deciding point)."
     Debug.Print ""
-    Debug.Print "  --- 注意 ---"
-    Debug.Print "  ・委譲モードは検証用。ONのままだと全ての target=_blank リンクがポップアップに"
-    Debug.Print "    なり、タブバーに乗りません。確認が済んだら Test_9_26_Popup_Off に戻すこと。"
-    Debug.Print "  ・ポップアップはこちらの Controller 管理外なので、閉じるのは手動です。"
-    Debug.Print "  ・★仕様事実 20★ WebView2 のイベントバーストが静まるまで (全タブのロード完了 +"
-    Debug.Print "    イミディエイトのログが止まるまで) ブレーク/ステップ実行はしないこと。"
-    Debug.Print "    この回はイベントハンドラ内の分岐を見るので、判断材料は Debug.Print のログのみ。"
+    Debug.Print "  --- Cautions ---"
+    Debug.Print "  - Delegation mode is for verification. While it stays ON, every target=_blank link becomes a popup and"
+    Debug.Print "    does not go onto the tab bar. Return to Test_9_26_Popup_Off once the check is done."
+    Debug.Print "  - The popup is outside this Controller's management, so closing it is manual."
+    Debug.Print "  - *Spec fact 20* Until the WebView2 event burst settles (all tabs finished loading +"
+    Debug.Print "    the Immediate window log stops), do not break/step through the code."
+    Debug.Print "    This round looks at branches inside event handlers, so the only evidence is the Debug.Print log."
 End Sub
 ' ============================================================
-' Test_9_26_PostProbe (第9.26b、POST プローブページを開く)
+' Test_9_26_PostProbe (Stage 9.26b, open the POST probe page)
 '
-'   %TEMP%\Wv2PostProbe\postprobe.html を書き出し、仮想ホスト
-'   https://appassets.postprobe/postprobe.html として新タブで開く。
-'   StartWebView2_Full の後にイミディエイトで Sub 名を打つだけでよい。
+'   Writes out %TEMP%\Wv2PostProbe\postprobe.html and opens it in a new tab as the virtual host
+'   https://appassets.postprobe/postprobe.html.
+'   After StartWebView2_Full, just type the Sub name in the Immediate window.
 '
-'   ページには 4 つのボタンがある (詳細は Test_9_26_PostProbe_Help)。
+'   The page has 4 buttons (details in Test_9_26_PostProbe_Help).
 ' ============================================================
 Public Sub Test_9_26_PostProbe()
     Dim b As Wv2Browser
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Debug.Print "[9.26b] Browser が起動していません。先に UserForm1.StartWebView2_Full を実行してください。"
+        Debug.Print "[9.26b] Browser is not started. Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
@@ -1540,107 +1540,107 @@ Public Sub Test_9_26_PostProbe()
     folderPath = folderPath & "Wv2PostProbe"
 
     If Not WriteUtf8NoBom(folderPath, "postprobe.html", BuildPostProbeHtml()) Then
-        Debug.Print "[9.26b] HTML の書き出しに失敗しました。中止します。"
+        Debug.Print "[9.26b] Failed to write out the HTML. Aborting."
         Exit Sub
     End If
 
     Dim pane As Wv2Pane
     Set pane = b.AddTabWithUrlForSpa("appassets.postprobe", folderPath, "postprobe.html")
     If pane Is Nothing Then
-        Debug.Print "[9.26b] タブの生成に失敗しました。"
+        Debug.Print "[9.26b] Failed to create the tab."
         Exit Sub
     End If
 
-    Debug.Print "[9.26b] プローブページを開きました。現在の NewWindowMode = " & b.NewWindowMode
-    Debug.Print "        (0=現行/GET横取り  1=ポップアップ委譲  2=プリウォーム委譲)"
-    Debug.Print "        手順は Test_9_28_Help (最新) / Test_9_26_PostProbe_Help (ボタンの役割) を参照。"
-    Debug.Print "        第9.28b: 本命の送信先は httpbingo.org。落ちていたらボタン4 (httpbin) /"
-    Debug.Print "        ボタン5 (postman-echo) を使うこと。★httpbingo は 405 をタイトルに出さない★ ので、"
-    Debug.Print "        合否はログではなく画面表示で判定すること。"
+    Debug.Print "[9.26b] Opened the probe page. Current NewWindowMode = " & b.NewWindowMode
+    Debug.Print "        (0=current/GET interception  1=popup delegation  2=pre-warm delegation)"
+    Debug.Print "        For the procedure see Test_9_28_Help (latest) / Test_9_26_PostProbe_Help (roles of the buttons)."
+    Debug.Print "        9.28b: the main destination is httpbingo.org. If it is down, use button 4 (httpbin) /"
+    Debug.Print "        button 5 (postman-echo). *httpbingo does not show 405 in the title*, so"
+    Debug.Print "        judge pass/fail by what is shown on screen, not by the log."
 End Sub
 
 
 ' ============================================================
-' Test_9_26_PostProbe_Help (第9.26b、実機手順)
+' Test_9_26_PostProbe_Help (Stage 9.26b, real-machine procedure)
 ' ============================================================
 Public Sub Test_9_26_PostProbe_Help()
-    Debug.Print "==== 第9.26b 実機手順 (POST プローブで委譲モードを判定する) ===="
+    Debug.Print "==== Stage 9.26b real-machine procedure (judging the delegation mode with the POST probe) ===="
     Debug.Print ""
-    Debug.Print "  【なぜこの段が要るか】"
-    Debug.Print "    9.26 で試したサイトのポップアップは素の GET だったため、委譲 OFF でも"
-    Debug.Print "    自前タブで正常に開いてしまい 405 の再現になっていなかった。そこで"
-    Debug.Print "    httpbin.org を使って職場と同じ構図 (GET なら 405 / POST なら 200) を"
-    Debug.Print "    自宅で合成し、本命の判定を取る。"
+    Debug.Print "  [Why this stage is needed]"
+    Debug.Print "    The popup of the site tried in 9.26 was a plain GET, so even with delegation OFF"
+    Debug.Print "    it opened normally in our own tab and the 405 was not reproduced. So we"
+    Debug.Print "    use httpbin.org to synthesize at home the same picture as the workplace (405 for GET / 200 for POST)"
+    Debug.Print "    and obtain the verdict on the main question."
     Debug.Print ""
-    Debug.Print "  --- 手順 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "  2) Test_9_26_PostProbe            ' プローブページが新タブで開く"
-    Debug.Print "  3) ★対照 (委譲 OFF のまま)★ ボタン1 (POST + 別ウィンドウ) を押す"
-    Debug.Print "       → 期待: 自前の新タブが開き、405 METHOD NOT ALLOWED が出る"
-    Debug.Print "       → ログ: put_Handled OK → RequestNewTabAsync"
-    Debug.Print "       ★ここで 405 が出れば、職場の症状が自宅で再現できたことになる★"
-    Debug.Print "  4) その 405 タブを閉じ、プローブページのタブに戻る"
-    Debug.Print "  5) Test_9_26_Popup_On             ' 委譲モードへ"
-    Debug.Print "  6) もう一度ボタン1を押す"
-    Debug.Print "       → ログ: [9.26 委譲モード] put_Handled を立てずにランタイムへ委譲する"
-    Debug.Print "       → 期待: ポップアップに 200 の JSON が出る"
-    Debug.Print "  7) ポップアップを × で閉じ、Test_9_26_Popup_Off で元に戻す"
+    Debug.Print "  --- Procedure ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "  2) Test_9_26_PostProbe            ' the probe page opens in a new tab"
+    Debug.Print "  3) *Control (delegation still OFF)* Press button 1 (POST + separate window)"
+    Debug.Print "       -> Expected: our own new tab opens and 405 METHOD NOT ALLOWED appears"
+    Debug.Print "       -> Log: put_Handled OK -> RequestNewTabAsync"
+    Debug.Print "       *If 405 appears here, the workplace symptom has been reproduced at home*"
+    Debug.Print "  4) Close that 405 tab and return to the probe page's tab"
+    Debug.Print "  5) Test_9_26_Popup_On             ' switch to delegation mode"
+    Debug.Print "  6) Press button 1 once more"
+    Debug.Print "       -> Log: [9.26 delegation mode] delegating to the runtime without setting put_Handled"
+    Debug.Print "       -> Expected: a 200 JSON appears in the popup"
+    Debug.Print "  7) Close the popup with x and restore with Test_9_26_Popup_Off"
     Debug.Print ""
-    Debug.Print "  --- ボタンの役割 ---"
-    Debug.Print "  ボタン1 [POST + 別ウィンドウ] ★本命★"
-    Debug.Print "      委譲 OFF なら 405、ON なら 200 になるはず。ここだけ挙動が変わる。"
-    Debug.Print "  ボタン2 [POST + 同じタブ]     サニティチェック"
-    Debug.Print "      NewWindowRequested を通らない経路。どちらのモードでも 200 のはず。"
-    Debug.Print "      ここが 200 なら『この WebView2 で POST 自体は普通に通る』が確定する。"
-    Debug.Print "  ボタン3 [GET + 別ウィンドウ]  対照"
-    Debug.Print "      どちらのモードでも 200 のはず。ポップアップ経路自体は壊れていない証拠。"
-    Debug.Print "      (9.26 で見た『GET のポップアップは OFF でも開く』の再現)"
-    Debug.Print "  ボタン4 [POST + 別ウィンドウ / 予備の送信先 その1]"
-    Debug.Print "      httpbingo.org が落ちているときの逃げ道 (httpbin.org)。役割はボタン1と同じ。"
-    Debug.Print "  ボタン5 [POST + 別ウィンドウ / 予備の送信先 その2]  ※第9.28b で新設"
-    Debug.Print "      さらにその逃げ道 (postman-echo.com)。役割はボタン1と同じ。"
+    Debug.Print "  --- Roles of the buttons ---"
+    Debug.Print "  Button 1 [POST + separate window] *main one*"
+    Debug.Print "      Should give 405 with delegation OFF and 200 with ON. Only this one changes behavior."
+    Debug.Print "  Button 2 [POST + same tab]     sanity check"
+    Debug.Print "      A route that does not go through NewWindowRequested. Should give 200 in either mode."
+    Debug.Print "      If this is 200, it is settled that 'POST itself goes through normally in this WebView2'."
+    Debug.Print "  Button 3 [GET + separate window]  control"
+    Debug.Print "      Should give 200 in either mode. Evidence that the popup route itself is not broken."
+    Debug.Print "      (reproduces the 'a GET popup opens even when OFF' seen in 9.26)"
+    Debug.Print "  Button 4 [POST + separate window / spare destination 1]"
+    Debug.Print "      An escape route (httpbin.org) for when httpbingo.org is down. Same role as button 1."
+    Debug.Print "  Button 5 [POST + separate window / spare destination 2]  NOTE: newly added in 9.28b"
+    Debug.Print "      A further escape route (postman-echo.com). Same role as button 1."
     Debug.Print ""
-    Debug.Print "  --- 結果の読み方 ---"
-    Debug.Print "  ★パターンA: ボタン1が OFF で 405 / ON で 200★"
-    Debug.Print "      = ランタイム委譲で POST は保たれる。見立ては正しかった。"
-    Debug.Print "        次段は本丸 (put_NewWindow で自前タブに収める) へ進んでよい。"
-    Debug.Print "        さらに 200 の JSON 内 form に probe / nihongo / memo の値が見えれば、"
-    Debug.Print "        ボディが欠落せず運ばれたことの直接証拠になる (日本語も確認できる)。"
-    Debug.Print "  ★パターンB: ON でも 405 のまま★"
-    Debug.Print "      = ランタイムに委譲しても POST が保たれていない。本丸を作っても"
-    Debug.Print "        解決しない可能性が高いので、着手前に判明して得をした状態。"
-    Debug.Print "  ★パターンC: OFF でも 405 が出ない★"
-    Debug.Print "      = 405 の再現に失敗している。送信先が変わった可能性があるので、"
-    Debug.Print "        表示された内容 (ステータス・本文) をそのまま共有してください。"
-    Debug.Print "  ★ボタン2が 200 にならない場合★"
-    Debug.Print "      = そもそも POST が通っていない。原因が別の層にあるので要相談。"
+    Debug.Print "  --- How to read the results ---"
+    Debug.Print "  *Pattern A: button 1 gives 405 when OFF / 200 when ON*"
+    Debug.Print "      = The POST is preserved by runtime delegation. The assumption was correct."
+    Debug.Print "        You may proceed to the next stage, the main approach (fitting it into our own tab with put_NewWindow)."
+    Debug.Print "        Moreover, if the values of probe / nihongo / memo are visible in the form inside the 200 JSON,"
+    Debug.Print "        that is direct evidence that the body was carried without loss (Japanese can be confirmed too)."
+    Debug.Print "  *Pattern B: still 405 even when ON*"
+    Debug.Print "      = The POST is not preserved even when delegating to the runtime. Building the main approach"
+    Debug.Print "        would likely not solve it, so it is good that this was found before starting."
+    Debug.Print "  *Pattern C: no 405 even when OFF*"
+    Debug.Print "      = Reproducing the 405 failed. The destination may have changed, so"
+    Debug.Print "        please share what was displayed (status, body) as is."
+    Debug.Print "  *If button 2 does not give 200*"
+    Debug.Print "      = The POST is not going through at all. The cause is in another layer, so consult."
     Debug.Print ""
-    Debug.Print "  --- 注意 ---"
-    Debug.Print "  ・外部ネットワーク (httpbingo.org / httpbin.org / postman-echo.com) に"
-    Debug.Print "    出られる環境で実行すること。1 つが 503 でも残り 2 つで検証を続けられる。"
-    Debug.Print "  ・★第9.28b の注意★ httpbingo のエラーページには title が無いため、Edge が"
-    Debug.Print "    URL をタイトル代用にする。ログの タイトル: 行では合否が読めないので、"
-    Debug.Print "    必ず画面表示 (405 の文字 か 200 の JSON か) で判定すること。"
-    Debug.Print "  ・確認が済んだら Test_9_26_Popup_Off で必ず委譲モードを戻すこと。"
-    Debug.Print "  ・★仕様事実 20★ イベントバーストが静まるまでブレーク/ステップ実行はしない。"
-    Debug.Print "    判断材料は Debug.Print のログと画面表示のみで押し切ること。"
+    Debug.Print "  --- Cautions ---"
+    Debug.Print "  - Run this in an environment that can reach the external network (httpbingo.org / httpbin.org / postman-echo.com)."
+    Debug.Print "    Even if one gives 503, the remaining two let you continue verification."
+    Debug.Print "  - *Caution from 9.28b* httpbingo's error page has no title, so Edge uses the"
+    Debug.Print "    URL as the title. The title: line of the log cannot tell pass from fail, so"
+    Debug.Print "    always judge by what is displayed (the text 405 or a 200 JSON)."
+    Debug.Print "  - After the check, always restore the delegation mode with Test_9_26_Popup_Off."
+    Debug.Print "  - *Spec fact 20* Do not break/step through until the event burst settles."
+    Debug.Print "    Push through using only the Debug.Print log and the screen display as evidence."
 End Sub
 
 
 ' ============================================================
-' BuildPostProbeHtml (第9.26b、private)
+' BuildPostProbeHtml (Stage 9.26b, private)
 '
-'   検証ページの HTML を組み立てる。★JS は一切使わない★ 素の <form> だけで
-'   足りる要件なので、VBA 文字列内に JS を持ち込まない (事故の芽を作らない)。
+'   Builds the HTML of the verification page. *No JS at all* A plain <form> is
+'   enough for the requirement, so JS is not brought into VBA strings (to avoid planting seeds of accidents).
 '
-'   隠しフィールド nihongo に全角スペースを含む日本語を入れてあるので、
-'   POST が保たれた場合は httpbin のエコー JSON にその文字列がそのまま現れる。
-'   = ボディが欠落なく運ばれたことの直接証拠になる。
+'   The hidden field nihongo holds Japanese containing a full-width space, so
+'   if the POST is preserved that string appears as is in httpbin's echo JSON.
+'   = Direct evidence that the body was carried without loss.
 ' ============================================================
 Private Function BuildPostProbeHtml() As String
     Dim s As String
-    ' 第9.28b: 送信先を 3 系統に。本命 = httpbingo.org (httpbin の Go 実装)。
-    '   GET なら 405 / POST なら 200 + ボディをエコー、という構図は httpbin と同じ。
+    ' 9.28b: destinations made 3 routes. Main one = httpbingo.org (Go implementation of httpbin).
+    '   The picture "405 for GET / 200 + echo the body for POST" is the same as httpbin.
     Dim ep As String
     Dim epGet As String
     Dim ep2 As String
@@ -1652,7 +1652,7 @@ Private Function BuildPostProbeHtml() As String
 
     s = "<!DOCTYPE html>" & vbLf
     s = s & "<html lang=""ja""><head><meta charset=""UTF-8"">" & vbLf
-    s = s & "<title>POST プローブ (第9.26b / 第9.28b 更新)</title>" & vbLf
+    s = s & "<title>POST probe (Stage 9.26b / updated in 9.28b)</title>" & vbLf
     s = s & "<style>" & vbLf
     s = s & "  *{box-sizing:border-box;margin:0;padding:0;}" & vbLf
     s = s & "  body{font-family:'Segoe UI','Meiryo',sans-serif;color:#e8eaed;" & _
@@ -1682,76 +1682,76 @@ Private Function BuildPostProbeHtml() As String
     s = s & "</style></head><body>" & vbLf
     s = s & "<div class=""wrap"">" & vbLf
     s = s & "  <div class=""eyebrow"">POST Probe</div>" & vbLf
-    s = s & "  <h1>NewWindowRequested 委譲モードの判定</h1>" & vbLf
-    s = s & "  <div class=""lead"">送信先は GET で叩くと 405、POST で叩くと 200 を返します。" & _
-            "職場の基幹システムとまったく同じ構図です。第9.28 で既定が プリウォーム委譲 (モード2) に" & _
-            "なったので、<b>何も切り替えずにボタン1を押せば自前のタブに 200 が出る</b>のが正常です。" & _
-            "対照 (405) を見たいときは先に Test_9_27_Mode_Legacy を実行してください。<br>" & _
-            "本命の送信先が落ちているときは、同じ役割の予備ボタン (4・5) を使ってください。</div>" & vbLf
+    s = s & "  <h1>Judging the NewWindowRequested delegation mode</h1>" & vbLf
+    s = s & "  <div class=""lead"">The destination returns 405 when hit with GET and 200 when hit with POST." & _
+            "This is exactly the same picture as the workplace core system. Since 9.28 the default is pre-warm delegation (mode 2), so" & _
+            "<b>pressing button 1 without switching anything should show a 200 in our own tab</b>, which is normal." & _
+            "To see the control (405), first run Test_9_27_Mode_Legacy.<br>" & _
+            "When the main destination is down, use the spare buttons (4 and 5) that have the same role.</div>" & vbLf
 
-    ' --- 共通の隠しフィールド (各フォームに同じものを入れる) ---
+    ' --- common hidden fields (the same ones go into every form) ---
     Dim fields As String
     fields = "    <input type=""hidden"" name=""probe"" value=""wv2-post-probe"">" & vbLf & _
-             "    <input type=""hidden"" name=""nihongo"" value=""日本語　全角スペース入り"">" & vbLf
+             ("    <input type=""hidden"" name=""nihongo"" value=""" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ChrW(&H3000&) & ChrW(&H5168&) & ChrW(&H89D2&) & ChrW(&H30B9&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B9&) & ChrW(&H5165&) & ChrW(&H308A&) & """>") & vbLf
 
-    ' --- ボタン1: POST + 別ウィンドウ (本命) ---
+    ' --- Button 1: POST + separate window (main) ---
     s = s & "  <div class=""row main"">" & vbLf
-    s = s & "    <span class=""tag"">本命</span>" & vbLf
-    s = s & "    <div class=""desc"">POST + target=_blank。モード 0 なら 405、モード 2 なら 200 になるはず。" & _
-            "ここだけモードで挙動が変わります。応答 JSON の method フィールドが POST になっていれば、" & _
-            "GET に化けずにボディごと運ばれた直接証拠です。" & _
+    s = s & "    <span class=""tag"">main</span>" & vbLf
+    s = s & "    <div class=""desc"">POST + target=_blank. Should give 405 in mode 0 and 200 in mode 2." & _
+            "Only this one changes behavior with the mode. If the method field of the response JSON is POST," & _
+            "that is direct evidence that it was carried with its body without turning into a GET." & _
             "<br><span class=""ep"">" & ep & "</span></div>" & vbLf
     s = s & "    <form action=""" & ep & """ method=""post"" target=""_blank"">" & vbLf
     s = s & fields
-    s = s & "    <label>memo (POST ボディに載る文字列。自由に書き換え可)</label>" & vbLf
+    s = s & "    <label>memo (a string carried in the POST body. Feel free to rewrite it)</label>" & vbLf
     s = s & "    <input type=""text"" name=""memo"" value=""hello from Excel VBA WebView2"">" & vbLf
-    s = s & "    <button type=""submit"">ボタン1 : POST + 別ウィンドウ</button>" & vbLf
+    s = s & "    <button type=""submit"">Button 1 : POST + separate window</button>" & vbLf
     s = s & "    </form>" & vbLf
     s = s & "  </div>" & vbLf
 
-    ' --- ボタン2: POST + 同一タブ (サニティチェック) ---
+    ' --- Button 2: POST + same tab (sanity check) ---
     s = s & "  <div class=""row sub"">" & vbLf
-    s = s & "    <span class=""tag"">サニティ</span>" & vbLf
-    s = s & "    <div class=""desc"">POST + 同じタブ。NewWindowRequested を通らない経路なので、" & _
-            "どちらのモードでも 200 のはず。この WebView2 で POST 自体が通ることの確認です。</div>" & vbLf
+    s = s & "    <span class=""tag"">sanity</span>" & vbLf
+    s = s & "    <div class=""desc"">POST + same tab. A route that does not go through NewWindowRequested, so" & _
+            "it should give 200 in either mode. Confirms that POST itself goes through in this WebView2.</div>" & vbLf
     s = s & "    <form action=""" & ep & """ method=""post"">" & vbLf
     s = s & fields
-    s = s & "    <button type=""submit"">ボタン2 : POST + 同じタブ</button>" & vbLf
+    s = s & "    <button type=""submit"">Button 2 : POST + same tab</button>" & vbLf
     s = s & "    </form>" & vbLf
     s = s & "  </div>" & vbLf
 
-    ' --- ボタン3: GET + 別ウィンドウ (対照) ---
+    ' --- Button 3: GET + separate window (control) ---
     s = s & "  <div class=""row sub"">" & vbLf
-    s = s & "    <span class=""tag"">対照</span>" & vbLf
-    s = s & "    <div class=""desc"">GET + target=_blank。どちらのモードでも 200 のはず。" & _
-            "新規ウィンドウ経路そのものは壊れていないことの確認です。" & _
+    s = s & "    <span class=""tag"">control</span>" & vbLf
+    s = s & "    <div class=""desc"">GET + target=_blank. Should give 200 in either mode." & _
+            "Confirms that the new-window route itself is not broken." & _
             "<br><span class=""ep"">" & epGet & "</span></div>" & vbLf
     s = s & "    <form action=""" & epGet & """ method=""get"" target=""_blank"">" & vbLf
     s = s & fields
-    s = s & "    <button type=""submit"">ボタン3 : GET + 別ウィンドウ</button>" & vbLf
+    s = s & "    <button type=""submit"">Button 3 : GET + separate window</button>" & vbLf
     s = s & "    </form>" & vbLf
     s = s & "  </div>" & vbLf
 
-    ' --- ボタン4: POST + 別ウィンドウ (予備の送信先) ---
+    ' --- Button 4: POST + separate window (spare destination) ---
     s = s & "  <div class=""row sub"">" & vbLf
-    s = s & "    <span class=""tag"">予備</span>" & vbLf
-    s = s & "    <div class=""desc"">ボタン1と同じ役割の逃げ道 その1。httpbingo.org が落ちているときに使います。" & _
+    s = s & "    <span class=""tag"">spare</span>" & vbLf
+    s = s & "    <div class=""desc"">An escape route (1) with the same role as button 1. Use it when httpbingo.org is down." & _
             "<br><span class=""ep"">" & ep2 & "</span></div>" & vbLf
     s = s & "    <form action=""" & ep2 & """ method=""post"" target=""_blank"">" & vbLf
     s = s & fields
-    s = s & "    <button type=""submit"">ボタン4 : POST + 別ウィンドウ (予備1 httpbin)</button>" & vbLf
+    s = s & "    <button type=""submit"">Button 4 : POST + separate window (spare 1 httpbin)</button>" & vbLf
     s = s & "    </form>" & vbLf
     s = s & "  </div>" & vbLf
 
-    ' --- ボタン5: POST + 別ウィンドウ (予備の送信先 その2。第9.28b で新設) ---
+    ' --- Button 5: POST + separate window (spare destination 2. Newly added in 9.28b) ---
     s = s & "  <div class=""row sub"">" & vbLf
-    s = s & "    <span class=""tag"">予備</span>" & vbLf
-    s = s & "    <div class=""desc"">ボタン1と同じ役割の逃げ道 その2。送信先を 3 つ持つことで、" & _
-            "外部サービス 1 つのダウンで検証が止まるのを防ぎます (第9.28 で実際に足を取られた)。" & _
+    s = s & "    <span class=""tag"">spare</span>" & vbLf
+    s = s & "    <div class=""desc"">An escape route (2) with the same role as button 1. By having 3 destinations," & _
+            "it keeps verification from stopping when one external service goes down (we actually got tripped up by this in 9.28)." & _
             "<br><span class=""ep"">" & ep3 & "</span></div>" & vbLf
     s = s & "    <form action=""" & ep3 & """ method=""post"" target=""_blank"">" & vbLf
     s = s & fields
-    s = s & "    <button type=""submit"">ボタン5 : POST + 別ウィンドウ (予備2 postman-echo)</button>" & vbLf
+    s = s & "    <button type=""submit"">Button 5 : POST + separate window (spare 2 postman-echo)</button>" & vbLf
     s = s & "    </form>" & vbLf
     s = s & "  </div>" & vbLf
 
@@ -1763,15 +1763,15 @@ End Function
 
 
 ' ============================================================
-' WriteUtf8NoBom (第9.26b、private)
+' WriteUtf8NoBom (Stage 9.26b, private)
 '
-'   ADODB.Stream で UTF-8 (BOM なし) のテキストファイルを書き出す。
-'   Wv2TabBar.WriteTabBarHtml と同じ手順 (テキストで書いてバイナリで読み直し、
-'   先頭 3 バイトの BOM を捨ててから保存) をそのまま使う。
+'   Writes a UTF-8 (no BOM) text file with ADODB.Stream.
+'   Uses exactly the same procedure as Wv2TabBar.WriteTabBarHtml (write as text, re-read as binary,
+'   discard the leading 3-byte BOM and then save).
 '
-'   ★UserForm1.WriteSpaAppFolder を使わない理由★
-'     あちらは Print # による ANSI (CP932) 書き出しなので、meta charset=UTF-8 を
-'     宣言した HTML に日本語を入れると文字化けする。方式を TabBar/NavBar に揃える。
+'   *Why UserForm1.WriteSpaAppFolder is not used*
+'     That one writes ANSI (CP932) with Print #, so putting Japanese into an HTML that declares
+'     meta charset=UTF-8 garbles it. The method is aligned with TabBar/NavBar.
 ' ============================================================
 Private Function WriteUtf8NoBom(ByVal folderPath As String, _
                                 ByVal fileName As String, _
@@ -1780,7 +1780,7 @@ Private Function WriteUtf8NoBom(ByVal folderPath As String, _
 
     If Dir(folderPath, vbDirectory) = "" Then
         MkDir folderPath
-        Debug.Print "[9.26b] フォルダ作成 " & folderPath
+        Debug.Print "[9.26b] creating folder " & folderPath
     End If
 
     Dim fullPath As String
@@ -1788,7 +1788,7 @@ Private Function WriteUtf8NoBom(ByVal folderPath As String, _
     If Right$(fullPath, 1) <> "\" Then fullPath = fullPath & "\"
     fullPath = fullPath & fileName
 
-    ' テキストとして UTF-8 で書き、バイナリで読み直して BOM (EF BB BF) を捨てる
+    ' Write as text in UTF-8, re-read as binary and discard the BOM (EF BB BF)
     Dim bin As Object
     Set bin = CreateObject("ADODB.Stream")
     bin.Type = 2                ' adTypeText
@@ -1797,7 +1797,7 @@ Private Function WriteUtf8NoBom(ByVal folderPath As String, _
     bin.WriteText content
     bin.Position = 0
     bin.Type = 1                ' adTypeBinary
-    bin.Position = 3            ' EF BB BF をスキップ
+    bin.Position = 3            ' skip EF BB BF
     Dim bytes() As Byte
     bytes = bin.Read
     bin.Close
@@ -1810,27 +1810,27 @@ Private Function WriteUtf8NoBom(ByVal folderPath As String, _
     outStream.SaveToFile fullPath, 2   ' 2 = adSaveCreateOverWrite
     outStream.Close
 
-    Debug.Print "[9.26b] 書き出し OK " & fullPath & " (" & Len(content) & " 文字, UTF-8 BOMなし)"
+    Debug.Print "[9.26b] write OK " & fullPath & " (" & Len(content) & " chars, UTF-8 without BOM)"
     WriteUtf8NoBom = True
     Exit Function
 eh:
-    Debug.Print "[9.26b] 書き出しエラー " & Err.Number & " " & Err.Description
+    Debug.Print "[9.26b] write error " & Err.Number & " " & Err.Description
     WriteUtf8NoBom = False
 End Function
 
 
 ' ============================================================
-' 第9.27 ― プリウォーム委譲 (put_NewWindow) の実機スイッチと手順
+' Stage 9.27 - real-machine switches and procedure for pre-warm delegation (put_NewWindow)
 ' ============================================================
 
 ' ============================================================
-' Test_9_27_Mode_Legacy / _Popup / _Prewarm (第9.27、モード切替)
+' Test_9_27_Mode_Legacy / _Popup / _Prewarm (Stage 9.27, mode switching)
 '
-'   Wv2Browser.NewWindowMode を切り替えるだけの薄い口。全タブ共通で、次に踏んだ
-'   リンクから即座に効く (タブを開き直す必要はない)。
-'     0 = 現行動作     : put_Handled + 自前の新タブ。Navigate は常に GET → POST は 405
-'     1 = ポップアップ : ランタイム任せ。POST は保たれるがタブバーに乗らない (9.26)
-'     2 = プリウォーム : 予備タブの CoreWebView2 を put_NewWindow に渡す (9.27 本命)
+'   A thin entry point that only switches Wv2Browser.NewWindowMode. Common to all tabs, and effective
+'   immediately from the next link clicked (no need to reopen tabs).
+'     0 = current behavior : put_Handled + our own new tab. Navigate is always GET -> POST gives 405
+'     1 = popup            : left to the runtime. POST is preserved but it does not go onto the tab bar (9.26)
+'     2 = pre-warm         : pass the spare tab's CoreWebView2 to put_NewWindow (main one of 9.27)
 ' ============================================================
 Public Sub Test_9_27_Mode_Legacy()
     SetNewWindowMode 0
@@ -1848,46 +1848,46 @@ Private Sub SetNewWindowMode(ByVal modeValue As Long)
     Dim b As Wv2Browser
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Debug.Print "[9.27] Browser が起動していません。先に UserForm1.StartWebView2_Full を実行してください。"
+        Debug.Print "[9.27] Browser is not started. Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
     b.NewWindowMode = modeValue
-    Debug.Print "[9.27] 現在の NewWindowMode = " & b.NewWindowMode
+    Debug.Print "[9.27] current NewWindowMode = " & b.NewWindowMode
 End Sub
 
 
 ' ============================================================
-' Test_9_27_Status (第9.27、予備タブの状態ダンプ)
+' Test_9_27_Status (Stage 9.27, state dump of the spare tab)
 '
-'   モード 2 で開く前に、予備タブが温まっているかを確認するための口。
-'   起動直後は「予備なし (pending=True)」で、1.5 秒ほどで「予備あり ... 使用可=True」
-'   に変わる。使用可=False のまま変わらない場合はログを共有すること。
+'   An entry point for checking, before opening in mode 2, whether the spare tab is warmed up.
+'   Right after startup it shows "no spare (pending=True)", and after about 1.5 seconds changes to "spare present ... usable=True".
+'   If it stays at usable=False, share the log.
 ' ============================================================
 Public Sub Test_9_27_Status()
     Dim b As Wv2Browser
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Debug.Print "[9.27] Browser が起動していません。先に UserForm1.StartWebView2_Full を実行してください。"
+        Debug.Print "[9.27] Browser is not started. Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
-    Debug.Print "==== 第9.27 状態ダンプ ===="
+    Debug.Print "==== Stage 9.27 state dump ===="
     Debug.Print "  NewWindowMode            = " & b.NewWindowMode & _
-                "   (0=現行 / 1=ポップアップ / 2=プリウォーム。第9.28 以降の既定は 2)"
+                "   (0=current / 1=popup / 2=pre-warm. The default since 9.28 is 2)"
     Debug.Print "  SetHandledWithNewWindow  = " & b.SetHandledWithNewWindow
-    Debug.Print "  予備タブ                 = " & b.Debug_PrewarmStatus()
-    Debug.Print "  表示中のタブ数           = " & b.TabCount & "   (予備は含まない)"
-    Debug.Print "  アクティブ index         = " & b.ActiveIndex
+    Debug.Print "  spare tab                = " & b.Debug_PrewarmStatus()
+    Debug.Print "  number of visible tabs   = " & b.TabCount & "   (spare not included)"
+    Debug.Print "  active index             = " & b.ActiveIndex
 End Sub
 
 
 ' ============================================================
-' Test_9_27_Handled_On / _Off (第9.27、論点5 の保険スイッチ)
+' Test_9_27_Handled_On / _Off (Stage 9.27, insurance switch for issue 5)
 '
-'   put_NewWindow に予備タブをセットしたとき、続けて put_Handled(TRUE) も立てるか。
-'   既定は On (公式サンプルと同じ形)。予備タブが白いまま / ウィンドウが二重に開く
-'   といった症状が出たら Off にして再試行し、どちらが正しいかを切り分ける。
-'   ★コードを直さずに切り分けられる★ ようにするための保険。
+'   Whether to also set put_Handled(TRUE) right after setting the spare tab in put_NewWindow.
+'   The default is On (the same form as the official sample). If symptoms such as the spare tab staying white / the window opening twice
+'   appear, turn it Off and retry, to isolate which is correct.
+'   Insurance so that *it can be isolated without fixing the code*.
 ' ============================================================
 Public Sub Test_9_27_Handled_On()
     SetHandledFlag True
@@ -1901,160 +1901,160 @@ Private Sub SetHandledFlag(ByVal onOff As Boolean)
     Dim b As Wv2Browser
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Debug.Print "[9.27] Browser が起動していません。先に UserForm1.StartWebView2_Full を実行してください。"
+        Debug.Print "[9.27] Browser is not started. Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
     b.SetHandledWithNewWindow = onOff
-    Debug.Print "[9.27] 現在の SetHandledWithNewWindow = " & b.SetHandledWithNewWindow
+    Debug.Print "[9.27] current SetHandledWithNewWindow = " & b.SetHandledWithNewWindow
 End Sub
 
 
 ' ============================================================
-' Test_9_27_Help (第9.27、実機手順)
+' Test_9_27_Help (Stage 9.27, real-machine procedure)
 ' ============================================================
 Public Sub Test_9_27_Help()
-    Debug.Print "==== 第9.27 実機手順 (本丸: put_NewWindow で予備タブに載せる) ===="
+    Debug.Print "==== Stage 9.27 real-machine procedure (main target: putting it on the spare tab with put_NewWindow) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    仕様事実 23 で「ランタイムに遷移を渡せば POST は保たれる」ことは確定した。"
-    Debug.Print "    今回はそれを ★自前のタブ★ に載せられるかを見る。予備タブ (プリウォーム) の"
-    Debug.Print "    CoreWebView2 を args.put_NewWindow に渡し、ポップアップではなくタブバーに"
-    Debug.Print "    乗った状態で 200 + form エコーが出れば成功。"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    Spec fact 23 settled that 'handing the navigation to the runtime preserves the POST'."
+    Debug.Print "    This time we see whether it can be put on *our own tab*. If we pass the spare tab's (pre-warm)"
+    Debug.Print "    CoreWebView2 to args.put_NewWindow and get a 200 + form echo while sitting on the tab bar"
+    Debug.Print "    rather than in a popup, it is a success."
     Debug.Print ""
-    Debug.Print "  --- 手順 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "  2) 起動ログが静まってから Test_9_27_Status"
-    Debug.Print "       → 期待: 予備タブ = 予備あり ViewPtr=... / IsReady=True / 使用可=True"
-    Debug.Print "       ※ 起動直後は 予備なし (pending=True)。1.5 秒ほどで温まる。"
-    Debug.Print "       ※ ★仕様事実 20★ ログが止まるまでブレーク/ステップ実行はしないこと。"
-    Debug.Print "  3) Test_9_26_PostProbe            ' 9.26b の検証ページを新タブで開く"
-    Debug.Print "  4) ★対照★ Test_9_27_Mode_Legacy を打ってから ボタン1 (POST + _blank) を押す"
-    Debug.Print "       ※第9.28 で既定が 2 になったので、対照を取るには明示的に 0 へ戻す。"
-    Debug.Print "       → 期待: 自前の新タブに 405 METHOD NOT ALLOWED (職場と同じ症状の再現)"
-    Debug.Print "       → ログ: put_Handled OK → 新タブ生成を Timer に依頼"
-    Debug.Print "  5) 405 のタブを閉じ、プローブページのタブに戻る"
-    Debug.Print "  6) Test_9_27_Mode_Prewarm         ' 本命モードへ (第9.28 の既定に戻す)"
-    Debug.Print "  7) もう一度 ボタン1 を押す"
-    Debug.Print "  8) Test_9_27_Status               ' 補充されたかを確認"
-    Debug.Print "       → 期待: 予備あり / 使用可=True (使った分が補充されている)"
+    Debug.Print "  --- Procedure ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "  2) After the startup log settles, Test_9_27_Status"
+    Debug.Print "       -> Expected: spare tab = spare present ViewPtr=... / IsReady=True / usable=True"
+    Debug.Print "       NOTE: right after startup it is no spare (pending=True). It warms up in about 1.5 seconds."
+    Debug.Print "       NOTE: *spec fact 20* do not break/step through until the log stops."
+    Debug.Print "  3) Test_9_26_PostProbe            ' open the 9.26b verification page in a new tab"
+    Debug.Print "  4) *Control* Type Test_9_27_Mode_Legacy, then press button 1 (POST + _blank)"
+    Debug.Print "       NOTE: the default became 2 in 9.28, so to take the control, explicitly return it to 0."
+    Debug.Print "       -> Expected: 405 METHOD NOT ALLOWED in our own new tab (reproduces the same symptom as the workplace)"
+    Debug.Print "       -> Log: put_Handled OK -> new tab creation requested of the Timer"
+    Debug.Print "  5) Close the 405 tab and return to the probe page's tab"
+    Debug.Print "  6) Test_9_27_Mode_Prewarm         ' to the main mode (restores the 9.28 default)"
+    Debug.Print "  7) Press button 1 once more"
+    Debug.Print "  8) Test_9_27_Status               ' check whether it was replenished"
+    Debug.Print "       -> Expected: spare present / usable=True (what was used has been replenished)"
     Debug.Print ""
-    Debug.Print "  --- 期待するログ (手順 7) ---"
+    Debug.Print "  --- Expected log (step 7) ---"
     Debug.Print "    Wv2Pane.View_OnNewWindowRequested: pSender=... , pArgs=..."
-    Debug.Print "      → 新規ウィンドウ要求 URL: https://httpbin.org/post"
-    Debug.Print "    Wv2Browser.ClaimPrewarmViewPtr: 予備タブを予約 (ViewPtr=...)"
-    Debug.Print "      [9.27 プリウォーム] put_NewWindow OK (予備タブの View=...)"
-    Debug.Print "        put_Handled OK (put_NewWindow と併用)"
-    Debug.Print "    Wv2Browser.RequestAdoptPrewarmedAsync: 予備タブの採用を予約 (...)"
-    Debug.Print "    Wv2Browser.Adopt: 予備タブをタブとして採用 (現在のタブ数=N, 要求 URL=...)"
-    Debug.Print "    Wv2Browser.Prewarm: 予備タブの生成を開始 → 予備タブを温めた (ViewPtr=...)"
+    Debug.Print "      -> new window request URL: https://httpbin.org/post"
+    Debug.Print "    Wv2Browser.ClaimPrewarmViewPtr: reserved the spare tab (ViewPtr=...)"
+    Debug.Print "      [9.27 pre-warm] put_NewWindow OK (spare tab's View=...)"
+    Debug.Print "        put_Handled OK (used together with put_NewWindow)"
+    Debug.Print "    Wv2Browser.RequestAdoptPrewarmedAsync: reserved adoption of the spare tab (...)"
+    Debug.Print "    Wv2Browser.Adopt: adopted the spare tab as a tab (current tab count=N, requested URL=...)"
+    Debug.Print "    Wv2Browser.Prewarm: started creating the spare tab -> warmed up the spare tab (ViewPtr=...)"
     Debug.Print ""
-    Debug.Print "  --- 結果の読み方 ---"
-    Debug.Print "  ★パターンA (成功): 新しいタブがタブバーに増え、その中に 200 の JSON が出た★"
-    Debug.Print "      form に 3 フィールド / Content-Length: 172 が出ていれば POST が完全に"
-    Debug.Print "      保たれている。本丸成立。UX まで含めて 405 問題が解決したことになる。"
-    Debug.Print "  ★パターンB: タブは増えたが中身が真っ白 / 二重にウィンドウが開く★"
-    Debug.Print "      put_Handled の併用が悪さをしている可能性。Test_9_27_Handled_Off にして"
-    Debug.Print "      手順 5～7 をやり直す。これで直れば「NewWindow をセットしたら Handled は"
-    Debug.Print "      立てない」が正解と確定する (論点5 の保険が効いた形)。"
-    Debug.Print "  ★パターンC: ★印つきのフォールバックログが出た★"
-    Debug.Print "      予備タブが使えなかったケース。Test_9_27_Status の結果と併せて共有すること。"
-    Debug.Print "      (予備なし / 使用可=False のまま補充されない等、原因は状態ダンプで切り分ける)"
-    Debug.Print "  ★パターンD: put_NewWindow が hr 付きで失敗した★"
-    Debug.Print "      hr の値をそのまま共有してください。vtable index か引数型の問題になる。"
+    Debug.Print "  --- How to read the results ---"
+    Debug.Print "  *Pattern A (success): a new tab was added to the tab bar and a 200 JSON appeared in it*"
+    Debug.Print "      If the form shows 3 fields / Content-Length: 172, the POST is completely"
+    Debug.Print "      preserved. The main approach holds. The 405 problem is solved including the UX."
+    Debug.Print "  *Pattern B: a tab was added but its content is blank white / windows open twice*"
+    Debug.Print "      Using put_Handled together may be causing trouble. Switch to Test_9_27_Handled_Off and"
+    Debug.Print "      redo steps 5-7. If this fixes it, 'do not set Handled once NewWindow is set'"
+    Debug.Print "      is confirmed as correct (the insurance of issue 5 worked)."
+    Debug.Print "  *Pattern C: a fallback log marked with * appeared*"
+    Debug.Print "      The case where the spare tab could not be used. Share it together with the result of Test_9_27_Status."
+    Debug.Print "      (the cause, e.g. no spare / not replenished while usable=False, is isolated with the state dump)"
+    Debug.Print "  *Pattern D: put_NewWindow failed with an hr*"
+    Debug.Print "      Please share the value of hr as is. It will be a vtable index or argument type problem."
     Debug.Print ""
-    Debug.Print "  --- 注意 ---"
-    Debug.Print "  ・予備タブはタブバーに出ません (m_tabs に入れていないため)。Excel のタスク"
-    Debug.Print "    マネージャで msedgewebview2.exe が 1 つ増えて見えるのは正常です。"
-    Debug.Print "  ・Test_9_26_Popup_On / _Off は 9.27 でも動きます (内部でモード 1 / 0 に委譲)。"
-    Debug.Print "    ただし _Off はモード 2 も解除するので、本命に戻すときは Test_9_27_Mode_Prewarm。"
+    Debug.Print "  --- Cautions ---"
+    Debug.Print "  - The spare tab does not appear on the tab bar (because it is not put in m_tabs). It is normal that Excel's task"
+    Debug.Print "    manager shows one more msedgewebview2.exe."
+    Debug.Print "  - Test_9_26_Popup_On / _Off still work in 9.27 (internally delegating to mode 1 / 0)."
+    Debug.Print "    However _Off also cancels mode 2, so to return to the main mode use Test_9_27_Mode_Prewarm."
 End Sub
 
 
 ' ============================================================
-' Test_9_28_Help (第9.28、実機手順)
+' Test_9_28_Help (Stage 9.28, real-machine procedure)
 '
-'   既定が 2 (プリウォーム委譲) になった状態の確認。9.27 との最大の違いは
-'   ★モード切替を一切打たずに POST リンクが 200 になること★。
+'   Confirmation of the state where the default is 2 (pre-warm delegation). The biggest difference from 9.27 is that
+'   *a POST link gives 200 without typing any mode switch*.
 ' ============================================================
 Public Sub Test_9_28_Help()
-    Debug.Print "==== 第9.28 実機手順 (プリウォーム委譲の既定化 + 小修正 2 件) ===="
+    Debug.Print "==== Stage 9.28 real-machine procedure (making pre-warm delegation the default + 2 small fixes) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    (A) モード切替を打たずに POST リンクが自前タブで 200 になるか"
-    Debug.Print "    (B) 起動時に入れ子が起きても予備が最終的に温まるか (カウンタ化)"
-    Debug.Print "    (C) 予備切れ時のログが実態に合った文言になっているか"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    (A) Does a POST link give 200 in our own tab without typing a mode switch?"
+    Debug.Print "    (B) Even if nesting occurs at startup, is the spare eventually warmed up? (counter-ization)"
+    Debug.Print "    (C) Is the log for the spare running out worded to match reality?"
     Debug.Print ""
-    Debug.Print "  --- 手順 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "       ※ ★仕様事実 20★ ログが止まるまでブレーク/ステップ実行はしないこと。"
-    Debug.Print "  2) 起動ログが静まってから Test_9_27_Status"
-    Debug.Print "       → 期待: NewWindowMode = 2   ★ここが 0 なら既定値の変更が入っていない★"
-    Debug.Print "       → 期待: 予備タブ = 予備あり ViewPtr=... / IsReady=True / 使用可=True"
-    Debug.Print "  3) Test_9_26_PostProbe            ' 9.26b の検証ページを新タブで開く"
-    Debug.Print "  4) ★本題★ モードを一切触らずに ボタン1 (POST + _blank) を押す"
-    Debug.Print "       → 期待: 新しいタブがタブバーに増え、その中に 200 の JSON が出る"
-    Debug.Print "               ★判定は画面で★ 応答 JSON の method が POST になっていて、"
-    Debug.Print "               form に probe / nihongo / memo の 3 フィールドが見えれば POST 生存。"
-    Debug.Print "               (httpbingo は 405 をタイトルに出さないので、ログでは判別できない)"
-    Debug.Print "       → 期待するログ:"
-    Debug.Print "           Wv2Browser.ClaimPrewarmViewPtr: 予備タブを予約 (ViewPtr=...)"
-    Debug.Print "             [9.27 プリウォーム] put_NewWindow OK"
-    Debug.Print "           Wv2Browser.Adopt: 予備タブをタブとして採用 (現在のタブ数=N, ...)"
-    Debug.Print "           Wv2Browser.Prewarm: 予備タブを温めた (ViewPtr=...)"
-    Debug.Print "  5) Test_9_27_Status               ' 補充されたかを確認"
-    Debug.Print "       → 期待: 予備あり / 使用可=True"
+    Debug.Print "  --- Procedure ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "       NOTE: *spec fact 20* do not break/step through until the log stops."
+    Debug.Print "  2) After the startup log settles, Test_9_27_Status"
+    Debug.Print "       -> Expected: NewWindowMode = 2   *if this is 0, the default change was not applied*"
+    Debug.Print "       -> Expected: spare tab = spare present ViewPtr=... / IsReady=True / usable=True"
+    Debug.Print "  3) Test_9_26_PostProbe            ' open the 9.26b verification page in a new tab"
+    Debug.Print "  4) *Main point* Press button 1 (POST + _blank) without touching the mode at all"
+    Debug.Print "       -> Expected: a new tab is added to the tab bar and a 200 JSON appears in it"
+    Debug.Print "               *Judge on the screen* If the method of the response JSON is POST, and"
+    Debug.Print "               the 3 fields probe / nihongo / memo are visible in the form, the POST survived."
+    Debug.Print "               (httpbingo does not show 405 in the title, so the log cannot tell)"
+    Debug.Print "       -> Expected log:"
+    Debug.Print "           Wv2Browser.ClaimPrewarmViewPtr: reserved the spare tab (ViewPtr=...)"
+    Debug.Print "             [9.27 pre-warm] put_NewWindow OK"
+    Debug.Print "           Wv2Browser.Adopt: adopted the spare tab as a tab (current tab count=N, ...)"
+    Debug.Print "           Wv2Browser.Prewarm: warmed up the spare tab (ViewPtr=...)"
+    Debug.Print "  5) Test_9_27_Status               ' check whether it was replenished"
+    Debug.Print "       -> Expected: spare present / usable=True"
     Debug.Print ""
-    Debug.Print "  --- (C) の確認 (任意。ログ文言だけの修正なので余裕があれば) ---"
-    Debug.Print "  6) プローブページに戻り、ボタン1 を★素早く 2 回★押す (予備切れを作る)"
-    Debug.Print "       → 期待: 2 本目に ★予備タブが使えないので現行動作にフォールバック★ が出て、"
-    Debug.Print "               続けて次の 1 行が出る (第9.28 で文言を変えた箇所):"
-    Debug.Print "           Wv2Browser.RequestPrewarmAsync: 予備タブは Claim 済み (採用待ち)。"
-    Debug.Print "           採用直後に自動で補充されるので、ここでは予約しない"
-    Debug.Print "       ※9.27 では ここが 「既に予備タブがあるので何もしない」 と出て紛らわしかった。"
-    Debug.Print "       ※2 本目は 405 になる (予備が 1 枚しかないため)。これは想定どおり。"
-    Debug.Print "       ※連打や外部サービスの不調で 503 が返ることがある (405 と紛らわしい)。"
-    Debug.Print "         切り分け方: アドレスバーに送信先 URL を直打ちして 405 が出るか見る。"
-    Debug.Print "         503 ならサーバ側のダウンなので、ボタン4 / ボタン5 の予備に切り替える。"
+    Debug.Print "  --- Check of (C) (optional. It is only a log wording fix, so if you have time) ---"
+    Debug.Print "  6) Return to the probe page and press button 1 *twice quickly* (to make the spare run out)"
+    Debug.Print "       -> Expected: the 2nd one shows *the spare tab cannot be used, so falling back to current behavior*, and"
+    Debug.Print "               then the next 1 line appears (the spot whose wording was changed in 9.28):"
+    Debug.Print "           Wv2Browser.RequestPrewarmAsync: the spare tab is already Claimed (awaiting adoption)."
+    Debug.Print "           It is replenished automatically right after adoption, so no reservation is made here"
+    Debug.Print "       NOTE: in 9.27 this spot said 'there is already a spare tab so do nothing', which was confusing."
+    Debug.Print "       NOTE: the 2nd one gives 405 (because there is only 1 spare). This is as expected."
+    Debug.Print "       NOTE: mashing or a fault in the external service may return 503 (easily confused with 405)."
+    Debug.Print "         How to isolate: type the destination URL directly in the address bar and see whether a 405 appears."
+    Debug.Print "         If it is 503, the server is down, so switch to the spares of button 4 / button 5."
     Debug.Print ""
-    Debug.Print "  --- (B) の確認 (ログを見るだけ) ---"
-    Debug.Print "  7) 起動ログに次の行があってもよい (むしろ入れ子が起きた証拠):"
-    Debug.Print "       Wv2Browser.TimerCall(prewarm): Pane 生成中だったので今回は見送り"
-    Debug.Print "     その場合でも AddTab 末尾の予約し直しで最終的に温まるので、手順 2 で"
-    Debug.Print "     使用可=True になっていれば正常。"
+    Debug.Print "  --- Check of (B) (just look at the log) ---"
+    Debug.Print "  7) The following line may appear in the startup log (in fact it is proof that nesting occurred):"
+    Debug.Print "       Wv2Browser.TimerCall(prewarm): a Pane was being created, so skipped this time"
+    Debug.Print "     Even then it is eventually warmed up by the re-reservation at the end of AddTab, so in step 2"
+    Debug.Print "     it is normal if usable=True."
     Debug.Print ""
-    Debug.Print "  --- 終了時 ---"
-    Debug.Print "  8) UserForm を閉じる"
-    Debug.Print "       → 期待: Wv2Browser.Shutdown: 予備タブ (プリウォーム) を解放 が出る"
+    Debug.Print "  --- At shutdown ---"
+    Debug.Print "  8) Close the UserForm"
+    Debug.Print "       -> Expected: 'Wv2Browser.Shutdown: released the spare tab (pre-warm)' appears"
     Debug.Print ""
-    Debug.Print "  --- 従来動作に戻したいとき ---"
-    Debug.Print "  ・Test_9_27_Mode_Legacy   (モード 0 = 9.27 以前の既定。POST は 405 に戻る)"
-    Debug.Print "  ・Test_9_27_Mode_Prewarm  (モード 2 = 第9.28 の既定へ復帰)"
+    Debug.Print "  --- To return to the former behavior ---"
+    Debug.Print "  - Test_9_27_Mode_Legacy   (mode 0 = the default before 9.27. POST goes back to 405)"
+    Debug.Print "  - Test_9_27_Mode_Prewarm  (mode 2 = back to the default of 9.28)"
 End Sub
 
 
 ' ============================================================
-' Test_9_29_Custom  (第9.29 カスタム検索エンジンの純ロジック検証)
+' Test_9_29_Custom  (Stage 9.29 pure-logic verification of custom search engines)
 '
-'   ★イミディエイトで  Test_9_29_Custom  と打つだけ★
+'   *Just type  Test_9_29_Custom  in the Immediate window*
 '
-'   Wv2SettingsBridge のカスタム系 (SetCustomEngine / GetCustomTemplate /
-'   PreviewUrlForTemplate) と、custom の永続化 (engine + template の 2 行) を
-'   照合する。WebView2 は起動しない (ブリッジ + Browser の Debug_* だけ)。
-'   実ファイルを触るため、先頭で engine と template を対で退避し、末尾で戻す。
+'   Checks the custom-related members of Wv2SettingsBridge (SetCustomEngine / GetCustomTemplate /
+'   PreviewUrlForTemplate) and the persistence of custom (2 lines: engine + template).
+'   WebView2 is not started (only the bridge + Browser's Debug_*).
+'   Because it touches the real file, it saves engine and template as a pair at the top and restores them at the end.
 ' ============================================================
 Public Sub Test_9_29_Custom()
     Dim total As Long, pass As Long
     total = 0: pass = 0
-    Debug.Print "==== Test_9_29_Custom (カスタム検索エンジン 純ロジック) ===="
+    Debug.Print "==== Test_9_29_Custom (custom search engine, pure logic) ===="
 
     Dim br As Wv2SettingsBridge
     Set br = New Wv2SettingsBridge
 
-    ' --- 現在の保存値を退避 (engine + template の対) ---
+    ' --- save the current stored values aside (the engine + template pair) ---
     Dim savedName As String, savedTpl As String
     savedName = br.LoadEngineName()
     savedTpl = br.LoadCustomTemplate()
-    Debug.Print "  (退避) engine = '" & savedName & "' / template = '" & savedTpl & "'"
+    Debug.Print "  (saved aside) engine = '" & savedName & "' / template = '" & savedTpl & "'"
 
     Dim b As Wv2Browser
     Set b = New Wv2Browser
@@ -2065,438 +2065,438 @@ Public Sub Test_9_29_Custom()
 
     Const TPL As String = "https://example.com/find?query="
 
-    ' --- 不正入力: 戻り値は "" で、Browser も保存も触らない ---
-    CheckEq "空文字 → 戻り値は空", br.SetCustomEngine(""), "", total, pass
-    CheckEq "スキーム無し → 戻り値は空", br.SetCustomEngine("example.com/?q="), "", total, pass
-    CheckEq "ftp:// → 戻り値は空", br.SetCustomEngine("ftp://example.com/?q="), "", total, pass
-    CheckEq "不正入力後も Browser は無変化", b.Debug_SearchEngine(), before, total, pass
+    ' --- invalid input: the return value is "", and neither Browser nor the saved file is touched ---
+    CheckEq "empty string -> return value is empty", br.SetCustomEngine(""), "", total, pass
+    CheckEq "no scheme -> return value is empty", br.SetCustomEngine("example.com/?q="), "", total, pass
+    CheckEq "ftp:// -> return value is empty", br.SetCustomEngine("ftp://example.com/?q="), "", total, pass
+    CheckEq "Browser unchanged after invalid input", b.Debug_SearchEngine(), before, total, pass
 
-    ' --- 正常な適用 ---
-    CheckEq "適用 → 'custom'", br.SetCustomEngine(TPL), "custom", total, pass
-    CheckEq "Browser に反映", b.Debug_SearchEngine(), TPL, total, pass
-    CheckEq "GetEngine は custom", br.GetEngine(), "custom", total, pass
+    ' --- normal application ---
+    CheckEq "apply -> 'custom'", br.SetCustomEngine(TPL), "custom", total, pass
+    CheckEq "reflected in Browser", b.Debug_SearchEngine(), TPL, total, pass
+    CheckEq "GetEngine is custom", br.GetEngine(), "custom", total, pass
     CheckEq "GetCustomTemplate", br.GetCustomTemplate(), TPL, total, pass
-    CheckEq "検索 URL 生成 (本番経路)", b.Debug_NormalizeUrl("hokkaido"), TPL & "hokkaido", total, pass
+    CheckEq "search URL generation (production route)", b.Debug_NormalizeUrl("hokkaido"), TPL & "hokkaido", total, pass
 
-    ' --- 永続化 (custom は engine + template の 2 行) ---
-    CheckEq "保存 → LoadEngineName", br.LoadEngineName(), "custom", total, pass
-    CheckEq "保存 → LoadCustomTemplate", br.LoadCustomTemplate(), TPL, total, pass
-    CheckEq "保存 → LoadEngineTemplate", br.LoadEngineTemplate(), TPL, total, pass
+    ' --- persistence (custom is the 2 lines engine + template) ---
+    CheckEq "save -> LoadEngineName", br.LoadEngineName(), "custom", total, pass
+    CheckEq "save -> LoadCustomTemplate", br.LoadCustomTemplate(), TPL, total, pass
+    CheckEq "save -> LoadEngineTemplate", br.LoadEngineTemplate(), TPL, total, pass
 
-    ' --- 適用前プレビュー (Browser の状態を変えない) ---
+    ' --- preview before applying (does not change Browser's state) ---
     CheckEq "PreviewUrlForTemplate", _
             br.PreviewUrlForTemplate("https://foo.test/s?k=", "hokkaido"), _
             "https://foo.test/s?k=hokkaido", total, pass
-    CheckEq "PreviewUrlForTemplate 不正 → 空", _
+    CheckEq "PreviewUrlForTemplate invalid -> empty", _
             br.PreviewUrlForTemplate("foo.test/s?k=", "hokkaido"), "", total, pass
-    CheckEq "プレビューは Browser を変えない", b.Debug_SearchEngine(), TPL, total, pass
+    CheckEq "preview does not change Browser", b.Debug_SearchEngine(), TPL, total, pass
 
-    ' --- プリセットへ戻すと template 行が消える (論点3 案a-1) ---
+    ' --- returning to a preset erases the template line (issue 3, plan a-1) ---
     CheckEq "SetEngine bing", br.SetEngine("bing"), "bing", total, pass
-    CheckEq "→ LoadEngineName", br.LoadEngineName(), "bing", total, pass
-    CheckEq "→ LoadCustomTemplate は空", br.LoadCustomTemplate(), "", total, pass
-    CheckEq "→ LoadEngineTemplate", br.LoadEngineTemplate(), _
+    CheckEq "-> LoadEngineName", br.LoadEngineName(), "bing", total, pass
+    CheckEq "-> LoadCustomTemplate is empty", br.LoadCustomTemplate(), "", total, pass
+    CheckEq "-> LoadEngineTemplate", br.LoadEngineTemplate(), _
             "https://www.bing.com/search?q=", total, pass
-    CheckEq "→ GetCustomTemplate も空", br.GetCustomTemplate(), "", total, pass
+    CheckEq "-> GetCustomTemplate is also empty", br.GetCustomTemplate(), "", total, pass
 
-    ' --- 入力がプリセットと同一 URL なら、そのプリセット名になる ---
-    CheckEq "プリセット同一 URL → 'google'", _
+    ' --- if the input is the same URL as a preset, it becomes that preset's name ---
+    CheckEq "same URL as preset -> 'google'", _
             br.SetCustomEngine("https://www.google.com/search?q="), "google", total, pass
-    CheckEq "→ template 行は書かれない", br.LoadCustomTemplate(), "", total, pass
+    CheckEq "-> template line is not written", br.LoadCustomTemplate(), "", total, pass
 
-    ' --- 壊れた template 行は復元時に "" へ落ちる (既定 Google で起動する) ---
+    ' --- a broken template line falls back to "" on restore (starts with the default Google) ---
     br.Debug_SaveSettings "custom", "example.com/?q="
-    CheckEq "壊れた template → LoadEngineTemplate は空", br.LoadEngineTemplate(), "", total, pass
+    CheckEq "broken template -> LoadEngineTemplate is empty", br.LoadEngineTemplate(), "", total, pass
 
-    ' --- 退避値を書き戻す (ユーザー設定の復元) ---
+    ' --- write back the saved-aside values (restoring the user settings) ---
     If Len(savedName) > 0 Then
         br.Debug_SaveSettings savedName, savedTpl
-        Debug.Print "  (復元) engine = '" & savedName & "' / template = '" & savedTpl & "' に戻した。"
+        Debug.Print "  (restored) put back to engine = '" & savedName & "' / template = '" & savedTpl & "'."
     Else
         br.Debug_SaveSettings "google", ""
-        Debug.Print "  (復元) 元々保存が無かったので engine=google を書いた (既定と同じなので実害なし)。"
+        Debug.Print "  (restored) Nothing had been saved originally, so wrote engine=google (same as the default, so no harm)."
     End If
 
-    Debug.Print "==== 結果: " & pass & " / " & total & _
+    Debug.Print "==== Result: " & pass & " / " & total & _
                 IIf(pass = total, "  [ALL OK]", "  [!! FAILED !!]")
 End Sub
 
 
 ' ============================================================
-' Test_9_29_Help  (第9.29 実機手順)
+' Test_9_29_Help  (Stage 9.29 real-machine procedure)
 '
-'   ★イミディエイトで  Test_9_29_Help  と打つと手順が出る★
+'   *Type  Test_9_29_Help  in the Immediate window to show the procedure*
 ' ============================================================
 Public Sub Test_9_29_Help()
-    Debug.Print "==== 第9.29 実機手順 (カスタム検索 URL + 予備予約の掃除) ===="
+    Debug.Print "==== Stage 9.29 real-machine procedure (custom search URL + cleanup of spare reservations) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    (A) 設定タブのカスタム入力欄から任意の検索 URL を適用できるか"
-    Debug.Print "    (B) それが Excel 再起動後も復元されるか (engine=custom + template)"
-    Debug.Print "    (C) 予備切れフォールバック時の無駄な予約ログが消えたか"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    (A) Can an arbitrary search URL be applied from the settings tab's custom input box?"
+    Debug.Print "    (B) Is it restored after restarting Excel? (engine=custom + template)"
+    Debug.Print "    (C) Has the wasteful reservation log at the spare-runs-out fallback gone?"
     Debug.Print ""
-    Debug.Print "  --- 事前 (任意) ---"
-    Debug.Print "  0) Test_9_29_Custom            ' 純ロジックが [ALL OK] であること"
+    Debug.Print "  --- Preliminaries (optional) ---"
+    Debug.Print "  0) Test_9_29_Custom            ' the pure logic should be [ALL OK]"
     Debug.Print ""
-    Debug.Print "  --- (A) カスタムの適用 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "       ※ ★仕様事実 20★ ログが止まるまでブレーク/ステップ実行はしないこと。"
-    Debug.Print "  2) [歯車] を押して設定タブを開く"
-    Debug.Print "       → 期待: カードの下に ★カスタム (プリセット以外)★ の枠と入力欄が出る"
-    Debug.Print "  3) 入力欄に次を貼って、まだ適用は押さない:"
+    Debug.Print "  --- (A) Applying a custom engine ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "       NOTE: *spec fact 20* do not break/step through until the log stops."
+    Debug.Print "  2) Press [gear] to open the settings tab"
+    Debug.Print "       -> Expected: below the cards, a frame and input box for *custom (other than presets)* appear"
+    Debug.Print "  3) Paste the following into the input box, but do not press Apply yet:"
     Debug.Print "         https://ja.wikipedia.org/w/index.php?search="
-    Debug.Print "       → 期待: 入力中に下の行へ  日本 天気 → https://ja.wikipedia.org/... "
-    Debug.Print "               と★適用前のプレビュー★が出る (VBA がエンコードしている)"
-    Debug.Print "  4) わざと  example.com/?q=  のようにスキーム無しで打ってみる"
-    Debug.Print "       → 期待: 赤字で『http:// または https:// で始まる URL を…』が出る"
-    Debug.Print "               ★この状態で [適用] を押してもログは『不正なテンプレートなので無視』"
-    Debug.Print "                 だけで、検索エンジンは変わらない★"
-    Debug.Print "  5) 手順 3 の URL に戻して [適用] を押す (Enter でも同じ)"
-    Debug.Print "       → 期待するログ:"
-    Debug.Print "           Wv2Browser.SearchEngine: 検索テンプレートを設定 = https://ja.wikipedia.org/..."
-    Debug.Print "           Wv2SettingsBridge.SaveSettingsFile: 保存 'custom' / template=... -> ...\settings.txt"
-    Debug.Print "           Wv2SettingsBridge.SetCustomEngine: 適用 '...' -> 'custom'"
-    Debug.Print "       → 期待: カスタム枠が青く光り『使用中』バッジが出る。カードは全て非選択。"
-    Debug.Print "  6) 別の通常タブでアドレスバーに   日本 天気   と打つ"
-    Debug.Print "       → 期待: Wikipedia の検索結果が出る"
+    Debug.Print ("       -> Expected: while typing, the line below shows  " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & " -> https://ja.wikipedia.org/... ")
+    Debug.Print "               i.e. *a preview before applying* (VBA is doing the encoding)"
+    Debug.Print "  4) Deliberately type something with no scheme such as  example.com/?q= "
+    Debug.Print "       -> Expected: a red message 'The URL must start with http:// or https:// ...' appears"
+    Debug.Print "               *Even if you press [Apply] in this state, the log only says 'invalid template, ignored'"
+    Debug.Print "                 and the search engine does not change*"
+    Debug.Print "  5) Go back to the URL from step 3 and press [Apply] (Enter does the same)"
+    Debug.Print "       -> Expected log:"
+    Debug.Print "           Wv2Browser.SearchEngine: search template set = https://ja.wikipedia.org/..."
+    Debug.Print "           Wv2SettingsBridge.SaveSettingsFile: saved 'custom' / template=... -> ...\settings.txt"
+    Debug.Print "           Wv2SettingsBridge.SetCustomEngine: applied '...' -> 'custom'"
+    Debug.Print "       -> Expected: the custom frame glows blue and an 'in use' badge appears. All cards are unselected."
+    Debug.Print ("  6) In another normal tab type   " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "   in the address bar")
+    Debug.Print "       -> Expected: Wikipedia search results appear"
     Debug.Print ""
-    Debug.Print "  --- (B) 永続化 ---"
-    Debug.Print "  7) Excel を 完全に終了 する (ブックを閉じるだけでなく Excel ごと)"
-    Debug.Print "  8) 再起動して StartWebView2_Full"
-    Debug.Print "       → 期待するログ (復元の証):"
-    Debug.Print "           Wv2Browser.Class_Initialize: 保存済みエンジンを復元 = https://ja.wikipedia.org/..."
-    Debug.Print "  9) 設定タブを開かずに、いきなり通常タブで   日本 天気   と打つ"
-    Debug.Print "       → 期待: Wikipedia の検索結果 (カスタムが復元されている)"
-    Debug.Print " 10) 設定タブを開く"
-    Debug.Print "       → 期待: 入力欄に前回の URL が入っていて『使用中』バッジが出ている"
+    Debug.Print "  --- (B) Persistence ---"
+    Debug.Print "  7) Fully quit Excel (not just close the workbook, but Excel itself)"
+    Debug.Print "  8) Restart and run StartWebView2_Full"
+    Debug.Print "       -> Expected log (proof of restoring):"
+    Debug.Print "           Wv2Browser.Class_Initialize: restored saved engine = https://ja.wikipedia.org/..."
+    Debug.Print ("  9) Without opening the settings tab, immediately type   " & ChrW(&H65E5&) & ChrW(&H672C&) & " " & ChrW(&H5929&) & ChrW(&H6C17&) & "   in a normal tab")
+    Debug.Print "       -> Expected: Wikipedia search results (the custom engine was restored)"
+    Debug.Print " 10) Open the settings tab"
+    Debug.Print "       -> Expected: the previous URL is in the input box and the 'in use' badge is shown"
     Debug.Print ""
-    Debug.Print "  --- (C) 予備予約の掃除 (ログを見るだけ) ---"
-    Debug.Print " 11) Test_9_26_PostProbe でプローブページを開き、ボタン1 を★素早く 2 回★押す"
-    Debug.Print "       → 期待: 2 本目で ★予備タブが使えないので現行動作にフォールバック★ の後、"
-    Debug.Print "               1.5 秒待っても次の行が★出ない★こと (第9.29 で消した無駄ログ):"
-    Debug.Print "                 Wv2Browser.Prewarm: 既に予備タブがある (生成をスキップ)"
-    Debug.Print "       → 代わりに次が出ることがある (これは正常。入れ子を検知した印):"
-    Debug.Print "           Wv2Browser.EnsurePrewarmScheduled: 予備タブの生成中 (入れ子) なので予約しない"
-    Debug.Print " 12) Test_9_27_Status               ' 予備が 1 枚に保たれているか"
-    Debug.Print "       → 期待: 予備あり / 使用可=True"
+    Debug.Print "  --- (C) Cleanup of spare reservations (just look at the log) ---"
+    Debug.Print " 11) Open the probe page with Test_9_26_PostProbe and press button 1 *twice quickly*"
+    Debug.Print "       -> Expected: after the 2nd one shows *the spare tab cannot be used, so falling back to current behavior*,"
+    Debug.Print "               the following line does *not appear* even after waiting 1.5 seconds (the wasteful log removed in 9.29):"
+    Debug.Print "                 Wv2Browser.Prewarm: a spare tab already exists (skipping creation)"
+    Debug.Print "       -> Instead the following may appear (this is normal. A sign that nesting was detected):"
+    Debug.Print "           Wv2Browser.EnsurePrewarmScheduled: the spare tab is being created (nested), so no reservation is made"
+    Debug.Print " 12) Test_9_27_Status               ' is the spare kept at 1?"
+    Debug.Print "       -> Expected: spare present / usable=True"
     Debug.Print ""
-    Debug.Print "  --- 元に戻したいとき ---"
-    Debug.Print "  ・設定タブで Google のカードをクリックすれば戻る"
-    Debug.Print "    (このとき settings.txt の template 行は消える = 仕様)"
-    Debug.Print "  ・%APPDATA%\Wv2Browser\settings.txt を手で消して再起動しても既定に戻る"
+    Debug.Print "  --- To return to the former state ---"
+    Debug.Print "  - Click the Google card on the settings tab to go back"
+    Debug.Print "    (at that time the template line of settings.txt is erased = by design)"
+    Debug.Print "  - Deleting %APPDATA%\Wv2Browser\settings.txt by hand and restarting also returns to the default."
 End Sub
 ' ============================================================
-' Test_9_31_Help  (第9.31 実機手順 / 目視)
+' Test_9_31_Help  (Stage 9.31 real-machine procedure / visual check)
 '
-'   ★イミディエイトで  Test_9_31_Help  と打つと手順が出る★
+'   *Type  Test_9_31_Help  in the Immediate window to show the procedure*
 '
-'   第9.31 は CSS のみの変更なので純ロジックのテストは無い。
-'   併せて第9.30 の宿題 1 (v0_5_2 の通し動作確認) をここで消化する。
+'   9.31 changes only CSS, so there is no pure-logic test.
+'   Along with it, open item 1 from 9.30 (end-to-end check of v0_5_2) is worked off here.
 ' ============================================================
 Public Sub Test_9_31_Help()
-    Debug.Print "==== 第9.31 実機手順 (タブのホバー + 閉じるボタンの表示制御) ===="
+    Debug.Print "==== Stage 9.31 real-machine procedure (tab hover + show/hide control of the close button) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    (A-1) タブにマウスを乗せると背景が明るくなるか (非アクティブのみ)"
-    Debug.Print "    (A-2) 閉じるボタンが『アクティブ or ホバー時だけ』見えるか"
-    Debug.Print "    (C)   ★第9.30 の宿題★ v0_5_2 が通しで正常に動くか"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    (A-1) Does the background get lighter when the mouse is over a tab? (inactive only)"
+    Debug.Print "    (A-2) Is the close button visible 'only when active or hovered'?"
+    Debug.Print "    (C)   *Open item from 9.30* Does v0_5_2 work normally end to end?"
     Debug.Print ""
-    Debug.Print "  ※ この回は★CSS だけ★の変更です。ログの文言は第9.29 から一切変わりません。"
-    Debug.Print "     判定はすべて★画面の目視★で行ってください。"
+    Debug.Print "  NOTE: this round changes *CSS only*. The log wording is completely unchanged from 9.29."
+    Debug.Print "     Make all verdicts *by looking at the screen*."
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "       ※ ★仕様事実 20★ ログが止まるまでブレーク/ステップ実行はしないこと。"
-    Debug.Print "  2) + を 2～3 回押してタブを 3～4 枚にする"
-    Debug.Print "       (アクティブ 1 枚 + 非アクティブ複数、の状態を作るのが目的)"
+    Debug.Print "  --- Preparation ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "       NOTE: *spec fact 20* do not break/step through until the log stops."
+    Debug.Print "  2) Press + 2-3 times to make 3-4 tabs"
+    Debug.Print "       (the aim is to create a state with 1 active tab + several inactive ones)"
     Debug.Print ""
-    Debug.Print "  --- (A-1) ホバー背景 ---"
-    Debug.Print "  3) ★非アクティブ★のタブにマウスを乗せる → 離す"
-    Debug.Print "       → 期待: 乗せると背景がわずかに明るくなり (#e7e7e7 → #efefef)、"
-    Debug.Print "               離すと戻る。切り替わりは★じんわり (0.12 秒)★"
-    Debug.Print "       → 期待: タブの★幅も文字の位置も動かない★ (色だけが変わる)"
-    Debug.Print "  4) ★アクティブ★のタブにマウスを乗せる"
-    Debug.Print "       → 期待: ★何も変わらない★ (元から白 = 最も明るいので変えない仕様)"
-    Debug.Print "  5) タブを切り替える (別のタブをクリック)"
-    Debug.Print "       → 期待: 白へ変わるときも同じ 0.12 秒でなめらかに変わる"
-    Debug.Print "               ※ここが不自然なら論点 5 を『遷移なし』に戻す判断材料になる"
+    Debug.Print "  --- (A-1) Hover background ---"
+    Debug.Print "  3) Put the mouse over an *inactive* tab -> then move it away"
+    Debug.Print "       -> Expected: when over it, the background becomes slightly lighter (#e7e7e7 -> #efefef),"
+    Debug.Print "               and returns when moved away. The change is *gradual (0.12 s)*"
+    Debug.Print "       -> Expected: neither the tab's *width nor the text position moves* (only the color changes)"
+    Debug.Print "  4) Put the mouse over the *active* tab"
+    Debug.Print "       -> Expected: *nothing changes* (it is white already = the lightest, so by design it is not changed)"
+    Debug.Print "  5) Switch tabs (click another tab)"
+    Debug.Print "       -> Expected: the change to white is also smooth at the same 0.12 s"
+    Debug.Print "               NOTE: if this looks unnatural, it is material for deciding to return issue 5 to 'no transition'"
     Debug.Print ""
-    Debug.Print "  --- (A-2) 閉じるボタンの表示制御 ---"
-    Debug.Print "  6) マウスをタブバーの外 (ページ本体など) へ完全に逃がして、タブ列を眺める"
-    Debug.Print "       → 期待: ★アクティブなタブにだけ × が見えている★"
-    Debug.Print "       → 期待: 非アクティブなタブには × が★見えない★"
-    Debug.Print "  7) 非アクティブのタブにマウスを乗せる"
-    Debug.Print "       → 期待: そのタブにだけ × が現れる (即座に。フェードはしない仕様)"
-    Debug.Print "       → 期待: ★タイトルの文字が左右に動かない★"
-    Debug.Print "               (visibility:hidden で場所を確保しているため。ここが動くなら"
-    Debug.Print "                display:none になってしまっているので要報告)"
-    Debug.Print "  8) × の上にマウスを乗せる"
-    Debug.Print "       → 期待: × の背景が灰色の角丸になる (第9.29 までと同じ)"
-    Debug.Print "  9) × が見えていない非アクティブタブの『× があるはずの位置』をクリックする"
-    Debug.Print "       → 期待: ★タブが閉じない★ (= 見えないボタンは押せない)。"
-    Debug.Print "               そのタブへ★切り替わる★のが正しい挙動。"
-    Debug.Print "               ※これが閉じてしまうなら opacity:0 相当になっているので要報告"
-    Debug.Print " 10) タブを 8～10 枚まで増やして、タブが細くなった状態で 6～7 を再確認"
-    Debug.Print "       → 期待: min-width:80px で頭打ちになり、× の場所は常に確保されている"
-    Debug.Print "       → ここでタイトルが読めなさすぎる等の不満が出たら、次段の材料にする"
+    Debug.Print "  --- (A-2) Show/hide control of the close button ---"
+    Debug.Print "  6) Move the mouse completely out of the tab bar (onto the page body, etc.) and look at the tab row"
+    Debug.Print "       -> Expected: *the x is visible only on the active tab*"
+    Debug.Print "       -> Expected: the x is *not visible* on inactive tabs"
+    Debug.Print "  7) Put the mouse over an inactive tab"
+    Debug.Print "       -> Expected: the x appears only on that tab (immediately. By design there is no fade)"
+    Debug.Print "       -> Expected: *the title text does not move left or right*"
+    Debug.Print "               (because visibility:hidden reserves the space. If this moves,"
+    Debug.Print "                it has become display:none, so report it)"
+    Debug.Print "  8) Put the mouse over the x"
+    Debug.Print "       -> Expected: the x's background becomes a gray rounded shape (same as up to 9.29)"
+    Debug.Print "  9) Click the 'place where the x should be' on an inactive tab where the x is not visible"
+    Debug.Print "       -> Expected: *the tab does not close* (= an invisible button cannot be pressed)."
+    Debug.Print "               The correct behavior is that it *switches* to that tab."
+    Debug.Print "               NOTE: if it closes, it is equivalent to opacity:0, so report it"
+    Debug.Print " 10) Increase the tabs to 8-10 and recheck 6-7 with the tabs narrowed"
+    Debug.Print "       -> Expected: it bottoms out at min-width:80px, and the x's space is always reserved"
+    Debug.Print "       -> If complaints such as the titles being too unreadable arise here, use them as material for the next stage"
     Debug.Print ""
-    Debug.Print "  --- (B) 回帰: ドラッグ並べ替えが壊れていないこと ---"
-    Debug.Print " 11) タブを掴んで左右に動かし、別のタブの上で放す"
-    Debug.Print "       → 期待: 掴んだタブが薄くなり (opacity 0.45)、"
-    Debug.Print "               放す先のタブの左右どちらかに★青い縦線★が出る"
-    Debug.Print "       → 期待するログ: [host] reorder N->M (WebView2 の DevTools 側)"
-    Debug.Print "       → 期待: 放すと並びが変わり、アクティブが追従する"
-    Debug.Print "       ※ドラッグ中にホバー色が出ることがあるが★仕様★ (論点 7 で先送り)"
+    Debug.Print "  --- (B) Regression: drag reordering must not be broken ---"
+    Debug.Print " 11) Grab a tab, move it left and right, and release it over another tab"
+    Debug.Print "       -> Expected: the grabbed tab becomes faint (opacity 0.45),"
+    Debug.Print "               and a *blue vertical line* appears on the left or right of the destination tab"
+    Debug.Print "       -> Expected log: [host] reorder N->M (on the WebView2 DevTools side)"
+    Debug.Print "       -> Expected: on release the order changes and the active tab follows"
+    Debug.Print "       NOTE: the hover color may appear during a drag, but this is *by design* (deferred in issue 7)"
     Debug.Print ""
-    Debug.Print "  --- (C) ★第9.30 の宿題 1: v0_5_2 の通し動作確認★ ---"
-    Debug.Print "  ※ここは第9.31 の変更とは無関係。クリーンビルドしたブックで"
-    Debug.Print "    未確認だった 3 つを、この機会にまとめて踏むための手順です。"
+    Debug.Print "  --- (C) *Open item 1 from 9.30: end-to-end check of v0_5_2* ---"
+    Debug.Print "  NOTE: this part is unrelated to the 9.31 change. It is a procedure for stepping through, in one go,"
+    Debug.Print "    the 3 items left unchecked in the clean-built workbook, taking this opportunity."
     Debug.Print ""
-    Debug.Print " 12) Test_9_27_Status               ' 予備タブが温まっているか"
-    Debug.Print "       → 期待: 予備あり / 使用可=True"
-    Debug.Print " 13) Test_9_26_PostProbe            ' POST プローブページを開く"
-    Debug.Print " 14) ボタン1 (httpbingo POST + _blank) を押す"
-    Debug.Print "       → 期待: ★自前の新しいタブ★が開き、画面に method: POST と"
-    Debug.Print "               form の中身が出る (405 でも空白でもない)"
-    Debug.Print "       → ★注意★ タイトルは成功でも失敗でも httpbingo.org/post なので、"
-    Debug.Print "                  判定は必ず★画面表示★で行うこと (第9.28b 由来)"
-    Debug.Print "       → 503 が出たら Test_9_28_Help の切り分け手順へ (サーバ側の都合)"
-    Debug.Print " 15) Test_9_27_Status               ' 予備が補充されたか"
-    Debug.Print "       → 期待: 予備あり / 使用可=True (使った直後に補充されている)"
-    Debug.Print " 16) 適当なページのリンクを Ctrl+クリック か、target=_blank のリンクを押す"
-    Debug.Print "       → 期待: 自前のタブで開く (ポップアップウィンドウにならない)"
+    Debug.Print " 12) Test_9_27_Status               ' is the spare tab warmed up?"
+    Debug.Print "       -> Expected: spare present / usable=True"
+    Debug.Print " 13) Test_9_26_PostProbe            ' open the POST probe page"
+    Debug.Print " 14) Press button 1 (httpbingo POST + _blank)"
+    Debug.Print "       -> Expected: *our own new tab* opens, and method: POST and"
+    Debug.Print "               the contents of the form appear on screen (neither 405 nor blank)"
+    Debug.Print "       -> *Caution* The title is httpbingo.org/post whether it succeeds or fails, so"
+    Debug.Print "                  always judge by *what is shown on screen* (from 9.28b)"
+    Debug.Print "       -> If a 503 appears, go to the isolation procedure in Test_9_28_Help (a server-side problem)"
+    Debug.Print " 15) Test_9_27_Status               ' was the spare replenished?"
+    Debug.Print "       -> Expected: spare present / usable=True (replenished right after being used)"
+    Debug.Print " 16) Ctrl+click a link on any page, or press a target=_blank link"
+    Debug.Print "       -> Expected: it opens in our own tab (not as a popup window)"
     Debug.Print ""
-    Debug.Print "  --- 判定 ---"
-    Debug.Print "  ・3～11 がすべて期待どおり → 第9.31 は合格"
-    Debug.Print "  ・12～16 がすべて期待どおり → ★v0_5_2 の通し確認 (第9.30 の宿題 1) を消化★"
-    Debug.Print "  ・気になった点 (色が濃い/薄い、遷移が遅い/速い、× が小さい等) は"
-    Debug.Print "    論点 2・5・6 の再調整で対応できるので、遠慮なく挙げてください。"
+    Debug.Print "  --- Verdict ---"
+    Debug.Print "  - 3-11 all as expected -> 9.31 passes"
+    Debug.Print "  - 12-16 all as expected -> *the end-to-end check of v0_5_2 (open item 1 from 9.30) is worked off*"
+    Debug.Print "  - Anything that bothers you (color too dark/light, transition too slow/fast, x too small, etc.)"
+    Debug.Print "    can be handled by readjusting issues 2, 5 and 6, so please do raise it."
 End Sub
 ' ============================================================
-' Test_9_32_Help  (第9.32 実機手順 / 目視・体感)
+' Test_9_32_Help  (Stage 9.32 real-machine procedure / visual and feel check)
 '
-'   ★イミディエイトで  Test_9_32_Help  と打つと手順が出る★
+'   *Type  Test_9_32_Help  in the Immediate window to show the procedure*
 '
-'   第9.32 は JS と CSS のみの変更。純ロジックのテストは無い。
+'   9.32 changes only JS and CSS. There is no pure-logic test.
 ' ============================================================
 Public Sub Test_9_32_Help()
-    Debug.Print "==== 第9.32 実機手順 (タブ切替の楽観的更新 + スクロールバーの整理) ===="
+    Debug.Print "==== Stage 9.32 real-machine procedure (optimistic update of tab switching + cleanup of the scrollbar) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    (1) クリックした★瞬間★にタブの色が変わるか (本体の切替は後から追いつく)"
-    Debug.Print "    (2) タブを増やしても横スクロールバーが出ず、タブが潰れないか"
-    Debug.Print "    (3) タブ列をマウスホイールで横スクロールできるか"
-    Debug.Print "    (4) 回帰: D&D 並べ替え / 閉じる / 設定タブ が壊れていないか"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    (1) Does the tab color change the *instant* it is clicked? (the body switch catches up afterwards)"
+    Debug.Print "    (2) Even with more tabs, no horizontal scrollbar appears and the tabs do not get squashed?"
+    Debug.Print "    (3) Can the tab row be scrolled horizontally with the mouse wheel?"
+    Debug.Print "    (4) Regression: are D&D reordering / closing / the settings tab still intact?"
     Debug.Print ""
-    Debug.Print "  ※ VBA のロジックは 1 行も変えていないので★ログの文言も順序も第9.31 と同じ★です。"
-    Debug.Print "     変わるのは『ログが出るより先にタブバーの色が変わる』という点だけ。"
+    Debug.Print "  NOTE: not one line of the VBA logic was changed, so *both the wording and the order of the log are the same as 9.31*."
+    Debug.Print "     The only change is that 'the tab bar color changes before the log appears'."
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
-    Debug.Print "  1) UserForm1.StartWebView2_Full   ' 通常どおり起動"
-    Debug.Print "       ※ ★仕様事実 20★ ログが止まるまでブレーク/ステップ実行はしないこと。"
-    Debug.Print "  2) + を押してタブを 4～5 枚にし、それぞれ別のページを開いておく"
-    Debug.Print "       (切替に時間がかかるページの方が違いが分かりやすい)"
+    Debug.Print "  --- Preparation ---"
+    Debug.Print "  1) UserForm1.StartWebView2_Full   ' start as usual"
+    Debug.Print "       NOTE: *spec fact 20* do not break/step through until the log stops."
+    Debug.Print "  2) Press + to make 4-5 tabs, and open a different page in each"
+    Debug.Print "       (pages that take time to switch make the difference easier to see)"
     Debug.Print ""
-    Debug.Print "  --- (1) ★本命: タブ切替の体感★ ---"
-    Debug.Print "  3) 非アクティブのタブをクリックする"
-    Debug.Print "       → 期待: ★クリックとほぼ同時にタブバーの色が切り替わる★"
-    Debug.Print "               (押した瞬間に白くなり、押していたタブが灰色に戻る)"
-    Debug.Print "       → 期待: その★後から★ブラウザ本体の表示が切り替わる"
-    Debug.Print "       → 期待: イミディエイトのログもタブバーの色変化より★後★に出る"
-    Debug.Print "               Wv2TabBar.HostActivate: index=N (host経由)"
-    Debug.Print "               Wv2TabBar[EVT] ActiveChanged(index=N) → PushSyncToJs"
-    Debug.Print "               Wv2TabBar.PushSyncToJs: 送信 OK (...)"
-    Debug.Print "  4) タブを 5～6 回続けて切り替えて、体感を第9.31 と比べる"
-    Debug.Print "       → 判定: 『クリックと画面の変化がずれている』感覚が減ったか"
-    Debug.Print "       ★注意★ ブラウザ本体の切替そのものは★速くなっていません★。"
-    Debug.Print "               速くなったのは『タブバーが反応するまでの時間』だけです。"
-    Debug.Print "               本体側がまだ遅すぎると感じるなら、ActivateTab の中身を"
-    Debug.Print "               見る別の段階が必要になるので、そう報告してください。"
-    Debug.Print "  5) 閉じるボタン (×) を押したときの体感も見ておく"
-    Debug.Print "       → 期待: ★こちらは第9.31 と同じ (遅いまま)★ が正しい。"
-    Debug.Print "               論点 3 で close には楽観的更新を入れないと決めたため。"
-    Debug.Print "               気になるようなら次段で同じ手を close にも入れられます。"
+    Debug.Print "  --- (1) *Main point: the feel of tab switching* ---"
+    Debug.Print "  3) Click an inactive tab"
+    Debug.Print "       -> Expected: *the tab bar color switches almost at the same time as the click*"
+    Debug.Print "               (it turns white the instant it is pressed, and the tab that was held returns to gray)"
+    Debug.Print "       -> Expected: the browser body display switches *after* that"
+    Debug.Print "       -> Expected: the Immediate window log also appears *after* the tab bar color change"
+    Debug.Print "               Wv2TabBar.HostActivate: index=N (via host)"
+    Debug.Print "               Wv2TabBar[EVT] ActiveChanged(index=N) -> PushSyncToJs"
+    Debug.Print "               Wv2TabBar.PushSyncToJs: sent OK (...)"
+    Debug.Print "  4) Switch tabs 5-6 times in a row and compare the feel with 9.31"
+    Debug.Print "       -> Verdict: has the feeling that 'the click and the screen change are out of step' decreased?"
+    Debug.Print "       *Caution* The switching of the browser body itself has *not become faster*."
+    Debug.Print "               Only 'the time until the tab bar reacts' has become faster."
+    Debug.Print "               If you feel the body side is still too slow, a separate stage looking at the contents of"
+    Debug.Print "               ActivateTab will be needed, so please report it so."
+    Debug.Print "  5) Also look at the feel when pressing the close button (x)"
+    Debug.Print "       -> Expected: *this is the same as 9.31 (still slow)* which is correct."
+    Debug.Print "               Because issue 3 decided not to put the optimistic update into close."
+    Debug.Print "               If it bothers you, the same technique can be put into close in the next stage."
     Debug.Print ""
-    Debug.Print "  --- (2)(3) スクロールバーとホイール ---"
-    Debug.Print "  6) + を連打してタブを 10～12 枚まで増やす"
-    Debug.Print "       → 期待: ★タブ列の下に横スクロールバーが出ない★"
-    Debug.Print "       → 期待: タブの高さが第9.31 のときのように★潰れない★"
-    Debug.Print "               (第9.31 ではバーが高さを内側から食ってタブが上に寄っていた)"
-    Debug.Print "  7) タブ列の上にマウスを置いて、ホイールを上下に回す"
-    Debug.Print "       → 期待: タブ列が★左右にスクロールする★"
-    Debug.Print "               (Chromium が縦ホイールを横スクロールへ変換する)"
-    Debug.Print "       → 期待: ブラウザ本体のページはスクロールしない"
-    Debug.Print "  8) 右端まで送って、いちばん右のタブをクリックする"
-    Debug.Print "       → 期待: 手順 3 と同じく即座に色が変わり、切替も正しく効く"
-    Debug.Print "       ※ ホイールが効かない場合は報告してください (論点 4 の代替案に戻します)"
+    Debug.Print "  --- (2)(3) Scrollbar and wheel ---"
+    Debug.Print "  6) Mash + to increase the tabs to 10-12"
+    Debug.Print "       -> Expected: *no horizontal scrollbar appears under the tab row*"
+    Debug.Print "       -> Expected: the tab height is *not squashed* as it was in 9.31"
+    Debug.Print "               (in 9.31 the bar ate into the height from the inside and the tabs were pushed up)"
+    Debug.Print "  7) Put the mouse over the tab row and roll the wheel up and down"
+    Debug.Print "       -> Expected: the tab row *scrolls left and right*"
+    Debug.Print "               (Chromium converts the vertical wheel into horizontal scrolling)"
+    Debug.Print "       -> Expected: the page of the browser body does not scroll"
+    Debug.Print "  8) Scroll to the right end and click the rightmost tab"
+    Debug.Print "       -> Expected: as in step 3 the color changes immediately and the switch works correctly"
+    Debug.Print "       NOTE: if the wheel does not work, please report it (we will return to the alternative of issue 4)"
     Debug.Print ""
-    Debug.Print "  --- (4) 回帰 ---"
-    Debug.Print "  9) タブを掴んで並べ替える"
-    Debug.Print "       → 期待: 薄くなる + 青い縦線 + 放すと並びが変わる (第9.31 と同じ)"
-    Debug.Print "       → 期待: ★非アクティブのタブを掴んでもアクティブにならない★"
-    Debug.Print "               (論点 6 で現状維持と決定した仕様です)"
-    Debug.Print " 10) × でタブを何枚か閉じる"
-    Debug.Print "       → 期待: 正しく閉じ、アクティブが補正される"
-    Debug.Print " 11) [歯車] で設定タブを開き、検索エンジンのカードをクリックする"
-    Debug.Print "       → 期待: 第9.29 までと同じ (選択が反映され、保存ログが出る)"
-    Debug.Print " 12) 設定タブを閉じて、通常タブのアドレスバーで検索してみる"
-    Debug.Print "       → 期待: 選んだエンジンで検索できる"
+    Debug.Print "  --- (4) Regression ---"
+    Debug.Print "  9) Grab a tab and reorder it"
+    Debug.Print "       -> Expected: faint + blue vertical line + on release the order changes (same as 9.31)"
+    Debug.Print "       -> Expected: *grabbing an inactive tab does not make it active*"
+    Debug.Print "               (a specification decided in issue 6 to keep as is)"
+    Debug.Print " 10) Close several tabs with x"
+    Debug.Print "       -> Expected: they close correctly and the active tab is corrected"
+    Debug.Print " 11) Open the settings tab with [gear] and click a search engine card"
+    Debug.Print "       -> Expected: the same as up to 9.29 (the selection is reflected and the save log appears)"
+    Debug.Print " 12) Close the settings tab and try searching in a normal tab's address bar"
+    Debug.Print "       -> Expected: searching works with the chosen engine"
     Debug.Print ""
-    Debug.Print "  --- 判定 ---"
-    Debug.Print "  ・3～4 で体感が改善 → 第9.32 の本命は成功"
-    Debug.Print "  ・6～8 が期待どおり → スクロールバーの整理も成功"
-    Debug.Print "  ・9～12 が第9.31 と同じ → 回帰なし"
-    Debug.Print "  ・色の変化が速すぎて『押す前に変わった』ように感じる等の違和感があれば"
-    Debug.Print "    報告してください。二重 rAF を 1 回に減らす等で調整できます。"
+    Debug.Print "  --- Verdict ---"
+    Debug.Print "  - 3-4 improve the feel -> the main point of 9.32 succeeded"
+    Debug.Print "  - 6-8 as expected -> the scrollbar cleanup also succeeded"
+    Debug.Print "  - 9-12 same as 9.31 -> no regression"
+    Debug.Print "  - If anything feels off, e.g. the color change is so fast that it seems to change 'before pressing',"
+    Debug.Print "    please report it. It can be adjusted by reducing the double rAF to a single one, etc."
 End Sub
 ' ============================================================
-' Test_9_32b_Help  (第9.32b 実機手順 / 目視)
+' Test_9_32b_Help  (Stage 9.32b real-machine procedure / visual check)
 '
-'   ★イミディエイトで  Test_9_32b_Help  と打つと手順が出る★
+'   *Type  Test_9_32b_Help  in the Immediate window to show the procedure*
 ' ============================================================
 Public Sub Test_9_32b_Help()
-    Debug.Print "==== 第9.32b 実機手順 (ホイール横スクロール + スクロール位置の維持) ===="
+    Debug.Print "==== Stage 9.32b real-machine procedure (wheel horizontal scrolling + keeping the scroll position) ===="
     Debug.Print ""
-    Debug.Print "  【この回で知りたいこと】"
-    Debug.Print "    (1) タブ列の上でホイールを回すと横スクロールするか"
-    Debug.Print "    (2) タイトル更新の同期が来てもスクロール位置が左端へ戻らないか"
-    Debug.Print "    (3) + で足した新しいタブが自動で見える位置に来るか"
-    Debug.Print "    (4) 回帰: 切替の体感 / D&D / 閉じる"
+    Debug.Print "  [What we want to learn in this round]"
+    Debug.Print "    (1) Does the tab row scroll horizontally when the wheel is rolled over it?"
+    Debug.Print "    (2) Does the scroll position stay put (not jump back to the left edge) even when the title-update sync arrives?"
+    Debug.Print "    (3) Does a new tab added with + come into a visible position automatically?"
+    Debug.Print "    (4) Regression: switching feel / D&D / closing"
     Debug.Print ""
-    Debug.Print "  ※ VBA は 1 行も変えていないので★ログは第9.32 と完全に同じ★です。"
+    Debug.Print "  NOTE: not one line of VBA was changed, so *the log is exactly the same as 9.32*."
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
+    Debug.Print "  --- Preparation ---"
     Debug.Print "  1) UserForm1.StartWebView2_Full"
-    Debug.Print "       ※ ★仕様事実 20★ ログが止まるまでブレーク/ステップ実行はしないこと。"
-    Debug.Print "  2) + を連打してタブを 12 枚程度まで増やす (溢れる状態を作る)"
+    Debug.Print "       NOTE: *spec fact 20* do not break/step through until the log stops."
+    Debug.Print "  2) Mash + to increase the tabs to about 12 (to create an overflowing state)"
     Debug.Print ""
-    Debug.Print "  --- (1) ホイール ---"
-    Debug.Print "  3) タブ列の上にマウスを置いてホイールを下へ回す"
-    Debug.Print "       → 期待: タブ列が★右へスクロールする★"
-    Debug.Print "       → 期待: ブラウザ本体のページは★スクロールしない★"
-    Debug.Print "  4) ホイールを上へ回す → 左へ戻る"
-    Debug.Print "  5) タブが 1～2 枚しか無い状態 (溢れていない状態) でもホイールを回す"
-    Debug.Print "       → 期待: ★何も起きない★ (scrollWidth <= clientWidth で早期 return)"
-    Debug.Print "               ここで本体ページがスクロールするなら仕様どおり (preventDefault"
-    Debug.Print "               まで到達しないため)。タブバー上でのことなので実害は無い。"
+    Debug.Print "  --- (1) Wheel ---"
+    Debug.Print "  3) Put the mouse over the tab row and roll the wheel down"
+    Debug.Print "       -> Expected: the tab row *scrolls right*"
+    Debug.Print "       -> Expected: the page of the browser body *does not scroll*"
+    Debug.Print "  4) Roll the wheel up -> it goes back left"
+    Debug.Print "  5) Roll the wheel also with only 1-2 tabs (a state with no overflow)"
+    Debug.Print "       -> Expected: *nothing happens* (early return with scrollWidth <= clientWidth)"
+    Debug.Print "               If the body page scrolls here, that is as designed (because it does not reach preventDefault)."
+    Debug.Print "               It happens over the tab bar, so there is no real harm."
     Debug.Print ""
-    Debug.Print "  --- (2) ★スクロール位置が勝手に戻らないこと★ ---"
-    Debug.Print "  6) 右端あたりまでスクロールした状態で放置する"
-    Debug.Print "       (読み込み中のタブがあると、完了時にタイトル更新の同期が飛ぶ)"
-    Debug.Print "       → 期待: ログに PushSyncToJs が出ても★表示位置が動かない★"
-    Debug.Print "       → 第9.32 まではここで★左端へ戻っていた★ (今回の修正点)"
-    Debug.Print "  7) 右のほうを見ている状態で、どれかのタブのタイトルが変わる操作をする"
-    Debug.Print "       (例: 見えているタブでページを読み込ませる)"
-    Debug.Print "       → 期待: 位置は動かない。アクティブタブの位置へ引き戻されない"
+    Debug.Print "  --- (2) *The scroll position must not return on its own* ---"
+    Debug.Print "  6) Scroll to near the right end and leave it"
+    Debug.Print "       (if a tab is loading, a title-update sync is sent when it finishes)"
+    Debug.Print "       -> Expected: even if PushSyncToJs appears in the log, *the displayed position does not move*"
+    Debug.Print "       -> Up to 9.32 it *went back to the left edge* here (the point fixed this time)"
+    Debug.Print "  7) While looking at the right side, do something that changes the title of one of the tabs"
+    Debug.Print "       (e.g. make a visible tab load a page)"
+    Debug.Print "       -> Expected: the position does not move. It is not pulled back to the active tab's position"
     Debug.Print ""
-    Debug.Print "  --- (3) 新規タブが見えること ---"
-    Debug.Print "  8) 左端まで戻した状態で + を押す"
-    Debug.Print "       → 期待: 新しいタブは右端に付くが、★自動で右端まで寄って見える★"
-    Debug.Print "  9) 逆に、右端を見ている状態で左のほうのタブをクリックする"
-    Debug.Print "       → 期待: そのタブは既に見えているので★大きく動かない★"
-    Debug.Print "               (nearest 指定なので、見えているものは寄せない)"
-    Debug.Print " 10) 右端を見ている状態で、Test_9_27_Status 等で左のタブに切り替わる操作をする"
-    Debug.Print "       → 期待: アクティブが変わったときは可視範囲へ寄る"
+    Debug.Print "  --- (3) The new tab must be visible ---"
+    Debug.Print "  8) With the view returned to the left end, press +"
+    Debug.Print "       -> Expected: the new tab is attached at the right end, but *it automatically moves to the right end and is visible*"
+    Debug.Print "  9) Conversely, while looking at the right end, click a tab on the left"
+    Debug.Print "       -> Expected: that tab is already visible, so *it does not move much*"
+    Debug.Print "               (it is nearest, so things already visible are not shifted)"
+    Debug.Print " 10) While looking at the right end, do something like Test_9_27_Status that switches to a left tab"
+    Debug.Print "       -> Expected: when the active tab changes, the view moves into the visible range"
     Debug.Print ""
-    Debug.Print "  --- (4) 回帰 ---"
-    Debug.Print " 11) タブ切替の体感が第9.32 と同じか (クリック即座に色が変わる)"
-    Debug.Print " 12) D&D 並べ替えが効くか。ドラッグ後に位置が飛ばないか"
-    Debug.Print " 13) × で閉じられるか。閉じた後にスクロール位置が破綻しないか"
-    Debug.Print " 14) [歯車] で設定タブが開くか"
+    Debug.Print "  --- (4) Regression ---"
+    Debug.Print " 11) Is the feel of tab switching the same as 9.32? (the color changes immediately on click)"
+    Debug.Print " 12) Does D&D reordering work? Does the position not jump after dragging?"
+    Debug.Print " 13) Can tabs be closed with x? Does the scroll position not break after closing?"
+    Debug.Print " 14) Does the settings tab open with [gear]?"
     Debug.Print ""
-    Debug.Print "  --- 判定 ---"
-    Debug.Print "  ・3～4 が効けば論点 1 は成功 (効かなければ論点 1 を (b) 3px バーに戻す)"
-    Debug.Print "  ・6～7 で位置が動かなければ論点 3 の退避・復元は成功"
-    Debug.Print "  ・8 で新規タブが見えれば nearest 寄せも成功"
-    Debug.Print "  ・スクロール量が速すぎ/遅すぎる場合は数値 1 つで調整できます"
+    Debug.Print "  --- Verdict ---"
+    Debug.Print "  - If 3-4 work, issue 1 succeeded (if not, return issue 1 to (b) the 3px bar)"
+    Debug.Print "  - If the position does not move in 6-7, the save/restore of issue 3 succeeded"
+    Debug.Print "  - If the new tab is visible in 8, the nearest shift also succeeded"
+    Debug.Print "  - If the scroll amount is too fast / slow, it can be adjusted with a single number"
 End Sub
 
 
 ' ============================================================
-' ★D-1 の検証★
+' *Verification of D-1*
 ' ============================================================
 
 
 ' ============================================================
 ' Test_D1_Eval (D-1)
-'   EvalSync を一通り叩いて結果を並べる。
-'   前提: StartWebView2_Full でブラウザが起動していること。
-'         アクティブタブが実ページを表示していること (about:blank でも大半は通る)。
-'   ★DoEvents ループ中はブレーク/ステップ実行しないこと (仕様事実 20)★
+'   Runs through EvalSync and lines up the results.
+'   Precondition: the browser has been started with StartWebView2_Full.
+'         The active tab is showing a real page (most pass even with about:blank).
+'   *Do not break/step through during the DoEvents loop (spec fact 20)*
 ' ============================================================
 Public Sub Test_D1_Eval()
     Dim p As Wv2Pane
     Set p = UserForm1.GetActivePane
 
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D1_Eval: アクティブな Pane がありません。" & _
-                    "先に StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D1_Eval: there is no active Pane." & _
+                    "Run StartWebView2_Full first."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D1_Eval 開始 ================"
-    Wv2Log.LogI "  対象タブ: " & p.DocumentTitle
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "================ Test_D1_Eval start ================"
+    Wv2Log.LogI "  target tab: " & p.DocumentTitle
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) 型ごとの戻り値 ---"
+    Wv2Log.LogI "  --- (1) Return value for each type ---"
 
-    D1Case p, "整数", "1 + 2", 5, True
-    D1Case p, "小数", "1 / 4", 5, True
-    D1Case p, "文字列 (引用符付きで返るのが正常)", "'abc'", 5, True
-    D1Case p, "日本語 (uXXXX の復号を確認)", "'日本語テスト'", 5, True
-    D1Case p, "引用符を含む文字列", "'[' + String.fromCharCode(34) + ']'", 5, True
-    D1Case p, "バックスラッシュを含む文字列", "'[' + String.fromCharCode(92) + ']'", 5, True
-    D1Case p, "真偽値", "1 === 1", 5, True
+    D1Case p, "integer", "1 + 2", 5, True
+    D1Case p, "decimal", "1 / 4", 5, True
+    D1Case p, "string (returned with quotes is normal)", "'abc'", 5, True
+    D1Case p, "Japanese (checks the decoding of uXXXX)", ("'" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ChrW(&H30C6&) & ChrW(&H30B9&) & ChrW(&H30C8&) & "'"), 5, True
+    D1Case p, "string containing a quote", "'[' + String.fromCharCode(34) + ']'", 5, True
+    D1Case p, "string containing a backslash", "'[' + String.fromCharCode(92) + ']'", 5, True
+    D1Case p, "boolean", "1 === 1", 5, True
     D1Case p, "null", "null", 5, True
-    D1Case p, "undefined (value キーが消えるケース)", "undefined", 5, True
-    D1Case p, "オブジェクト", "({a:1,b:[1,2,3]})", 5, True
-    D1Case p, "配列", "[1,'x',null]", 5, True
-    D1Case p, "長い文字列 (300 字)", _
+    D1Case p, "undefined (the case where the value key disappears)", "undefined", 5, True
+    D1Case p, "object", "({a:1,b:[1,2,3]})", 5, True
+    D1Case p, "array", "[1,'x',null]", 5, True
+    D1Case p, "long string (300 chars)", _
               "(function(){var s='';for(var i=0;i<300;i++){s+='x';}return s;})()", 5, True
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) 実ページの情報 ---"
+    Wv2Log.LogI "  --- (2) Information of the real page ---"
     D1Case p, "document.title", "document.title", 5, True
     D1Case p, "location.href", "document.location.href", 5, True
-    D1Case p, "body の文字数", "document.body.innerText.length", 5, True
+    D1Case p, "number of characters in body", "document.body.innerText.length", 5, True
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) 失敗系 (FAIL 表示にならず OK と出れば正常) ---"
-    D1Case p, "JS 例外 (ReferenceError)", "nonexistentFunctionForTest()", 5, False
-    D1Case p, "JS 例外 (throw を即時関数で包む)", _
+    Wv2Log.LogI "  --- (3) Failure cases (normal if OK is shown rather than FAIL) ---"
+    D1Case p, "JS exception (ReferenceError)", "nonexistentFunctionForTest()", 5, False
+    D1Case p, "JS exception (throw wrapped in an IIFE)", _
               "(function(){throw new Error('boom');})()", 5, False
-    D1Case p, "構文エラー (式が壊れている)", "1 +", 5, False
+    D1Case p, "syntax error (the expression is broken)", "1 +", 5, False
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) タイムアウトと回復 ---"
-    Wv2Log.LogI "  ※ JS を 3 秒ブロックし、1 秒で打ち切る。数秒後に"
-    Wv2Log.LogI "     ★破棄済み★ の遅延到着ログが出れば論点5 は成功。"
-    D1Case p, "タイムアウト (3 秒を 1 秒で打ち切り)", _
+    Wv2Log.LogI "  --- (4) Timeout and recovery ---"
+    Wv2Log.LogI "  NOTE: block JS for 3 seconds and cut it off at 1 second. A few seconds later,"
+    Wv2Log.LogI "     if the late-arrival log of *discarded* appears, issue 5 succeeded."
+    D1Case p, "timeout (3 s cut off at 1 s)", _
               "(function(){var t=Date.now();while(Date.now()-t<3000){}return 1;})()", 1, False
 
-    ' JS スレッドが空くまで待つ (この間に遅延到着のログが出る)
+    ' Wait until the JS thread is free (the late-arrival log appears during this time)
     Dim t0 As Single
     t0 = Timer
     Do While (Timer - t0) < 4
         DoEvents
     Loop
 
-    D1Case p, "タイムアウト後の回復", "1 + 1", 5, True
+    D1Case p, "recovery after the timeout", "1 + 1", 5, True
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D1_Eval 終了 ================"
+    Wv2Log.LogI "================ Test_D1_Eval end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' D1Case (D-1 検証用の 1 ケース実行)
-'   expectOk = True  … 成功するはずのケース
-'   expectOk = False … 失敗するはずのケース (エラー理由が出れば OK)
+' D1Case (run one case for D-1 verification)
+'   expectOk = True  ... a case that should succeed
+'   expectOk = False ... a case that should fail (OK if an error reason appears)
 ' ============================================================
 Private Sub D1Case(ByVal p As Wv2Pane, _
                    ByVal caseName As String, _
@@ -2517,18 +2517,18 @@ Private Sub D1Case(ByVal p As Wv2Pane, _
     End If
 
     If p.LastEvalOk Then
-        Wv2Log.LogI mark & caseName & " → " & Left$(r, 100)
+        Wv2Log.LogI mark & caseName & " -> " & Left$(r, 100)
     Else
-        Wv2Log.LogI mark & caseName & " → 失敗: " & p.LastEvalError
+        Wv2Log.LogI mark & caseName & " -> failed: " & p.LastEvalError
     End If
 End Sub
 
 
 ' ============================================================
-' Test_D1_Guard (D-1 論点7)
-'   in-callback ガードが効くこと、ResetCallbackGuard で復帰できることを確認する。
-'   実際のイベントハンドラ内から呼ぶ経路は再現しにくいので、
-'   Debug_SetInCallback で同じ状態を作って確かめる。
+' Test_D1_Guard (D-1 issue 7)
+'   Confirms that the in-callback guard works and that ResetCallbackGuard can recover.
+'   The route of calling from inside an actual event handler is hard to reproduce,
+'   so we make the same state with Debug_SetInCallback and check.
 ' ============================================================
 Public Sub Test_D1_Guard()
     Dim p As Wv2Pane
@@ -2536,95 +2536,95 @@ Public Sub Test_D1_Guard()
 
     Set p = UserForm1.GetActivePane
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D1_Guard: アクティブな Pane がありません。" & _
-                    "先に StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D1_Guard: there is no active Pane." & _
+                    "Run StartWebView2_Full first."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D1_Guard 開始 ================"
+    Wv2Log.LogI "================ Test_D1_Guard start ================"
 
-    Wv2Log.LogI "  1) 通常状態 (深さ=" & p.InCallbackDepth & ") で EvalSync"
+    Wv2Log.LogI "  1) EvalSync in the normal state (depth=" & p.InCallbackDepth & ")"
     r = p.EvalSync("1 + 1", 5)
-    TestBool "  通常状態で 2 が返る", (p.LastEvalOk And r = "2")
+    TestBool "  2 is returned in the normal state", (p.LastEvalOk And r = "2")
     If Not p.LastEvalOk Then Wv2Log.LogI "         r=" & r & " err=" & p.LastEvalError
 
-    Wv2Log.LogI "  2) ハンドラ内にいる状態を作って EvalSync (拒否されるのが正常)"
+    Wv2Log.LogI "  2) Create a state of being inside a handler and EvalSync (being rejected is normal)"
     p.Debug_SetInCallback 1
     r = p.EvalSync("1 + 1", 5)
-    TestBool "  ★in-callback で拒否された (固まらずに即戻った)★", _
+    TestBool "  *rejected in-callback (returned at once without hanging)*", _
              ((Not p.LastEvalOk) And p.LastEvalError = "in-callback")
 
-    Wv2Log.LogI "  3) ResetCallbackGuard で復帰させて再実行"
+    Wv2Log.LogI "  3) Recover with ResetCallbackGuard and run again"
     p.ResetCallbackGuard
     r = p.EvalSync("1 + 1", 5)
-    TestBool "  ResetCallbackGuard で復帰する", (p.LastEvalOk And r = "2")
-    Wv2Log.LogI "         深さ=" & p.InCallbackDepth
+    TestBool "  recovers with ResetCallbackGuard", (p.LastEvalOk And r = "2")
+    Wv2Log.LogI "         depth=" & p.InCallbackDepth
 
     TestCountPrint
-    Wv2Log.LogI "================ Test_D1_Guard 終了 ================"
+    Wv2Log.LogI "================ Test_D1_Guard end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_D1_Help (D-1 の手順)
+' Test_D1_Help (procedure for D-1)
 ' ============================================================
 Public Sub Test_D1_Help()
     Debug.Print ""
     Debug.Print "=========================================================="
-    Debug.Print " D-1 検証手順 (EvalSync = ExecuteScript の同期取得)"
+    Debug.Print " D-1 verification procedure (EvalSync = synchronous retrieval from ExecuteScript)"
     Debug.Print "=========================================================="
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
-    Debug.Print "  1) UserForm1.Show vbModeless して StartWebView2_Full を実行する"
-    Debug.Print "     ★Show が先★ フォームのウィンドウが無いと Frame1 の HWND が"
-    Debug.Print "     取れず、hWnd_Frame = 0 のまま Browser.Init が失敗する。"
-    Debug.Print "  2) 適当な実ページを開く (Google などで可)"
-    Debug.Print "  3) ★イベントバーストが静まるまで待つ★ (仕様事実 20)"
-    Debug.Print "     イミディエイトのログが止まってから次に進むこと。"
+    Debug.Print "  --- Preparation ---"
+    Debug.Print "  1) Run UserForm1.Show vbModeless, then run StartWebView2_Full"
+    Debug.Print "     *Show comes first* Without the form's window the HWND of Frame1 cannot"
+    Debug.Print "     be obtained, and Browser.Init fails with hWnd_Frame still 0."
+    Debug.Print "  2) Open any real page (Google etc. is fine)"
+    Debug.Print "  3) *Wait until the event burst settles* (spec fact 20)"
+    Debug.Print "     Go on only after the Immediate window log has stopped."
     Debug.Print ""
-    Debug.Print "  --- 実行 ---"
-    Debug.Print "  4) Test_D1_Eval  … 型・日本語・例外・タイムアウトを一括で流す"
-    Debug.Print "  5) Test_D1_Guard … in-callback ガードの発火を確認する"
+    Debug.Print "  --- Run ---"
+    Debug.Print "  4) Test_D1_Eval  ... runs types, Japanese, exceptions and timeouts in one batch"
+    Debug.Print "  5) Test_D1_Guard ... checks that the in-callback guard fires"
     Debug.Print ""
-    Debug.Print "  ★実行中はブレーク/ステップ実行しないこと★"
-    Debug.Print "    EvalSync は DoEvents を回して待つので、その最中に止めると"
-    Debug.Print "    仕様事実 20 の窓を踏む。"
+    Debug.Print "  *Do not break/step through during execution*"
+    Debug.Print "    EvalSync waits by running DoEvents, so stopping in the middle of it"
+    Debug.Print "    steps into the window of spec fact 20."
     Debug.Print ""
-    Debug.Print "  --- ★判定はログファイルに残る★ ---"
-    Debug.Print "    イミディエイトは ExecuteScript の配管ログ (1 往復で 15 行) で"
-    Debug.Print "    すぐ流れるので、合否はログファイルで見る:"
-    Debug.Print "      ?Wv2Log.LogPath   … ファイルの場所"
-    Debug.Print "      末尾の「★判定 n 件: OK x / FAIL y★」だけ見れば合否が分かる"
+    Debug.Print "  --- *Verdicts remain in the log file* ---"
+    Debug.Print "    The Immediate window is flushed away at once by the ExecuteScript plumbing log (15 lines per round trip),"
+    Debug.Print "    so check pass/fail in the log file:"
+    Debug.Print "      ?Wv2Log.LogPath   ... location of the file"
+    Debug.Print "      Just look at the trailing ""*Verdicts n: OK x / FAIL y*"" to know pass/fail"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D1_Eval) ---"
-    Debug.Print "  ・(1) 全ケースが [OK  ] であること"
-    Debug.Print "      ※文字列は★引用符付き★で返るのが正常 (D-2 で剥がす)"
-    Debug.Print "      ※日本語が化けていないこと (uXXXX の復号ができている証拠)"
-    Debug.Print "      ※undefined は文字列 undefined が返るのが正常"
-    Debug.Print "  ・(2) document.title と location.href が実際のページと一致すること"
-    Debug.Print "  ・(3) 失敗系も [OK  ] と出ること (期待どおり失敗した、の意味)"
-    Debug.Print "      ReferenceError / Error: boom / syntax-error-or-null が見えるはず"
-    Debug.Print "  ・(4) タイムアウトが★1 秒程度で戻る★こと (5 秒待たない)"
-    Debug.Print "      その数秒後に ★破棄済み★ の遅延到着ログが出ること"
-    Debug.Print "      最後の 回復 が [OK  ] であること"
-    Debug.Print "  ・最後の in-callback 深さが 0 であること"
+    Debug.Print "  --- What to look at (Test_D1_Eval) ---"
+    Debug.Print "  - (1) All cases are [OK  ]"
+    Debug.Print "      NOTE: strings are normally returned *with quotes* (stripped in D-2)"
+    Debug.Print "      NOTE: the Japanese must not be garbled (evidence that uXXXX decoding works)"
+    Debug.Print "      NOTE: for undefined, the string undefined is returned, which is normal"
+    Debug.Print "  - (2) document.title and location.href match the actual page"
+    Debug.Print "  - (3) The failure cases also show [OK  ] (meaning they failed as expected)"
+    Debug.Print "      ReferenceError / Error: boom / syntax-error-or-null should be visible"
+    Debug.Print "  - (4) The timeout *returns in about 1 second* (does not wait 5 seconds)"
+    Debug.Print "      A few seconds later the late-arrival log of *discarded* should appear"
+    Debug.Print "      The last recovery should be [OK  ]"
+    Debug.Print "  - The final in-callback depth is 0"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D1_Guard) ---"
-    Debug.Print "  ・2) が★即座に★戻ること (固まらない)。これが論点7 の目的"
-    Debug.Print "  ・3) で復帰し、深さが 0 に戻ること"
+    Debug.Print "  --- What to look at (Test_D1_Guard) ---"
+    Debug.Print "  - 2) returns *at once* (does not hang). This is the purpose of issue 7"
+    Debug.Print "  - 3) recovers, and the depth returns to 0"
     Debug.Print ""
-    Debug.Print "  --- 回帰確認 (D-1 は Wv2Pane のコールバックを包み直したため) ---"
-    Debug.Print "  6) タブの追加・切替・閉じる・D&D 並べ替え"
-    Debug.Print "  7) URL 入力・戻る・進む・リロード (タイトルが更新されること)"
-    Debug.Print "  8) リンクの新タブ展開 (Test_9_26_PostProbe の POST リンクも)"
-    Debug.Print "  9) 設定タブ (歯車) が開き、検索エンジンを変更できること"
-    Debug.Print "     ※ 6～9 は View_On* を Core に分離した影響を見るためのもの。"
-    Debug.Print "       どれか 1 つでも動かなければガードのラッパーを疑うこと。"
+    Debug.Print "  --- Regression check (because D-1 re-wrapped the callbacks of Wv2Pane) ---"
+    Debug.Print "  6) Adding / switching / closing tabs and D&D reordering"
+    Debug.Print "  7) URL input, back, forward, reload (the title must be updated)"
+    Debug.Print "  8) New-tab expansion of links (including the POST link of Test_9_26_PostProbe)"
+    Debug.Print "  9) The settings tab (gear) opens and the search engine can be changed"
+    Debug.Print "     NOTE: 6-9 are for seeing the effect of separating View_On* into Core."
+    Debug.Print "       If any one of them does not work, suspect the guard wrapper."
     Debug.Print ""
-    Debug.Print "  --- 手で試したいとき ---"
+    Debug.Print "  --- If you want to try by hand ---"
     Debug.Print "  ?UserForm1.GetActivePane.EvalSync(""document.title"")"
     Debug.Print "  ?UserForm1.GetActivePane.EvalSync(""document.querySelectorAll('a').length"")"
     Debug.Print "  ?UserForm1.GetActivePane.LastEvalError"
@@ -2633,8 +2633,8 @@ End Sub
 
 
 ' ============================================================
-' Test_D2_Find (D-2 本体の検証)
-'   検証ページを新しいタブに開き、要素の取得と読み取りを一括で流す。
+' Test_D2_Find (verification of the D-2 main part)
+'   Opens the verification page in a new tab and runs element acquisition and reading in one batch.
 ' ============================================================
 Public Sub Test_D2_Find()
     Dim b As Wv2Browser
@@ -2644,128 +2644,128 @@ Public Sub Test_D2_Find()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D2_Find: Browser が起動していません。" & _
-                    "先に UserForm1.StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D2_Find: Browser is not started." & _
+                    "Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD2ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D2_Find: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D2_Find: failed to create the tab."
         Exit Sub
     End If
 
-    If Not D2WaitTitle(p, "D-2 プローブ", 10) Then
-        Wv2Log.LogI "Test_D2_Find: 検証ページの読み込みを確認できませんでした。中止します。"
+    If Not D2WaitTitle(p, ("D-2 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D2_Find: could not confirm that the verification page loaded. Aborting."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D2_Find 開始 ================"
-    Wv2Log.LogI "  世代 (取得前は空文字が正常): [" & p.CurrentDomGen & "]"
+    Wv2Log.LogI "================ Test_D2_Find start ================"
+    Wv2Log.LogI "  generation (an empty string before acquisition is normal): [" & p.CurrentDomGen & "]"
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) 取得できること ---"
+    Wv2Log.LogI "  --- (1) Can be acquired ---"
 
     Set el = p.GetElementById("ttl")
-    TestBool "GetElementById(ttl) が Nothing でない", Not (el Is Nothing)
+    TestBool "GetElementById(ttl) is not Nothing", Not (el Is Nothing)
     If el Is Nothing Then
-        Wv2Log.LogI "  以降の検証は続けられません。中止します。"
+        Wv2Log.LogI "  Cannot continue the following verification. Aborting."
         TestCountPrint
         Exit Sub
     End If
     Wv2Log.LogI "        handle=" & el.Handle & " gen=" & el.Generation
-    Wv2Log.LogI "        Pane 側の世代キャッシュ: " & p.CurrentDomGen
-    TestBool "取得直後は stale でない", (el.IsStale = False)
+    Wv2Log.LogI "        Pane-side generation cache: " & p.CurrentDomGen
+    TestBool "not stale right after acquisition", (el.IsStale = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) 読み取り 4 種 + 属性 ---"
-    TestEq "TagName (大文字で返る)", el, el.TagName, "H1"
-    TestEq "InnerText (日本語)", el, el.InnerText, "D-2 要素レジストリのプローブ"
+    Wv2Log.LogI "  --- (2) 4 kinds of reads + attributes ---"
+    TestEq "TagName (returned in uppercase)", el, el.TagName, "H1"
+    TestEq "InnerText (Japanese)", el, el.InnerText, ("D-2 " & ChrW(&H8981&) & ChrW(&H7D20&) & ChrW(&H30EC&) & ChrW(&H30B8&) & ChrW(&H30B9&) & ChrW(&H30C8&) & ChrW(&H30EA&) & ChrW(&H306E&) & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&))
 
     Set el = D2El(p, "box")
     TestEq "GetAttribute(class)", el, el.GetAttribute("class"), "card"
-    TestEq "GetAttribute(data-note) 日本語属性", el, _
-         el.GetAttribute("data-note"), "属性の値 (日本語)"
-    TestEq "InnerHTML (★仕様事実30 の復号★)", el, _
-         el.InnerHTML, "<span class=""tag"">内側</span>テキスト"
+    TestEq "GetAttribute(data-note) Japanese attribute", el, _
+         el.GetAttribute("data-note"), (ChrW(&H5C5E&) & ChrW(&H6027&) & ChrW(&H306E&) & ChrW(&H5024&) & " (" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ")")
+    TestEq "InnerHTML (*decoding of spec fact 30*)", el, _
+         el.InnerHTML, ("<span class=""tag"">" & ChrW(&H5185&) & ChrW(&H5074&) & "</span>" & ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&))
 
     Set el = D2El(p, "esc")
-    TestEq "記号の混在", el, el.InnerText, "記号: < > & "" ' \ の混在"
+    TestEq "mix of symbols", el, el.InnerText, (ChrW(&H8A18&) & ChrW(&H53F7&) & ": < > & "" ' \ " & ChrW(&H306E&) & ChrW(&H6DF7&) & ChrW(&H5728&))
 
     Set el = D2El(p, "pre")
-    TestEq "改行を含むテキスト (\n の復号)", el, el.InnerText, "1 行目" & vbLf & "2 行目"
+    TestEq "text containing line breaks (decoding of \n)", el, el.InnerText, ("1 " & ChrW(&H884C&) & ChrW(&H76EE&)) & vbLf & ("2 " & ChrW(&H884C&) & ChrW(&H76EE&))
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) 入力要素の value ---"
+    Wv2Log.LogI "  --- (3) value of input elements ---"
     Set el = D2El(p, "txt")
-    TestEq "input の TagName", el, el.TagName, "INPUT"
-    TestEq "input の Value", el, el.value, "初期値"
-    TestEq "input の GetAttribute(value)", el, el.GetAttribute("value"), "初期値"
+    TestEq "TagName of input", el, el.TagName, "INPUT"
+    TestEq "Value of input", el, el.value, (ChrW(&H521D&) & ChrW(&H671F&) & ChrW(&H5024&))
+    TestEq "GetAttribute(value) of input", el, el.GetAttribute("value"), (ChrW(&H521D&) & ChrW(&H671F&) & ChrW(&H5024&))
 
     Set el = D2El(p, "area")
-    TestEq "textarea の Value", el, el.value, "テキストエリアの値"
+    TestEq "Value of textarea", el, el.value, (ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&) & ChrW(&H30A8&) & ChrW(&H30EA&) & ChrW(&H30A2&) & ChrW(&H306E&) & ChrW(&H5024&))
 
     Set el = D2El(p, "sel")
-    TestEq "select の Value (selected の option)", el, el.value, "b"
+    TestEq "Value of select (the selected option)", el, el.value, "b"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) 空・不在は★成功して空文字★になること (LastOk=True) ---"
+    Wv2Log.LogI "  --- (4) Empty / absent must *succeed with an empty string* (LastOk=True) ---"
     Set el = D2El(p, "empty")
-    TestEq "空要素の InnerText", el, el.InnerText, ""
+    TestEq "InnerText of an empty element", el, el.InnerText, ""
 
     Set el = D2El(p, "lnk")
-    TestEq "a 要素の Value (value を持たない)", el, el.value, ""
-    TestEq "存在しない属性", el, el.GetAttribute("data-nothing"), ""
-    TestEq "href 属性", el, el.GetAttribute("href"), "https://example.com/path?x=1"
+    TestEq "Value of an a element (has no value)", el, el.value, ""
+    TestEq "nonexistent attribute", el, el.GetAttribute("data-nothing"), ""
+    TestEq "href attribute", el, el.GetAttribute("href"), "https://example.com/path?x=1"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) QuerySelector (★セレクタ内のシングルクォート★) ---"
+    Wv2Log.LogI "  --- (5) QuerySelector (*single quotes inside the selector*) ---"
     Set el2 = p.QuerySelector("input[name='q']")
-    TestBool "QuerySelector(input[name='q']) が取れる", Not (el2 Is Nothing)
+    TestBool "QuerySelector(input[name='q']) can be obtained", Not (el2 Is Nothing)
     If Not el2 Is Nothing Then
-        TestEq "同じ要素が取れている", el2, el2.value, "初期値"
+        TestEq "the same element was obtained", el2, el2.value, (ChrW(&H521D&) & ChrW(&H671F&) & ChrW(&H5024&))
     End If
 
     Set el2 = p.QuerySelector("#box .tag")
-    TestBool "子孫セレクタが効く", Not (el2 Is Nothing)
+    TestBool "descendant selector works", Not (el2 Is Nothing)
     If Not el2 Is Nothing Then
-        TestEq "子孫セレクタの InnerText", el2, el2.InnerText, "内側"
+        TestEq "InnerText of the descendant selector", el2, el2.InnerText, (ChrW(&H5185&) & ChrW(&H5074&))
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) 見つからない / 失敗の区別 (論点4) ---"
+    Wv2Log.LogI "  --- (6) Distinguishing not found / failure (issue 4) ---"
     Set el2 = p.QuerySelector("#nothing-here")
-    TestBool "存在しないセレクタ → Nothing", (el2 Is Nothing)
-    TestBool "  かつ LastEvalOk = True (本当に無い、の意味)", (p.LastEvalOk = True)
+    TestBool "nonexistent selector -> Nothing", (el2 Is Nothing)
+    TestBool "  and LastEvalOk = True (meaning it really is absent)", (p.LastEvalOk = True)
 
     Set el2 = p.QuerySelector("###")
-    TestBool "不正なセレクタ → Nothing", (el2 Is Nothing)
-    TestBool "  かつ LastEvalOk = False (失敗、の意味)", (p.LastEvalOk = False)
+    TestBool "invalid selector -> Nothing", (el2 Is Nothing)
+    TestBool "  and LastEvalOk = False (meaning it failed)", (p.LastEvalOk = False)
     Wv2Log.LogI "        LastEvalError = " & p.LastEvalError
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) ClearElementRegistry (論点3) ---"
+    Wv2Log.LogI "  --- (7) ClearElementRegistry (issue 3) ---"
     Set el = D2El(p, "ttl")
-    TestBool "掃除前は stale でない", (el.IsStale = False)
-    TestBool "ClearElementRegistry が成功する", p.ClearElementRegistry()
-    TestBool "掃除後は stale になる", (el.IsStale = True)
+    TestBool "not stale before the cleanup", (el.IsStale = False)
+    TestBool "ClearElementRegistry succeeds", p.ClearElementRegistry()
+    TestBool "becomes stale after the cleanup", (el.IsStale = True)
     Set el = p.GetElementById("ttl")
-    TestBool "掃除後も取り直せる", Not (el Is Nothing)
+    TestBool "can be re-acquired even after the cleanup", Not (el Is Nothing)
     If Not el Is Nothing Then
-        TestEq "取り直した要素が読める", el, el.TagName, "H1"
+        TestEq "the re-acquired element can be read", el, el.TagName, "H1"
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D2_Find 終了 ================"
+    Wv2Log.LogI "================ Test_D2_Find end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_D2_Stale (D-2 論点2 の検証: ページ遷移で世代が変わること)
+' Test_D2_Stale (verification of D-2 issue 2: the generation changes on page navigation)
 ' ============================================================
 Public Sub Test_D2_Stale()
     Dim b As Wv2Browser
@@ -2777,83 +2777,83 @@ Public Sub Test_D2_Stale()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D2_Stale: Browser が起動していません。" & _
-                    "先に UserForm1.StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D2_Stale: Browser is not started." & _
+                    "Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD2ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D2_Stale: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D2_Stale: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-2 プローブ", 10) Then
-        Wv2Log.LogI "Test_D2_Stale: 検証ページの読み込みを確認できませんでした。中止します。"
+    If Not D2WaitTitle(p, ("D-2 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D2_Stale: could not confirm that the verification page loaded. Aborting."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D2_Stale 開始 ================"
+    Wv2Log.LogI "================ Test_D2_Stale start ================"
 
     Set el = p.GetElementById("ttl")
     If el Is Nothing Then
-        Wv2Log.LogI "  [FAIL] 要素が取れないので中止します。"
+        Wv2Log.LogI "  [FAIL] cannot obtain the element, so aborting."
         m_ngCount = m_ngCount + 1
         TestCountPrint
         Exit Sub
     End If
     genBefore = el.Generation
-    Wv2Log.LogI "  1) 遷移前: handle=" & el.Handle & " gen=" & genBefore
-    TestEq "     読める", el, el.TagName, "H1"
-    TestBool "     stale でない", (el.IsStale = False)
+    Wv2Log.LogI "  1) Before navigation: handle=" & el.Handle & " gen=" & genBefore
+    TestEq "     readable", el, el.TagName, "H1"
+    TestBool "     not stale", (el.IsStale = False)
 
-    Wv2Log.LogI "  2) 同じタブを別のページへ遷移させる"
+    Wv2Log.LogI "  2) Navigate the same tab to another page"
     p.View_NavigateToString BuildD2SecondHtml()
-    If Not D2WaitTitle(p, "D-2 プローブ 2 枚目", 10) Then
-        Wv2Log.LogI "  [FAIL] 2 枚目の読み込みを確認できませんでした。中止します。"
+    If Not D2WaitTitle(p, ("D-2 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & " 2 " & ChrW(&H679A&) & ChrW(&H76EE&)), 10) Then
+        Wv2Log.LogI "  [FAIL] could not confirm that the 2nd page loaded. Aborting."
         Exit Sub
     End If
 
-    Wv2Log.LogI "  3) 遷移後: 古いハンドルの状態を見る"
-    TestBool "     IsStale = True になる", (el.IsStale = True)
+    Wv2Log.LogI "  3) After navigation: look at the state of the old handle"
+    TestBool "     IsStale = True", (el.IsStale = True)
     v = el.TagName
-    TestBool "     読み取りは空文字 + LastOk=False", (Len(v) = 0 And el.LastOk = False)
+    TestBool "     read gives an empty string + LastOk=False", (Len(v) = 0 And el.LastOk = False)
     Wv2Log.LogI "        LastError = " & el.LastError
-    TestBool "     LastError が stale であること", (el.LastError = "stale")
+    TestBool "     LastError is stale", (el.LastError = "stale")
 
-    Wv2Log.LogI "  4) 新しいページで取り直せる"
+    Wv2Log.LogI "  4) Can be re-acquired on the new page"
     Set el = p.GetElementById("second")
-    TestBool "     取得できる", Not (el Is Nothing)
+    TestBool "     can be acquired", Not (el Is Nothing)
     If Not el Is Nothing Then
         genAfter = el.Generation
-        TestEq "     読める", el, el.InnerText, "2 枚目のページ"
-        Wv2Log.LogI "        新しい gen=" & genAfter
-        TestBool "     世代が変わっている", (genAfter <> genBefore)
+        TestEq "     readable", el, el.InnerText, ("2 " & ChrW(&H679A&) & ChrW(&H76EE&) & ChrW(&H306E&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B8&))
+        Wv2Log.LogI "        new gen=" & genAfter
+        TestBool "     the generation has changed", (genAfter <> genBefore)
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D2_Stale 終了 ================"
+    Wv2Log.LogI "================ Test_D2_Stale end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' D2El (D-2: 要素取得のガード付きヘルパー)
+' D2El (D-2: guarded helper for acquiring an element)
 '
-'   取れなければ FAIL を出したうえで★Pane 未設定のダミー★を返す。
-'   ダミーは読み取ると LastOk=False / LastError="no-pane" を返すだけなので、
-'   検証が実行時エラー 91 で止まらずに最後まで流れる。
-'   (Wv2Element を素で New したときの経路をそのまま利用している)
+'   If it cannot be obtained, it emits a FAIL and returns *a dummy with no Pane set*.
+'   The dummy merely returns LastOk=False / LastError="no-pane" when read, so
+'   the verification runs through to the end without stopping at runtime error 91.
+'   (It directly uses the route taken when a Wv2Element is plainly New-ed)
 ' ============================================================
 Private Function D2El(ByVal p As Wv2Pane, ByVal elementId As String) As Wv2Element
     Dim e As Wv2Element
 
     Set e = p.GetElementById(elementId)
     If e Is Nothing Then
-        Wv2Log.LogI "  [FAIL] 要素 #" & elementId & " が取得できない " & _
+        Wv2Log.LogI "  [FAIL] element #" & elementId & " cannot be obtained " & _
                     "(LastEvalOk=" & p.LastEvalOk & " err=" & p.LastEvalError & ")"
         Set e = New Wv2Element
     End If
@@ -2863,14 +2863,14 @@ End Function
 
 
 ' ============================================================
-' D2WaitTitle (D-2: ページの読み込み完了を title で待つ)
+' D2WaitTitle (D-2: wait for the page load to finish by its title)
 '
-'   NavigateToString は非同期なので、EvalSync で document.title を読んで
-'   期待するタイトルになるまで待つ。IsPageLoaded を使わないのは、
-'   同じ Pane を 2 回遷移させる Test_D2_Stale で「前のページの完了」と
-'   区別できないため。
+'   NavigateToString is asynchronous, so we read document.title with EvalSync and
+'   wait until it becomes the expected title. IsPageLoaded is not used because
+'   in Test_D2_Stale, which navigates the same Pane twice, it cannot be
+'   told apart from "the completion of the previous page".
 '
-'   ★この待ちループ中もブレーク/ステップ実行しないこと★ (仕様事実20)
+'   *Do not break/step through during this wait loop either* (spec fact 20)
 ' ============================================================
 Private Function D2WaitTitle(ByVal p As Wv2Pane, _
                              ByVal wantTitle As String, _
@@ -2893,8 +2893,8 @@ Private Function D2WaitTitle(ByVal p As Wv2Pane, _
             End If
         End If
         If (Timer - t0) > timeoutSec Then
-            Wv2Log.LogI "D2WaitTitle: タイムアウト (期待=" & wantTitle & _
-                        " 実際=" & cur & " err=" & p.LastEvalError & ")"
+            Wv2Log.LogI "D2WaitTitle: timeout (expected=" & wantTitle & _
+                        " actual=" & cur & " err=" & p.LastEvalError & ")"
             Exit Function
         End If
     Loop
@@ -2902,17 +2902,17 @@ End Function
 
 
 ' ============================================================
-' BuildD2ProbeHtml (D-2 の検証ページ、論点8 案b)
+' BuildD2ProbeHtml (the verification page of D-2, issue 8 plan b)
 '
-'   ★静的な HTML 部分の引用符は VBA の "" で書く★ (JS ではないので問題ない)
-'   ★JS は一切使っていない★ (このページは DOM を提供するだけ)
+'   *Quotation marks in the static HTML part are written with VBA's ""* (it is not JS, so no problem)
+'   *No JS is used at all* (this page only provides a DOM)
 ' ============================================================
 Private Function BuildD2ProbeHtml() As String
     Dim s As String
 
     s = "<!DOCTYPE html>" & vbLf
     s = s & "<html lang=""ja""><head><meta charset=""UTF-8"">" & vbLf
-    s = s & "<title>D-2 プローブ</title>" & vbLf
+    s = s & ("<title>D-2 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</title>") & vbLf
     s = s & "<style>" & vbLf
     s = s & "  body{font-family:'Segoe UI','Meiryo',sans-serif;background:#12161f;" & _
             "color:#e8eaed;padding:32px;line-height:1.8;}" & vbLf
@@ -2926,21 +2926,21 @@ Private Function BuildD2ProbeHtml() As String
             "border-radius:6px;}" & vbLf
     s = s & "  .note{color:#8ea2c8;font-size:12.5px;}" & vbLf
     s = s & "</style></head><body>" & vbLf
-    s = s & "<h1 id=""ttl"">D-2 要素レジストリのプローブ</h1>" & vbLf
-    s = s & "<p class=""note"">このページは Test_D2_Find / Test_D2_Stale 専用です。" & _
-            "外部サイトに依存しません。</p>" & vbLf
-    s = s & "<div id=""box"" class=""card"" data-note=""属性の値 (日本語)"">" & _
-            "<span class=""tag"">内側</span>テキスト</div>" & vbLf
-    s = s & "<p id=""esc"">記号: &lt; &gt; &amp; &quot; ' \ の混在</p>" & vbLf
-    s = s & "<pre id=""pre"">1 行目" & vbLf & "2 行目</pre>" & vbLf
+    s = s & ("<h1 id=""ttl"">D-2 " & ChrW(&H8981&) & ChrW(&H7D20&) & ChrW(&H30EC&) & ChrW(&H30B8&) & ChrW(&H30B9&) & ChrW(&H30C8&) & ChrW(&H30EA&) & ChrW(&H306E&) & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</h1>") & vbLf
+    s = s & ("<p class=""note"">" & ChrW(&H3053&) & ChrW(&H306E&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B8&) & ChrW(&H306F&) & " Test_D2_Find / Test_D2_Stale " & ChrW(&H5C02&) & ChrW(&H7528&) & ChrW(&H3067&) & ChrW(&H3059&) & ChrW(&H3002&)) & _
+            (ChrW(&H5916&) & ChrW(&H90E8&) & ChrW(&H30B5&) & ChrW(&H30A4&) & ChrW(&H30C8&) & ChrW(&H306B&) & ChrW(&H4F9D&) & ChrW(&H5B58&) & ChrW(&H3057&) & ChrW(&H307E&) & ChrW(&H305B&) & ChrW(&H3093&) & ChrW(&H3002&) & "</p>") & vbLf
+    s = s & ("<div id=""box"" class=""card"" data-note=""" & ChrW(&H5C5E&) & ChrW(&H6027&) & ChrW(&H306E&) & ChrW(&H5024&) & " (" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ")"">") & _
+            ("<span class=""tag"">" & ChrW(&H5185&) & ChrW(&H5074&) & "</span>" & ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&) & "</div>") & vbLf
+    s = s & ("<p id=""esc"">" & ChrW(&H8A18&) & ChrW(&H53F7&) & ": &lt; &gt; &amp; &quot; ' \ " & ChrW(&H306E&) & ChrW(&H6DF7&) & ChrW(&H5728&) & "</p>") & vbLf
+    s = s & ("<pre id=""pre"">1 " & ChrW(&H884C&) & ChrW(&H76EE&)) & vbLf & ("2 " & ChrW(&H884C&) & ChrW(&H76EE&) & "</pre>") & vbLf
     s = s & "<div class=""card"">" & vbLf
-    s = s & "  <input id=""txt"" type=""text"" name=""q"" value=""初期値"">" & vbLf
-    s = s & "  <textarea id=""area"" rows=""2"">テキストエリアの値</textarea>" & vbLf
+    s = s & ("  <input id=""txt"" type=""text"" name=""q"" value=""" & ChrW(&H521D&) & ChrW(&H671F&) & ChrW(&H5024&) & """>") & vbLf
+    s = s & ("  <textarea id=""area"" rows=""2"">" & ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&) & ChrW(&H30A8&) & ChrW(&H30EA&) & ChrW(&H30A2&) & ChrW(&H306E&) & ChrW(&H5024&) & "</textarea>") & vbLf
     s = s & "  <select id=""sel""><option value=""a"">A</option>" & _
             "<option value=""b"" selected>B</option></select>" & vbLf
     s = s & "</div>" & vbLf
-    s = s & "<p><a id=""lnk"" href=""https://example.com/path?x=1"" title=""リンク"">" & _
-            "リンク</a></p>" & vbLf
+    s = s & ("<p><a id=""lnk"" href=""https://example.com/path?x=1"" title=""" & ChrW(&H30EA&) & ChrW(&H30F3&) & ChrW(&H30AF&) & """>") & _
+            (ChrW(&H30EA&) & ChrW(&H30F3&) & ChrW(&H30AF&) & "</a></p>") & vbLf
     s = s & "<div id=""empty""></div>" & vbLf
     s = s & "</body></html>"
 
@@ -2949,18 +2949,18 @@ End Function
 
 
 ' ============================================================
-' BuildD2SecondHtml (D-2: 遷移先の 2 枚目。世代が変わることを見るためだけ)
+' BuildD2SecondHtml (D-2: the 2nd page navigated to. Only to see the generation change)
 ' ============================================================
 Private Function BuildD2SecondHtml() As String
     Dim s As String
 
     s = "<!DOCTYPE html>" & vbLf
     s = s & "<html lang=""ja""><head><meta charset=""UTF-8"">" & vbLf
-    s = s & "<title>D-2 プローブ 2 枚目</title>" & vbLf
+    s = s & ("<title>D-2 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & " 2 " & ChrW(&H679A&) & ChrW(&H76EE&) & "</title>") & vbLf
     s = s & "<style>body{font-family:'Segoe UI','Meiryo',sans-serif;background:#141b14;" & _
             "color:#e8eaed;padding:32px;}</style></head><body>" & vbLf
-    s = s & "<h1 id=""second"">2 枚目のページ</h1>" & vbLf
-    s = s & "<p>ここに来たら、1 枚目で取った Wv2Element はすべて stale になります。</p>" & vbLf
+    s = s & ("<h1 id=""second"">2 " & ChrW(&H679A&) & ChrW(&H76EE&) & ChrW(&H306E&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B8&) & "</h1>") & vbLf
+    s = s & ("<p>" & ChrW(&H3053&) & ChrW(&H3053&) & ChrW(&H306B&) & ChrW(&H6765&) & ChrW(&H305F&) & ChrW(&H3089&) & ChrW(&H3001&) & "1 " & ChrW(&H679A&) & ChrW(&H76EE&) & ChrW(&H3067&) & ChrW(&H53D6&) & ChrW(&H3063&) & ChrW(&H305F&) & " Wv2Element " & ChrW(&H306F&) & ChrW(&H3059&) & ChrW(&H3079&) & ChrW(&H3066&) & " stale " & ChrW(&H306B&) & ChrW(&H306A&) & ChrW(&H308A&) & ChrW(&H307E&) & ChrW(&H3059&) & ChrW(&H3002&) & "</p>") & vbLf
     s = s & "</body></html>"
 
     BuildD2SecondHtml = s
@@ -2968,62 +2968,62 @@ End Function
 
 
 ' ============================================================
-' Test_D2_Help (D-2 の手順)
+' Test_D2_Help (procedure for D-2)
 ' ============================================================
 Public Sub Test_D2_Help()
     Debug.Print ""
     Debug.Print "=========================================================="
-    Debug.Print " D-2 検証手順 (要素レジストリ + Wv2Element の読み取り)"
+    Debug.Print " D-2 verification procedure (element registry + reading of Wv2Element)"
     Debug.Print "=========================================================="
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
-    Debug.Print "  1) UserForm1.Show vbModeless して StartWebView2_Full を実行する"
-    Debug.Print "     ★Show が先★ フォームのウィンドウが無いと Frame1 の HWND が"
-    Debug.Print "     取れず、hWnd_Frame = 0 のまま Browser.Init が失敗する。"
-    Debug.Print "  2) ★イベントバーストが静まるまで待つ★ (仕様事実 20)"
-    Debug.Print "     イミディエイトのログが止まってから次に進むこと。"
-    Debug.Print "     ※検証ページは自前 HTML なので、外部サイトを開く必要はない。"
+    Debug.Print "  --- Preparation ---"
+    Debug.Print "  1) Run UserForm1.Show vbModeless, then run StartWebView2_Full"
+    Debug.Print "     *Show comes first* Without the form's window the HWND of Frame1 cannot"
+    Debug.Print "     be obtained, and Browser.Init fails with hWnd_Frame still 0."
+    Debug.Print "  2) *Wait until the event burst settles* (spec fact 20)"
+    Debug.Print "     Go on only after the Immediate window log has stopped."
+    Debug.Print "     NOTE: the verification page is its own HTML, so there is no need to open an external site."
     Debug.Print ""
-    Debug.Print "  --- 実行 ---"
-    Debug.Print "  3) Test_D2_Find  … 取得・読み取り・不在・掃除を一括で流す"
-    Debug.Print "  4) Test_D2_Stale … ページ遷移で世代が変わることを確認する"
-    Debug.Print "     どちらも★新しいタブを 1 枚開く★ (実行後は手で閉じてよい)"
+    Debug.Print "  --- Run ---"
+    Debug.Print "  3) Test_D2_Find  ... runs acquisition, reading, absence and cleanup in one batch"
+    Debug.Print "  4) Test_D2_Stale ... confirms that the generation changes on page navigation"
+    Debug.Print "     Both *open one new tab* (you may close it by hand after running)"
     Debug.Print ""
-    Debug.Print "  ★実行中はブレーク/ステップ実行しないこと★"
-    Debug.Print "    EvalSync が DoEvents を回して待つので、その最中に止めると"
-    Debug.Print "    仕様事実 20 の窓を踏む。"
+    Debug.Print "  *Do not break/step through during execution*"
+    Debug.Print "    EvalSync waits by running DoEvents, so stopping in the middle of it"
+    Debug.Print "    steps into the window of spec fact 20."
     Debug.Print ""
-    Debug.Print "  --- ★判定はログファイルに残る★ ---"
-    Debug.Print "    イミディエイトは ExecuteScript の配管ログ (1 往復で 15 行) で"
-    Debug.Print "    すぐ流れるので、合否はログファイルで見る:"
-    Debug.Print "      ?Wv2Log.LogPath   … ファイルの場所"
-    Debug.Print "      末尾の「★判定 n 件: OK x / FAIL y★」だけ見れば合否が分かる"
+    Debug.Print "  --- *Verdicts remain in the log file* ---"
+    Debug.Print "    The Immediate window is flushed away at once by the ExecuteScript plumbing log (15 lines per round trip),"
+    Debug.Print "    so check pass/fail in the log file:"
+    Debug.Print "      ?Wv2Log.LogPath   ... location of the file"
+    Debug.Print "      Just look at the trailing ""*Verdicts n: OK x / FAIL y*"" to know pass/fail"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D2_Find) ---"
-    Debug.Print "  ・(1)～(7) の全行が [OK  ] であること"
-    Debug.Print "  ・(2) の InnerHTML が★タグごと正しく★出ること"
-    Debug.Print "      仕様事実30 (< が \u003C で届く) の復号が効いている証拠。"
-    Debug.Print "      ここが FAIL なら Wv2Json.JsonUnescapeAt を疑う。"
-    Debug.Print "  ・(4) が [OK  ] であること = 「空」と「失敗」を区別できている"
-    Debug.Print "  ・(6) の 2 つが★対で★ [OK  ] であること (論点4 の規約):"
-    Debug.Print "      存在しない  → Nothing + LastEvalOk=True"
-    Debug.Print "      不正な指定  → Nothing + LastEvalOk=False"
-    Debug.Print "  ・最後の in-callback 深さが 0 であること"
+    Debug.Print "  --- What to look at (Test_D2_Find) ---"
+    Debug.Print "  - All lines of (1)-(7) are [OK  ]"
+    Debug.Print "  - The InnerHTML of (2) comes out *correctly including the tags*"
+    Debug.Print "      Evidence that the decoding of spec fact 30 (< arrives as <) works."
+    Debug.Print "      If this FAILs, suspect Wv2Json.JsonUnescapeAt."
+    Debug.Print "  - (4) is [OK  ] = 'empty' and 'failure' can be told apart"
+    Debug.Print "  - The 2 lines of (6) are [OK  ] *as a pair* (the convention of issue 4):"
+    Debug.Print "      nonexistent  -> Nothing + LastEvalOk=True"
+    Debug.Print "      invalid specification  -> Nothing + LastEvalOk=False"
+    Debug.Print "  - The final in-callback depth is 0"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D2_Stale) ---"
-    Debug.Print "  ・3) で IsStale=True、読み取りが空文字 + LastError=stale になること"
-    Debug.Print "  ・4) で新しい世代の要素が取れること (gen が前と違うこと)"
-    Debug.Print "    ここが論点2 の核心 (世代は JS が発行し、遷移で必ず変わる)。"
+    Debug.Print "  --- What to look at (Test_D2_Stale) ---"
+    Debug.Print "  - In 3) IsStale=True, and reading gives an empty string + LastError=stale"
+    Debug.Print "  - In 4) an element of the new generation can be obtained (gen differs from before)"
+    Debug.Print "    This is the heart of issue 2 (the generation is issued by JS and always changes on navigation)."
     Debug.Print ""
-    Debug.Print "  --- 回帰確認 (D-2 は Wv2Pane と Wv2Json を触ったため) ---"
-    Debug.Print "  5) Test_D1_Eval  … EvalSync が壊れていないこと"
-    Debug.Print "     ★JsonPickStr を Wv2Json へ移設したので、ここは必ず流すこと★"
-    Debug.Print "  6) Test_D1_Guard … in-callback ガードが効くこと"
-    Debug.Print "  7) タブの追加・切替・閉じる・D&D 並べ替え"
-    Debug.Print "  8) 設定タブ (歯車) が開き、検索エンジンを変更できること"
-    Debug.Print "     ※ Wv2Json は TabBar / NavBar / SettingsBridge も使っている。"
+    Debug.Print "  --- Regression check (because D-2 touched Wv2Pane and Wv2Json) ---"
+    Debug.Print "  5) Test_D1_Eval  ... EvalSync must not be broken"
+    Debug.Print "     *JsonPickStr was moved to Wv2Json, so always run this*"
+    Debug.Print "  6) Test_D1_Guard ... the in-callback guard works"
+    Debug.Print "  7) Adding / switching / closing tabs and D&D reordering"
+    Debug.Print "  8) The settings tab (gear) opens and the search engine can be changed"
+    Debug.Print "     NOTE: Wv2Json is also used by TabBar / NavBar / SettingsBridge."
     Debug.Print ""
-    Debug.Print "  --- 手で試したいとき ---"
+    Debug.Print "  --- If you want to try by hand ---"
     Debug.Print "  Set p = UserForm1.GetActivePane"
     Debug.Print "  Set el = p.QuerySelector(""input[name='q']"")"
     Debug.Print "  ?el.TagName"
@@ -3035,109 +3035,109 @@ End Sub
 
 
 ' ============================================================
-' Test_K1_Log  (K-1 段階)
+' Test_K1_Log  (Stage K-1)
 '
-'   Wv2Log をイミディエイトから 1 発で検証する。
-'   ブラウザを起動していなくても動く (WebView2 に依存しない)。
+'   Verifies Wv2Log in one go from the Immediate window.
+'   Works without starting the browser (does not depend on WebView2).
 ' ============================================================
 Public Sub Test_K1_Log()
     Dim k1Total As Long
     Dim k1Pass As Long
 
     Debug.Print String$(64, "=")
-    Debug.Print "K-1 検証: Wv2Log (デバッグログのファイル出力)"
+    Debug.Print "K-1 verification: Wv2Log (file output of the debug log)"
     Debug.Print String$(64, "=")
 
-    ' --- 準備: 新しいログを開く ---
+    ' --- Preparation: open a new log ---
     Wv2Log.LogLevel = LOG_DEBUG
     Wv2Log.LogEcho = True
     Wv2Log.LogStart
 
     Dim k1Path As String
     k1Path = Wv2Log.LogPath
-    Debug.Print "  ログ: " & k1Path
+    Debug.Print "  log: " & k1Path
     Debug.Print ""
 
-    K1Bool "(1) LogPath が取れる", (Len(k1Path) > 0), k1Total, k1Pass
-    K1Bool "(2) ファイルが実在する", (Len(Dir(k1Path)) > 0), k1Total, k1Pass
+    K1Bool "(1) LogPath can be obtained", (Len(k1Path) > 0), k1Total, k1Pass
+    K1Bool "(2) the file really exists", (Len(Dir(k1Path)) > 0), k1Total, k1Pass
 
-    ' --- 4 レベルを書く ---
-    Wv2Log.LogE "K-1: ERROR の行"
-    Wv2Log.LogW "K-1: WARN の行"
-    Wv2Log.LogI "K-1: INFO の行"
-    Wv2Log.LogD "K-1: DEBUG の行"
+    ' --- write the 4 levels ---
+    Wv2Log.LogE ("K-1: ERROR " & ChrW(&H306E&) & ChrW(&H884C&))
+    Wv2Log.LogW ("K-1: WARN " & ChrW(&H306E&) & ChrW(&H884C&))
+    Wv2Log.LogI ("K-1: INFO " & ChrW(&H306E&) & ChrW(&H884C&))
+    Wv2Log.LogD ("K-1: DEBUG " & ChrW(&H306E&) & ChrW(&H884C&))
 
-    ' --- しきい値で切れるか ---
+    ' --- does the threshold cut them off? ---
     Wv2Log.LogLevel = LOG_WARN
-    Wv2Log.LogI "K-1: この INFO は出ないはず"
-    Wv2Log.LogD "K-1: この DEBUG は出ないはず"
+    Wv2Log.LogI ("K-1: " & ChrW(&H3053&) & ChrW(&H306E&) & " INFO " & ChrW(&H306F&) & ChrW(&H51FA&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H306F&) & ChrW(&H305A&))
+    Wv2Log.LogD ("K-1: " & ChrW(&H3053&) & ChrW(&H306E&) & " DEBUG " & ChrW(&H306F&) & ChrW(&H51FA&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H306F&) & ChrW(&H305A&))
     Wv2Log.LogLevel = LOG_DEBUG
-    Wv2Log.LogD "K-1: しきい値を戻した"
+    Wv2Log.LogD ("K-1: " & ChrW(&H3057&) & ChrW(&H304D&) & ChrW(&H3044&) & ChrW(&H5024&) & ChrW(&H3092&) & ChrW(&H623B&) & ChrW(&H3057&) & ChrW(&H305F&))
 
-    ' --- 実行時に組み立てた Unicode (ソースは CP932 のまま) ---
+    ' --- Unicode assembled at run time (the source stays CP932) ---
     Dim k1Emoji As String
     k1Emoji = ChrW$(&HD83D&) & ChrW$(&HDE00&)
-    Wv2Log.LogD "K-1: サロゲートペア [" & k1Emoji & "]"
-    Wv2Log.LogD "K-1: 日本語と記号 ★ ← → ① ～ ―"
+    Wv2Log.LogD ("K-1: " & ChrW(&H30B5&) & ChrW(&H30ED&) & ChrW(&H30B2&) & ChrW(&H30FC&) & ChrW(&H30C8&) & ChrW(&H30DA&) & ChrW(&H30A2&) & " [") & k1Emoji & "]"
+    Wv2Log.LogD ("K-1: " & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ChrW(&H3068&) & ChrW(&H8A18&) & ChrW(&H53F7&) & " " & ChrW(&H2605&) & " " & ChrW(&H2190&) & " " & ChrW(&H2192&) & " " & ChrW(&H2460&) & " " & ChrW(&HFF5E&) & " " & ChrW(&H2015&))
 
-    ' --- 再入ガード: 積んで、あとでまとめて流れるか ---
+    ' --- re-entry guard: are they queued and flushed together later? ---
     Wv2Log.Debug_SetLogDepth 1
-    Wv2Log.LogD "K-1: 再入中の 1 行目"
-    Wv2Log.LogD "K-1: 再入中の 2 行目"
+    Wv2Log.LogD ("K-1: " & ChrW(&H518D&) & ChrW(&H5165&) & ChrW(&H4E2D&) & ChrW(&H306E&) & " 1 " & ChrW(&H884C&) & ChrW(&H76EE&))
+    Wv2Log.LogD ("K-1: " & ChrW(&H518D&) & ChrW(&H5165&) & ChrW(&H4E2D&) & ChrW(&H306E&) & " 2 " & ChrW(&H884C&) & ChrW(&H76EE&))
     Wv2Log.Debug_SetLogDepth 0
-    Wv2Log.LogD "K-1: 再入から抜けた"
+    Wv2Log.LogD ("K-1: " & ChrW(&H518D&) & ChrW(&H5165&) & ChrW(&H304B&) & ChrW(&H3089&) & ChrW(&H629C&) & ChrW(&H3051&) & ChrW(&H305F&))
 
     Wv2Log.LogFlush
 
-    ' --- 読み戻して照合 ---
-    '   ★「無いことの確認」は、読み戻せて初めて意味を持つ★
-    '   読めていないのに InStr(空, x) = 0 で通ってしまうと、空振りで合格する。
-    '   K-1 の実機検証で実際にこれをやってしまったので、読めた場合だけ照合する。
+    ' --- read back and compare ---
+    '   *"Confirming absence" only means something once the file has been read back*
+    '   If InStr(empty, x) = 0 passes even though nothing was read, it passes by a miss.
+    '   We actually did exactly this in the K-1 real-machine run, so we compare only when the read succeeded.
     Dim k1Text As String
 
-    ' (3) 実行中のまま読めるか (エディタで開けるかの確認)
-    '   ★ADODB.Stream では測れない★ ADODB は共有モードに関わらず、
-    '   他のハンドルが開いているファイルを開けない (K-1 の実機検証で実測)。
-    '   共有モードを明示する読み手なら開けるので、VBA 自身の
-    '   Open ... For Binary Access Read Shared で確かめる。
+    ' (3) can it be read while running? (checks that it can be opened in an editor)
+    '   *It cannot be measured with ADODB.Stream* ADODB cannot open a file
+    '   that another handle has open, regardless of the share mode (measured in the K-1 real-machine run).
+    '   A reader that states the share mode explicitly can open it, so we check with VBA's own
+    '   Open ... For Binary Access Read Shared.
     Debug.Print ""
-    K1Bool "(3) 実行中でもログを読める (共有読み取り)", _
+    K1Bool "(3) the log can be read even while running (shared read)", _
            K1CanReadWhileOpen(k1Path), k1Total, k1Pass
 
-    ' 本文の照合は ADODB で読む。開いたままでは開けないので先に閉じる
+    ' Read the body with ADODB for comparison. It cannot be opened while open, so close it first
     Wv2Log.LogStop
     k1Text = K1ReadUtf8(k1Path)
-    K1Bool "(4) ログを読み戻せた", (Len(k1Text) > 0), k1Total, k1Pass
+    K1Bool "(4) the log could be read back", (Len(k1Text) > 0), k1Total, k1Pass
 
     If Len(k1Text) = 0 Then
         Debug.Print ""
-        Debug.Print "  ★ログを読み戻せないので、以降の照合は打ち切る★"
-        Debug.Print "     (空文字に対する InStr は何でも 0 を返すので、"
-        Debug.Print "      ここで続けると空振りで合格してしまう)"
+        Debug.Print "  *The log cannot be read back, so the following comparisons are cut off*"
+        Debug.Print "     (InStr on an empty string returns 0 for anything, so"
+        Debug.Print "      continuing here would pass by a miss)"
     Else
-        K1Bool "(5) ERROR の行がある", (InStr(k1Text, "K-1: ERROR の行") > 0), k1Total, k1Pass
-        K1Bool "(6) WARN の行がある", (InStr(k1Text, "K-1: WARN の行") > 0), k1Total, k1Pass
-        K1Bool "(7) INFO の行がある", (InStr(k1Text, "K-1: INFO の行") > 0), k1Total, k1Pass
-        K1Bool "(8) DEBUG の行がある", (InStr(k1Text, "K-1: DEBUG の行") > 0), k1Total, k1Pass
-        K1Bool "(9) しきい値で切った INFO が無い", (InStr(k1Text, "この INFO は出ないはず") = 0), k1Total, k1Pass
-        K1Bool "(10) しきい値で切った DEBUG が無い", (InStr(k1Text, "この DEBUG は出ないはず") = 0), k1Total, k1Pass
-        K1Bool "(11) サロゲートペアが無傷", (InStr(k1Text, k1Emoji) > 0), k1Total, k1Pass
-        K1Bool "(12) 日本語が無傷", (InStr(k1Text, "日本語と記号 ★ ← → ① ～ ―") > 0), k1Total, k1Pass
-        K1Bool "(13) 再入中の 2 行が後から流れている", _
-               (InStr(k1Text, "K-1: 再入中の 1 行目") > InStr(k1Text, "K-1: 再入から抜けた")), _
+        K1Bool "(5) the ERROR line is present", (InStr(k1Text, ("K-1: ERROR " & ChrW(&H306E&) & ChrW(&H884C&))) > 0), k1Total, k1Pass
+        K1Bool "(6) the WARN line is present", (InStr(k1Text, ("K-1: WARN " & ChrW(&H306E&) & ChrW(&H884C&))) > 0), k1Total, k1Pass
+        K1Bool "(7) the INFO line is present", (InStr(k1Text, ("K-1: INFO " & ChrW(&H306E&) & ChrW(&H884C&))) > 0), k1Total, k1Pass
+        K1Bool "(8) the DEBUG line is present", (InStr(k1Text, ("K-1: DEBUG " & ChrW(&H306E&) & ChrW(&H884C&))) > 0), k1Total, k1Pass
+        K1Bool "(9) no INFO that was cut by the threshold", (InStr(k1Text, (ChrW(&H3053&) & ChrW(&H306E&) & " INFO " & ChrW(&H306F&) & ChrW(&H51FA&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H306F&) & ChrW(&H305A&))) = 0), k1Total, k1Pass
+        K1Bool "(10) no DEBUG that was cut by the threshold", (InStr(k1Text, (ChrW(&H3053&) & ChrW(&H306E&) & " DEBUG " & ChrW(&H306F&) & ChrW(&H51FA&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H306F&) & ChrW(&H305A&))) = 0), k1Total, k1Pass
+        K1Bool "(11) the surrogate pair is intact", (InStr(k1Text, k1Emoji) > 0), k1Total, k1Pass
+        K1Bool "(12) the Japanese is intact", (InStr(k1Text, (ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ChrW(&H3068&) & ChrW(&H8A18&) & ChrW(&H53F7&) & " " & ChrW(&H2605&) & " " & ChrW(&H2190&) & " " & ChrW(&H2192&) & " " & ChrW(&H2460&) & " " & ChrW(&HFF5E&) & " " & ChrW(&H2015&))) > 0), k1Total, k1Pass
+        K1Bool "(13) the 2 lines during re-entry flow out later", _
+               (InStr(k1Text, ("K-1: " & ChrW(&H518D&) & ChrW(&H5165&) & ChrW(&H4E2D&) & ChrW(&H306E&) & " 1 " & ChrW(&H884C&) & ChrW(&H76EE&))) > InStr(k1Text, ("K-1: " & ChrW(&H518D&) & ChrW(&H5165&) & ChrW(&H304B&) & ChrW(&H3089&) & ChrW(&H629C&) & ChrW(&H3051&) & ChrW(&H305F&)))), _
                k1Total, k1Pass
     End If
 
-    ' --- 連番が飛んでいないか (K-1 の動機そのもの) ---
+    ' --- are the sequence numbers free of gaps? (the very motivation of K-1) ---
     Dim k1Lines As Variant
     Dim k1Idx As Long
     Dim k1Num As Long
     Dim k1Prev As Long
     Dim k1Ok As Boolean
-    ' ★順序ではなく欠番の有無を見る★
-    '   再入ガードの検証で保留キューを後から流すため、ファイル上の順序は
-    '   わざと入れ替わる。K-1 の動機は「流れたことに気づけない」ことなので、
-    '   見るべきは連番の抜けであって並び順ではない。
+    ' *Look at the presence of gaps, not the order*
+    '   The deferred queue is flushed later in the re-entry guard test, so the order in the file
+    '   is deliberately swapped. The motivation of K-1 is "not noticing that something was dropped", so
+    '   what to look at is gaps in the sequence numbers, not the ordering.
     Dim k1Seq As Long
     k1Lines = Split(k1Text, vbCrLf)
     k1Prev = 0
@@ -3153,18 +3153,18 @@ Public Sub Test_K1_Log()
     Next k1Idx
     k1Ok = (k1Seq = k1Prev) And (k1Seq > 0)
     If Len(k1Text) > 0 Then
-        K1Bool "(14) 連番に欠番が無い (" & k1Seq & " 行 / 最大 " & k1Prev & ")", _
+        K1Bool "(14) no gaps in the sequence numbers (" & k1Seq & " lines / max " & k1Prev & ")", _
                k1Ok, k1Total, k1Pass
     End If
 
     Debug.Print ""
-    Debug.Print "  結果: " & k1Pass & " / " & k1Total & " 合格"
+    Debug.Print "  Result: " & k1Pass & " / " & k1Total & " passed"
     If k1Pass = k1Total Then
-        Debug.Print "  ★K-1 合格★"
+        Debug.Print "  *K-1 passed*"
     Else
-        Debug.Print "  ★不合格あり。上の [FAIL] を見ること★"
+        Debug.Print "  *There are failures. Look at the [FAIL] above*"
     End If
-    Debug.Print "  ログの実物: " & k1Path
+    Debug.Print "  actual log: " & k1Path
     Debug.Print String$(64, "=")
 End Sub
 
@@ -3181,9 +3181,9 @@ Private Sub K1Bool(ByVal label As String, ByVal cond As Boolean, _
 End Sub
 
 
-' 開かれたままのファイルを共有モードで読めるかどうかだけを見る
-'   ★ADODB.Stream はこの用途に使えない★ 共有モードに関わらず
-'   他のハンドルが開いているファイルを開けない (K-1 で実測)。
+' Only looks at whether a file that is kept open can be read in shared mode
+'   *ADODB.Stream cannot be used for this purpose* Regardless of the share mode
+'   it cannot open a file that another handle has open (measured in K-1).
 Private Function K1CanReadWhileOpen(ByVal k1Path As String) As Boolean
     On Error GoTo eh
     Dim k1Handle As Long
@@ -3203,7 +3203,7 @@ eh:
 End Function
 
 
-' UTF-8 / BOM なしのファイルを読む (検証専用。ADODB でよい)
+' Read a UTF-8 / no-BOM file (verification only. ADODB is fine)
 Private Function K1ReadUtf8(ByVal k1Path As String) As String
     On Error GoTo eh
     Dim k1Stream As Object
@@ -3216,107 +3216,107 @@ Private Function K1ReadUtf8(ByVal k1Path As String) As String
     k1Stream.Close
     Exit Function
 eh:
-    Debug.Print "K1ReadUtf8: 失敗 (" & Err.Number & ") " & Err.Description
+    Debug.Print "K1ReadUtf8: failed (" & Err.Number & ") " & Err.Description
 End Function
 
 
 ' ============================================================
-' Test_K1_Help  (K-1 段階)
+' Test_K1_Help  (Stage K-1)
 ' ============================================================
 Public Sub Test_K1_Help()
     Debug.Print String$(64, "=")
-    Debug.Print "K-1 (デバッグログのファイル出力) の使い方"
+    Debug.Print "How to use K-1 (file output of the debug log)"
     Debug.Print String$(64, "=")
     Debug.Print ""
-    Debug.Print "  1) Test_K1_Log      … 自動検証を 1 発で回す"
-    Debug.Print "  2) ?Wv2Log.LogPath  … 今のログファイルの場所"
-    Debug.Print "  3) Wv2Log.LogStart  … 新しいログに切り替える (検証の仕切り直し)"
+    Debug.Print "  1) Test_K1_Log      ... runs the automatic verification in one go"
+    Debug.Print "  2) ?Wv2Log.LogPath  ... location of the current log file"
+    Debug.Print "  3) Wv2Log.LogStart  ... switches to a new log (a fresh start for verification)"
     Debug.Print ""
-    Debug.Print "  ★D 軸の検証手順★"
-    Debug.Print "    Wv2Log.LogStart を打ってから Test_D2_Find を回すと、"
-    Debug.Print "    そのテスト 1 回分だけが 1 ファイルに閉じる。"
-    Debug.Print "    イミディエイトが流れても、ファイルには全部残っている。"
+    Debug.Print "  *Verification procedure for the D axis*"
+    Debug.Print "    If you type Wv2Log.LogStart and then run Test_D2_Find,"
+    Debug.Print "    only that one test run is contained in one file."
+    Debug.Print "    Even if the Immediate window scrolls away, everything remains in the file."
     Debug.Print ""
-    Debug.Print "  ★行頭の 6 桁は連番★ 欠番があればログが落ちている。"
-    Debug.Print "    これが K-1 を作った動機 (流れたことに気づけないのが危険)。"
+    Debug.Print "  *The 6 digits at the start of a line are a sequence number* If there is a gap, the log was dropped."
+    Debug.Print "    This is the motivation for building K-1 (not noticing that something was dropped is dangerous)."
     Debug.Print ""
-    Debug.Print "  設定:"
+    Debug.Print "  Settings:"
     Debug.Print "    Wv2Log.LogLevel = LOG_ERROR / LOG_WARN / LOG_INFO / LOG_DEBUG"
-    Debug.Print "    Wv2Log.LogEcho  = False   … イミディエイトへの併記を止める"
+    Debug.Print "    Wv2Log.LogEcho  = False   ... stops the duplicate output to the Immediate window"
     Debug.Print ""
-    Debug.Print "  ★実行中のログをエディタで開ける★ (Shared で開いているため)。"
-    Debug.Print "    ただし ADODB.Stream だけは開けない。共有モードに関わらず"
-    Debug.Print "    他のハンドルが開いているファイルを開けない仕様 (K-1 で実測)。"
+    Debug.Print "  *The log of a running session can be opened in an editor* (because it is opened with Shared)."
+    Debug.Print "    Only ADODB.Stream cannot open it. Regardless of the share mode,"
+    Debug.Print "    it cannot open a file that another handle has open (measured in K-1)."
     Debug.Print ""
-    Debug.Print "  ログは起動ごとに 1 本。20 本を超えると古いものから消える。"
-    Debug.Print "  置き場所: %APPDATA%\Wv2Browser\logs\"
+    Debug.Print "  One log per startup. When there are more than 20, the oldest are deleted first."
+    Debug.Print "  Location: %APPDATA%\Wv2Browser\logs\"
     Debug.Print String$(64, "=")
 End Sub
 
 
 ' ============================================================
-' Test_K2_Help  (K-2 段階)
+' Test_K2_Help  (Stage K-2)
 '
-'   設定タブは WebView2 の実起動が要るので自動化しきれない。
-'   画面で確かめる手順を出す。
+'   The settings tab needs a real start of WebView2, so it cannot be fully automated.
+'   This outputs the procedure for checking on screen.
 ' ============================================================
 Public Sub Test_K2_Help()
     Debug.Print String$(64, "=")
-    Debug.Print "K-2 検証: 設定タブが検索で潰れるバグ"
+    Debug.Print "K-2 verification: the bug where the settings tab gets crushed by a search"
     Debug.Print String$(64, "=")
     Debug.Print ""
-    Debug.Print "  ★先に Wv2Log.LogStart を打つと、この検証 1 回分が 1 ファイルに閉じる★"
-    Debug.Print "    ログの場所は ?Wv2Log.LogPath"
+    Debug.Print "  *If you type Wv2Log.LogStart first, this one verification run is contained in one file*"
+    Debug.Print "    The log location is ?Wv2Log.LogPath"
     Debug.Print ""
-    Debug.Print "  【1】 直った本体"
-    Debug.Print "    1) ブラウザを起動する"
-    Debug.Print "    2) タブバー右端の歯車を押して設定タブを開く"
-    Debug.Print "    3) その設定タブがアクティブなまま、アドレスバーに 適当な検索語 を入れる"
-    Debug.Print "       → 検索結果へ遷移する (これは正常。設定タブも普通のタブ)"
-    Debug.Print "    4) ★もう一度 歯車 を押す★"
-    Debug.Print "       → ★新しい設定タブが開けば直っている★"
-    Debug.Print "       → 何も起きない / 検索結果のタブへ切り替わるだけなら直っていない"
+    Debug.Print "  [1] The fixed core"
+    Debug.Print "    1) Start the browser"
+    Debug.Print "    2) Press the gear at the right end of the tab bar to open the settings tab"
+    Debug.Print "    3) With that settings tab still active, type an arbitrary search term into the address bar"
+    Debug.Print "       -> It navigates to the search results (this is normal. The settings tab is also an ordinary tab)"
+    Debug.Print "    4) *Press the gear once more*"
+    Debug.Print "       -> *If a new settings tab opens, it is fixed*"
+    Debug.Print "       -> If nothing happens / it only switches to the search-results tab, it is not fixed"
     Debug.Print ""
-    Debug.Print "  【2】 重複防止が壊れていないこと (第9.19 の回帰)"
-    Debug.Print "    5) 設定タブを開いたまま歯車を 3～4 回連打する"
-    Debug.Print "       → 設定タブは常に 1 枚のまま。増えないこと"
+    Debug.Print "  [2] Duplicate prevention must not be broken (regression of 9.19)"
+    Debug.Print "    5) With a settings tab open, mash the gear 3-4 times"
+    Debug.Print "       -> There stays always exactly 1 settings tab. It must not increase"
     Debug.Print ""
-    Debug.Print "  【3】 アドレスバー以外の経路でも直っていること"
-    Debug.Print "    6) 設定タブでリンクのあるページへ遷移し、歯車 → 新しい設定タブが開く"
-    Debug.Print "    7) 設定タブでリロードしても設定画面が保たれること"
+    Debug.Print "  [3] It must also be fixed for routes other than the address bar"
+    Debug.Print "    6) Navigate to a page with links from the settings tab, then gear -> a new settings tab opens"
+    Debug.Print "    7) Even after reloading on the settings tab, the settings screen must be kept"
     Debug.Print ""
-    Debug.Print "  【4】 ★設定ビューが 2 枚でも値が食い違わないこと (今回の新機能)★"
-    Debug.Print "    8) 歯車で設定タブ A を開く"
-    Debug.Print "    9) A のアドレスバーで適当なページへ遷移する"
-    Debug.Print "   10) 歯車を押して設定タブ B を開く"
-    Debug.Print "   11) A に切り替えて ★戻る★ を押す → A も設定画面に戻る (2 枚になる)"
-    Debug.Print "   12) B に切り替えて、検索エンジンを別のものに変える"
-    Debug.Print "   13) ★A に切り替える★"
-    Debug.Print "       → ★A の選択表示とプレビューも、変更後のエンジンになっていること★"
-    Debug.Print "       → A が古いエンジンを選択したままなら同期が効いていない"
+    Debug.Print "  [4] *Values must not diverge even with 2 settings views (the new feature this time)*"
+    Debug.Print "    8) Open settings tab A with the gear"
+    Debug.Print "    9) Navigate to an arbitrary page in A's address bar"
+    Debug.Print "   10) Press the gear to open settings tab B"
+    Debug.Print "   11) Switch to A and press *back* -> A also returns to the settings screen (now there are 2)"
+    Debug.Print "   12) Switch to B and change the search engine to another one"
+    Debug.Print "   13) *Switch to A*"
+    Debug.Print "       -> *A's selection display and preview must also be the changed engine*"
+    Debug.Print "       -> If A still has the old engine selected, the sync is not working"
     Debug.Print ""
-    Debug.Print "  【5】 回帰 (壊していないこと)"
-    Debug.Print "   14) 設定タブでエンジンを変え、通常タブで検索して反映されること"
-    Debug.Print "   15) カスタム URL の入力・適用が従来どおり動くこと"
-    Debug.Print "       ※ カスタム入力欄の中身は同期で上書きしない仕様 (入力途中を壊さないため)"
+    Debug.Print "  [5] Regression (nothing must be broken)"
+    Debug.Print "   14) Change the engine on the settings tab, search in a normal tab, and confirm it is reflected"
+    Debug.Print "   15) Entering and applying a custom URL still works as before"
+    Debug.Print "       NOTE: by design the contents of the custom input box are not overwritten by the sync (to avoid breaking what is being typed)"
     Debug.Print ""
-    Debug.Print "  ログに出るもの:"
-    Debug.Print "    Wv2Browser.OpenSettingsTab: 設定画面を表示中のタブ(index N)を..."
-    Debug.Print "    Wv2Browser.SyncSettingsViewsNow: 設定ビュー N 枚へ <engine> を反映した"
-    Debug.Print "    Wv2Browser.IsSettingsView: 判定できないので... (読み込み中などで正常)"
+    Debug.Print "  What appears in the log:"
+    Debug.Print "    Wv2Browser.OpenSettingsTab: the tab (index N) showing the settings screen is..."
+    Debug.Print "    Wv2Browser.SyncSettingsViewsNow: reflected <engine> to N settings views"
+    Debug.Print "    Wv2Browser.IsSettingsView: cannot determine so... (normal while loading, etc.)"
     Debug.Print String$(64, "=")
 End Sub
 
 ' ============================================================
-' Test_D3_Probe_Promise (D-3 の初手: ★未知1 の実測★)
+' Test_D3_Probe_Promise (the first move of D-3: *measuring unknown 1*)
 '
-'   「ExecuteScript は Promise を待つか」を確かめる。ここの結果で
-'   論点3 (待ちループを VBA で回すか JS で回すか) が決まる。
+'   Checks "does ExecuteScript wait for a Promise?". This result decides
+'   issue 3 (whether the wait loop is run on the VBA side or the JS side).
 '
-'   ★(B) は自動判定できない★ raw ExecuteScript の結果は EvalSync の
-'   保留テーブルを通らないので、VBA からは受け取れない。代わりに
-'   Wv2Pane.OnExecuteScriptCompleted が出す resultJson= の行を目で見る。
-'   その行が★どのマーカーの間に出たか★で判定できるようにしてある。
+'   *(B) cannot be judged automatically* The result of a raw ExecuteScript does not pass through EvalSync's
+'   pending table, so VBA cannot receive it. Instead, look by eye at the lines of resultJson= that
+'   Wv2Pane.OnExecuteScriptCompleted emits.
+'   It is arranged so that the verdict can be made from *between which markers that line appeared*.
 ' ============================================================
 Public Sub Test_D3_Probe_Promise()
     Dim p As Wv2Pane
@@ -3325,69 +3325,69 @@ Public Sub Test_D3_Probe_Promise()
 
     Set p = UserForm1.GetActivePane
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D3_Probe_Promise: アクティブな Pane がありません。" & _
-                    "先に UserForm1.StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D3_Probe_Promise: there is no active Pane." & _
+                    "Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D3_Probe_Promise 開始 ================"
-    Wv2Log.LogI "  ★未知1 の実測: ExecuteScript は Promise を待つか★"
+    Wv2Log.LogI "================ Test_D3_Probe_Promise start ================"
+    Wv2Log.LogI "  *Measuring unknown 1: does ExecuteScript wait for a Promise?*"
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (A) EvalSync 経由 (D-1 の同期プリミティブ) ---"
-    Wv2Log.LogI "      EvalSync は JSON.stringify(式) を撃つので、式が Promise を"
-    Wv2Log.LogI "      返してもその場で {} に潰れる。★仕様上そうなる★ことの確認。"
+    Wv2Log.LogI "  --- (A) Via EvalSync (the synchronous primitive of D-1) ---"
+    Wv2Log.LogI "      EvalSync fires JSON.stringify(expression), so even if the expression returns a Promise"
+    Wv2Log.LogI "      it collapses to {} on the spot. This confirms that *by spec it is so*."
 
     res = p.EvalSync("1+1")
-    Wv2Log.LogI "      1+1                 → [" & res & "] ok=" & p.LastEvalOk
+    Wv2Log.LogI "      1+1                 -> [" & res & "] ok=" & p.LastEvalOk
     res = p.EvalSync("Promise.resolve(42)")
-    Wv2Log.LogI "      Promise.resolve(42) → [" & res & "] ok=" & p.LastEvalOk
-    TestBool "EvalSync は Promise を値に解決しない ({} になる)", (res = "{}")
+    Wv2Log.LogI "      Promise.resolve(42) -> [" & res & "] ok=" & p.LastEvalOk
+    TestBool "EvalSync does not resolve a Promise to a value (becomes {})", (res = "{}")
 
     res = p.EvalSync("(async function(){return 5;})()")
-    Wv2Log.LogI "      async 関数の戻り    → [" & res & "] ok=" & p.LastEvalOk
+    Wv2Log.LogI "      return of an async function    -> [" & res & "] ok=" & p.LastEvalOk
 
     res = p.EvalSync("new Promise(function(r){setTimeout(function(){r(7);},300);})")
-    Wv2Log.LogI "      遅延 Promise        → [" & res & "] ok=" & p.LastEvalOk
+    Wv2Log.LogI "      delayed Promise        -> [" & res & "] ok=" & p.LastEvalOk
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (B) raw ExecuteScript (JSON.stringify で包まない) ---"
-    Wv2Log.LogI "      ★ここは目で見る★ マーカーの間に出る"
-    Wv2Log.LogI "      「OnExecuteScriptCompleted: ... resultJson=」の行を読むこと。"
+    Wv2Log.LogI "  --- (B) raw ExecuteScript (not wrapped in JSON.stringify) ---"
+    Wv2Log.LogI "      *Look with your eyes here* Read the lines"
+    Wv2Log.LogI "      'OnExecuteScriptCompleted: ... resultJson=' that appear between the markers."
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  ★★★ (B-1) Promise.resolve(42) ここから ★★★"
+    Wv2Log.LogI "  *** (B-1) Promise.resolve(42) starts here ***"
     cb = p.View_ExecuteScript("Promise.resolve(42)")
     D3Pump 2
-    Wv2Log.LogI "  ★★★ (B-1) ここまで (callbackId=" & cb & ") ★★★"
-    Wv2Log.LogI "      resultJson={} なら★待たない★ / resultJson=42 なら★待つ★"
+    Wv2Log.LogI "  *** (B-1) ends here (callbackId=" & cb & ") ***"
+    Wv2Log.LogI "      If resultJson={} it *does not wait* / if resultJson=42 it *waits*"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  ★★★ (B-2) 決して解決しない Promise ここから ★★★"
+    Wv2Log.LogI "  *** (B-2) a Promise that never resolves starts here ***"
     cb = p.View_ExecuteScript("new Promise(function(r){})")
     D3Pump 2
-    Wv2Log.LogI "  ★★★ (B-2) ここまで (callbackId=" & cb & ") ★★★"
-    Wv2Log.LogI "      この間に resultJson={} が出た → ★待たない★ (確定)"
-    Wv2Log.LogI "      この間に何も出なかった       → ★待つ★ (確定)"
+    Wv2Log.LogI "  *** (B-2) ends here (callbackId=" & cb & ") ***"
+    Wv2Log.LogI "      resultJson={} appeared in between -> *does not wait* (settled)"
+    Wv2Log.LogI "      nothing appeared in between       -> *waits* (settled)"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- 判定の意味 ---"
-    Wv2Log.LogI "  ・待たない → 論点3 の骨格どおり★VBA 側でポーリング★する"
-    Wv2Log.LogI "  ・待つ     → JS 側で待てるので EvalSync の包み方から設計し直す"
-    Wv2Log.LogI "                (第9.30 / D-1 の教訓: 前提が違えば初手を差し替える)"
-    Wv2Log.LogI "  ※ (A) の結果は (B) がどちらでも変わらない。今の EvalSync は"
-    Wv2Log.LogI "     Promise を待てないので、待ちを JS 側に置くなら D-1 の包み方に手が要る。"
+    Wv2Log.LogI "  --- Meaning of the verdict ---"
+    Wv2Log.LogI "  - does not wait -> *poll on the VBA side* as in the skeleton of issue 3"
+    Wv2Log.LogI "  - waits     -> the wait can be done on the JS side, so redesign starting from how EvalSync wraps"
+    Wv2Log.LogI "                (the lesson of 9.30 / D-1: if the premise differs, replace the first move)"
+    Wv2Log.LogI "  NOTE: the result of (A) does not change whichever way (B) goes. The current EvalSync"
+    Wv2Log.LogI "     cannot wait for a Promise, so putting the wait on the JS side needs work on D-1's wrapping."
 
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D3_Probe_Promise 終了 ================"
+    Wv2Log.LogI "================ Test_D3_Probe_Promise end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_D3_Write (D-3 本体の検証: 書き込み・操作)
+' Test_D3_Write (verification of the D-3 main part: writes and operations)
 ' ============================================================
 Public Sub Test_D3_Write()
     Dim b As Wv2Browser
@@ -3399,141 +3399,141 @@ Public Sub Test_D3_Write()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D3_Write: Browser が起動していません。" & _
-                    "先に UserForm1.StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D3_Write: Browser is not started." & _
+                    "Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD3ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D3_Write: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D3_Write: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-3 プローブ", 10) Then
-        Wv2Log.LogI "Test_D3_Write: 検証ページの読み込みを確認できませんでした。中止します。"
+    If Not D2WaitTitle(p, ("D-3 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D3_Write: could not confirm that the verification page loaded. Aborting."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D3_Write 開始 ================"
-    Wv2Log.LogI "  --- (1) input への書き込み ---"
+    Wv2Log.LogI "================ Test_D3_Write start ================"
+    Wv2Log.LogI "  --- (1) Writing to input ---"
 
     Set el = D2El(p, "txt")
-    el.value = "書き込んだ値"
+    el.value = (ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H8FBC&) & ChrW(&H3093&) & ChrW(&H3060&) & ChrW(&H5024&))
     info = el.LastInfo
-    TestBool "Value = が成功する (LastOk)", el.LastOk
-    Wv2Log.LogI "        経路 (LastInfo) = " & info & "  ★setter が期待値★"
-    TestBool "  ★ネイティブ setter 経由である★", (info = "setter")
-    TestEq "読み戻すと書いた値になる", el, el.value, "書き込んだ値"
-    TestEq "★属性の value は変わらない★ (初期値のまま)", el, _
-         el.GetAttribute("value"), "初期値"
+    TestBool "Value = succeeds (LastOk)", el.LastOk
+    Wv2Log.LogI "        route (LastInfo) = " & info & "  *setter is the expected value*"
+    TestBool "  *goes through the native setter*", (info = "setter")
+    TestEq "reading back gives the written value", el, el.value, (ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H8FBC&) & ChrW(&H3093&) & ChrW(&H3060&) & ChrW(&H5024&))
+    TestEq "*the value attribute does not change* (stays at the initial value)", el, _
+         el.GetAttribute("value"), (ChrW(&H521D&) & ChrW(&H671F&) & ChrW(&H5024&))
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) 記号・日本語 (JsQuote の確認) ---"
-    el.value = "記号: < > & "" ' \ の混在"
-    TestBool "記号混じりでも成功する", el.LastOk
-    TestEq "記号混じりが往復する", el, el.value, _
-         "記号: < > & "" ' \ の混在"
+    Wv2Log.LogI "  --- (2) Symbols and Japanese (checking JsQuote) ---"
+    el.value = (ChrW(&H8A18&) & ChrW(&H53F7&) & ": < > & "" ' \ " & ChrW(&H306E&) & ChrW(&H6DF7&) & ChrW(&H5728&))
+    TestBool "succeeds even with symbols mixed in", el.LastOk
+    TestEq "the mix of symbols round-trips", el, el.value, _
+         (ChrW(&H8A18&) & ChrW(&H53F7&) & ": < > & "" ' \ " & ChrW(&H306E&) & ChrW(&H6DF7&) & ChrW(&H5728&))
     el.value = ""
-    TestEq "空文字を書き込める", el, el.value, ""
+    TestEq "an empty string can be written", el, el.value, ""
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) input と change の両方が飛ぶこと (論点6) ---"
-    Wv2Log.LogI "        ここまでの書き込みは 3 回。"
-    TestBool "input イベントが 3 回飛んだ", (D3Cnt(p, "inputs") = 3)
-    TestBool "change イベントが 3 回飛んだ", (D3Cnt(p, "changes") = 3)
+    Wv2Log.LogI "  --- (3) Both input and change must fire (issue 6) ---"
+    Wv2Log.LogI "        There have been 3 writes so far."
+    TestBool "the input event fired 3 times", (D3Cnt(p, "inputs") = 3)
+    TestBool "the change event fired 3 times", (D3Cnt(p, "changes") = 3)
 
     Wv2Log.LogI ""
     Wv2Log.LogI "  --- (4) textarea / select / checkbox ---"
     Set el = D2El(p, "area")
-    el.value = "書き換えたテキスト"
-    TestEq "textarea に書ける", el, el.value, "書き換えたテキスト"
+    el.value = (ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H63DB&) & ChrW(&H3048&) & ChrW(&H305F&) & ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&))
+    TestEq "can write to textarea", el, el.value, (ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H63DB&) & ChrW(&H3048&) & ChrW(&H305F&) & ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&))
 
     Set el = D2El(p, "sel")
-    TestEq "select の初期値", el, el.value, "b"
+    TestEq "initial value of select", el, el.value, "b"
     el.value = "a"
-    TestEq "select を切り替えられる", el, el.value, "a"
+    TestEq "select can be switched", el, el.value, "a"
 
     Set el = D2El(p, "chk")
-    TestBool "checkbox の Click が成功する", el.Click()
+    TestBool "Click on the checkbox succeeds", el.Click()
     res = p.EvalSync("document.getElementById('chk').checked")
-    TestBool "  checked が true になった", (res = "true")
+    TestBool "  checked became true", (res = "true")
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ボタンの Click (論点7) ---"
+    Wv2Log.LogI "  --- (5) Click on a button (issue 7) ---"
     Set el = D2El(p, "btn")
-    TestBool "Click が True を返す", el.Click()
-    Wv2Log.LogI "        経路 (LastInfo) = " & el.LastInfo
-    TestBool "  ★e.click() が使われた★", (el.LastInfo = "click")
-    TestBool "  ページ側で 1 回数えられた", (D3Cnt(p, "clicks") = 1)
-    Wv2Log.LogI "        イベントの素性 (type/bubbles/isTrusted) = " & _
+    TestBool "Click returns True", el.Click()
+    Wv2Log.LogI "        route (LastInfo) = " & el.LastInfo
+    TestBool "  *e.click() was used*", (el.LastInfo = "click")
+    TestBool "  it was counted once on the page side", (D3Cnt(p, "clicks") = 1)
+    Wv2Log.LogI "        identity of the event (type/bubbles/isTrusted) = " & _
                 D3Str(p, "clickInfo")
-    Wv2Log.LogI "        ※ isTrusted=false は★合成イベントなので原理的にそうなる★"
+    Wv2Log.LogI "        NOTE: isTrusted=false is *in principle so because it is a synthetic event*"
 
     Wv2Log.LogI ""
     Wv2Log.LogI "  --- (6) SetAttribute ---"
     Set el = D2El(p, "dv")
-    TestBool "SetAttribute が True を返す", _
-           el.SetAttribute("data-note", "属性の値 (日本語)")
-    TestEq "書いた属性が読める", el, el.GetAttribute("data-note"), _
-         "属性の値 (日本語)"
-    TestBool "引用符を含む属性値も書ける", _
+    TestBool "SetAttribute returns True", _
+           el.SetAttribute("data-note", (ChrW(&H5C5E&) & ChrW(&H6027&) & ChrW(&H306E&) & ChrW(&H5024&) & " (" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ")"))
+    TestEq "the written attribute can be read", el, el.GetAttribute("data-note"), _
+         (ChrW(&H5C5E&) & ChrW(&H6027&) & ChrW(&H306E&) & ChrW(&H5024&) & " (" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ")")
+    TestBool "an attribute value containing quotes can also be written", _
            el.SetAttribute("data-q", "a""b'c")
-    TestEq "  往復する", el, el.GetAttribute("data-q"), "a""b'c"
-    TestBool "★不正な属性名は False になる★", (el.SetAttribute("", "x") = False)
+    TestEq "  round trip", el, el.GetAttribute("data-q"), "a""b'c"
+    TestBool "*an invalid attribute name gives False*", (el.SetAttribute("", "x") = False)
     Wv2Log.LogI "        LastError = " & el.LastError
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) value を持たない要素への書き込み ---"
-    Wv2Log.LogI "        div は value を持たないので素の代入に落ちる。"
-    Wv2Log.LogI "        ★JS 的には例外にならないので LastOk は True★"
-    el.value = "div に書いてみる"
+    Wv2Log.LogI "  --- (7) Writing to an element that has no value ---"
+    Wv2Log.LogI "        div has no value, so it falls back to plain assignment."
+    Wv2Log.LogI "        *In JS terms it is not an exception, so LastOk is True*"
+    el.value = ("div " & ChrW(&H306B&) & ChrW(&H66F8&) & ChrW(&H3044&) & ChrW(&H3066&) & ChrW(&H307F&) & ChrW(&H308B&))
     info = el.LastInfo
-    TestBool "LastOk は True (エラーではない)", el.LastOk
-    TestBool "  経路は direct (ネイティブ setter が無い)", (info = "direct")
-    TestEq "  読み戻すと生えたプロパティが見える", el, el.value, "div に書いてみる"
+    TestBool "LastOk is True (not an error)", el.LastOk
+    TestBool "  the route is direct (there is no native setter)", (info = "direct")
+    TestEq "  reading back shows the property that appeared", el, el.value, ("div " & ChrW(&H306B&) & ChrW(&H66F8&) & ChrW(&H3044&) & ChrW(&H3066&) & ChrW(&H307F&) & ChrW(&H308B&))
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (8) 失敗の区別 (D-2 の規約を踏襲、論点8) ---"
+    Wv2Log.LogI "  --- (8) Distinguishing failures (following the D-2 convention, issue 8) ---"
     Set dummy = New Wv2Element
-    TestBool "New で作った要素の Click は False", (dummy.Click() = False)
+    TestBool "Click on an element made with New is False", (dummy.Click() = False)
     TestBool "  LastError = no-pane", (dummy.LastError = "no-pane")
     dummy.value = "x"
-    TestBool "  Value = も LastOk=False / no-pane", _
+    TestBool "  Value = is also LastOk=False / no-pane", _
            (dummy.LastOk = False And dummy.LastError = "no-pane")
 
     Set el = D2El(p, "txt")
-    TestBool "掃除前は書ける", el.SetAttribute("data-a", "1")
-    TestBool "ClearElementRegistry が成功する", p.ClearElementRegistry()
-    TestBool "★掃除後の Click は False★", (el.Click() = False)
+    TestBool "can write before the cleanup", el.SetAttribute("data-a", "1")
+    TestBool "ClearElementRegistry succeeds", p.ClearElementRegistry()
+    TestBool "*Click after the cleanup is False*", (el.Click() = False)
     TestBool "  LastError = stale", (el.LastError = "stale")
-    el.value = "書けないはず"
-    TestBool "  Value = も stale で止まる", _
+    el.value = (ChrW(&H66F8&) & ChrW(&H3051&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H306F&) & ChrW(&H305A&))
+    TestBool "  Value = also stops at stale", _
            (el.LastOk = False And el.LastError = "stale")
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D3_Write 終了 ================"
+    Wv2Log.LogI "================ Test_D3_Write end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_D3_Framework (★未知3 の実測★ フレームワークに伝わるか)
+' Test_D3_Framework (*measuring unknown 3* does it get through to the framework?)
 '
-'   検証ページの #react には★React の value tracker を模した監視★が
-'   被せてある。tracker は「自分が知っている値」を覚えていて、input
-'   イベントが来たときに現在値と食い違っていたら★変更に気づく★。
+'   The #react on the verification page has *monitoring that imitates React's value tracker*
+'   laid over it. The tracker remembers "the value it knows", and when an input
+'   event arrives and it differs from the current value, it *notices the change*.
 '
-'     素の代入 (e.value = x)  … tracker 経由なので tracker が値を覚えてしまい、
-'                               input が飛んでも★気づけない★ (ignored が増える)
-'     ネイティブ setter 経由  … tracker を迂回するので値が食い違い、
-'                               input で★気づく★ (notified が増える)
+'     Plain assignment (e.value = x)  ... it goes through the tracker, so the tracker remembers the value, and
+'                               even when input fires it *does not notice* (ignored increases)
+'     Via the native setter  ... it bypasses the tracker, so the values differ and
+'                               on input it *notices* (notified increases)
 '
-'   ここが D-3 の存在意義そのもの。FAIL したら Wv2Element.Value = の
-'   ディスクリプタ取得 (e.constructor.prototype) を疑うこと。
+'   This is the very reason D-3 exists. If it FAILs, suspect the descriptor acquisition of Wv2Element.Value =
+'   (e.constructor.prototype).
 ' ============================================================
 Public Sub Test_D3_Framework()
     Dim b As Wv2Browser
@@ -3542,71 +3542,71 @@ Public Sub Test_D3_Framework()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D3_Framework: Browser が起動していません。" & _
-                    "先に UserForm1.StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D3_Framework: Browser is not started." & _
+                    "Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD3ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D3_Framework: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D3_Framework: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-3 プローブ", 10) Then
-        Wv2Log.LogI "Test_D3_Framework: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-3 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D3_Framework: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D3_Framework 開始 ================"
-    Wv2Log.LogI "  --- (1) ★素の代入★ + input 発火 (D-3 を使わない書き方) ---"
+    Wv2Log.LogI "================ Test_D3_Framework start ================"
+    Wv2Log.LogI "  --- (1) *Plain assignment* + firing input (writing without D-3) ---"
 
     p.EvalSync "(function(){var e=document.getElementById('react');" & _
-               "e.value='素の代入';" & _
+               ("e.value='" & ChrW(&H7D20&) & ChrW(&H306E&) & ChrW(&H4EE3&) & ChrW(&H5165&) & "';") & _
                "e.dispatchEvent(new Event('input',{bubbles:true}));return 1;})()"
-    TestBool "素の代入が走った", p.LastEvalOk
-    TestBool "  tracker 経由になった (trackedSet=1)", (D3Cnt(p, "trackedSet") = 1)
-    TestBool "  ★フレームワークは気づかない (notified=0)★", _
+    TestBool "the plain assignment ran", p.LastEvalOk
+    TestBool "  it went through the tracker (trackedSet=1)", (D3Cnt(p, "trackedSet") = 1)
+    TestBool "  *the framework does not notice (notified=0)*", _
            (D3Cnt(p, "notified") = 0)
-    TestBool "  取りこぼしとして数えられた (ignored=1)", (D3Cnt(p, "ignored") = 1)
+    TestBool "  it was counted as a miss (ignored=1)", (D3Cnt(p, "ignored") = 1)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★Wv2Element.Value =★ (D-3 の書き方) ---"
+    Wv2Log.LogI "  --- (2) *Wv2Element.Value =* (the D-3 way of writing) ---"
 
     Set el = D2El(p, "react")
-    el.value = "D-3 の書き込み"
-    TestBool "書き込みが成功する", el.LastOk
-    TestBool "  ネイティブ setter 経由 (LastInfo=setter)", (el.LastInfo = "setter")
-    TestBool "  ★tracker を迂回した (trackedSet は 1 のまま)★", _
+    el.value = ("D-3 " & ChrW(&H306E&) & ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H8FBC&) & ChrW(&H307F&))
+    TestBool "the write succeeds", el.LastOk
+    TestBool "  via the native setter (LastInfo=setter)", (el.LastInfo = "setter")
+    TestBool "  *bypassed the tracker (trackedSet stays at 1)*", _
            (D3Cnt(p, "trackedSet") = 1)
-    TestBool "  ★フレームワークが変更に気づいた (notified=1)★", _
+    TestBool "  *the framework noticed the change (notified=1)*", _
            (D3Cnt(p, "notified") = 1)
-    TestEq "  値も入っている", el, el.value, "D-3 の書き込み"
+    TestEq "  the value is also in", el, el.value, ("D-3 " & ChrW(&H306E&) & ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H8FBC&) & ChrW(&H307F&))
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  ここが D-3 の核心。(1) が notified=0 で (2) が notified=1 なら、"
-    Wv2Log.LogI "  React / Vue のページでも .Value = が効くことになる。"
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  This is the heart of D-3. If (1) has notified=0 and (2) has notified=1,"
+    Wv2Log.LogI "  then .Value = works on React / Vue pages too."
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D3_Framework 終了 ================"
+    Wv2Log.LogI "================ Test_D3_Framework end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' TestBool / TestEq / TestCountReset / TestCountPrint (判定ヘルパー)
+' TestBool / TestEq / TestCountReset / TestCountPrint (verdict helpers)
 '
-'   ★D-1 / D-2 / D-3 の全テストが使う共通の判定★ (元は D-2 の D2Bool / D2Eq。
-'   D-3 でログファイルにも出すようにしたのを機に 1 組へ統合した)
+'   *The common verdicts used by all tests of D-1 / D-2 / D-3* (originally D2Bool / D2Eq of D-2.
+'   Merged into one pair when D-3 made them also output to the log file)
 '
-'   D-2 の TestBool / TestEq と同じ判定だが、★出し先が Wv2Log★ である点が違う。
-'   Wv2Log は内部で Debug.Print も撃つのでイミディエイトの見え方は変わらない。
-'   狙いは★判定行がログファイルに残ること★:
-'     ・イミディエイトは ExecuteScript の配管ログ (1 往復で 15 行) で流れてしまう
-'     ・ログファイルなら ' [FAIL]' を検索するだけで済む
+'   The same verdict as D-2's TestBool / TestEq, but the difference is that *the output target is Wv2Log*.
+'   Wv2Log internally also fires Debug.Print, so how the Immediate window looks does not change.
+'   The aim is *the verdict lines remain in the log file*:
+'     - The Immediate window is flushed away by the ExecuteScript plumbing log (15 lines per round trip)
+'     - With the log file it is enough to search for ' [FAIL]'
 '
-'   TestCountPrint が最後に「OK n / FAIL m」を出すので、そこだけ見れば合否が分かる。
+'   TestCountPrint outputs "OK n / FAIL m" at the end, so looking at just that tells pass/fail.
 ' ============================================================
 Private Sub TestCountReset()
     m_okCount = 0
@@ -3614,8 +3614,8 @@ Private Sub TestCountReset()
 End Sub
 
 Private Sub TestCountPrint()
-    Wv2Log.LogI "  ★判定 " & (m_okCount + m_ngCount) & " 件: OK " & m_okCount & _
-                " / FAIL " & m_ngCount & "★"
+    Wv2Log.LogI "  *Verdicts " & (m_okCount + m_ngCount) & ": OK " & m_okCount & _
+                " / FAIL " & m_ngCount & "*"
 End Sub
 
 Private Sub TestBool(ByVal label As String, ByVal cond As Boolean)
@@ -3638,19 +3638,19 @@ Private Sub TestEq(ByVal label As String, _
     Else
         m_ngCount = m_ngCount + 1
         Wv2Log.LogI "  [FAIL] " & label
-        Wv2Log.LogI "         期待: [" & want & "]"
-        Wv2Log.LogI "         実際: [" & got & "]"
+        Wv2Log.LogI "         expected: [" & want & "]"
+        Wv2Log.LogI "         actual:   [" & got & "]"
     End If
 
     If el Is Nothing Then Exit Sub
     If Not el.LastOk Then
-        Wv2Log.LogI "         ※ LastOk=False err=" & el.LastError
+        Wv2Log.LogI "         * LastOk=False err=" & el.LastError
     End If
 End Sub
 
 ' ============================================================
-' D3Cnt / D3Str (D-3: 検証ページの監視カウンタを読む)
-'   ページ側の window.__p から 1 項目を取り出す。読めなければ -1 を返す。
+' D3Cnt / D3Str (D-3: read the verification page's monitoring counters)
+'   Takes one item from window.__p on the page side. Returns -1 if it cannot be read.
 ' ============================================================
 Private Function D3Cnt(ByVal p As Wv2Pane, ByVal countName As String) As Long
     Dim res As String
@@ -3658,7 +3658,7 @@ Private Function D3Cnt(ByVal p As Wv2Pane, ByVal countName As String) As Long
     res = p.EvalSync("window.__p." & countName)
     If Not p.LastEvalOk Then
         m_ngCount = m_ngCount + 1
-        Wv2Log.LogW "  [FAIL] カウンタ " & countName & " を読めない err=" & p.LastEvalError
+        Wv2Log.LogW "  [FAIL] cannot read counter " & countName & " err=" & p.LastEvalError
         D3Cnt = -1
         Exit Function
     End If
@@ -3671,7 +3671,7 @@ Private Function D3Str(ByVal p As Wv2Pane, ByVal itemName As String) As String
 
     res = p.EvalSync("window.__p." & itemName)
     If Not p.LastEvalOk Then
-        D3Str = "(読めない: " & p.LastEvalError & ")"
+        D3Str = "(cannot read: " & p.LastEvalError & ")"
         Exit Function
     End If
 
@@ -3680,9 +3680,9 @@ End Function
 
 
 ' ============================================================
-' D3Pump (D-3: 指定秒だけ DoEvents を回す)
-'   raw ExecuteScript の完了通知が出るのを待つためだけの足踏み。
-'   ★この間もブレーク/ステップ実行しないこと★ (仕様事実20)
+' D3Pump (D-3: run DoEvents for the specified seconds)
+'   Just marking time to wait for the completion notification of a raw ExecuteScript to appear.
+'   *Do not break/step through during this either* (spec fact 20)
 ' ============================================================
 Private Sub D3Pump(ByVal waitSec As Single)
     Dim t0 As Single
@@ -3696,24 +3696,24 @@ End Sub
 
 
 ' ============================================================
-' BuildD3ProbeHtml (D-3 の検証ページ)
+' BuildD3ProbeHtml (the verification page of D-3)
 '
-'   D-2 のページに★監視用の JS★ を足したもの。数えているのは:
-'     inputs / changes … #txt に飛んだ input / change の回数 (論点6)
-'     clicks / clickInfo … #btn のクリック回数とイベントの素性
-'     trackedSet … ★React 風 value tracker★ を通った代入の回数
-'     notified   … tracker が「値が変わった」と気づいた回数
-'     ignored    … input は来たが tracker が気づけなかった回数
+'   The D-2 page with *monitoring JS* added. What it counts:
+'     inputs / changes ... the number of input / change events fired at #txt (issue 6)
+'     clicks / clickInfo ... the click count of #btn and the identity of the event
+'     trackedSet ... the number of assignments that went through the *React-like value tracker*
+'     notified   ... the number of times the tracker noticed "the value changed"
+'     ignored    ... the number of times an input came but the tracker did not notice
 '
-'   ★静的な HTML 部分の引用符は VBA の "" で書く★ (JS ではないので問題ない)
-'   ★JS の文字列は必ずシングルクォート★ (プロジェクト規則)
+'   *Quotation marks in the static HTML part are written with VBA's ""* (it is not JS, so no problem)
+'   *JS strings are always single quotes* (project rule)
 ' ============================================================
 Private Function BuildD3ProbeHtml() As String
     Dim s As String
 
     s = "<!DOCTYPE html>" & vbLf
     s = s & "<html lang=""ja""><head><meta charset=""UTF-8"">" & vbLf
-    s = s & "<title>D-3 プローブ</title>" & vbLf
+    s = s & ("<title>D-3 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</title>") & vbLf
     s = s & "<style>" & vbLf
     s = s & "  body{font-family:'Segoe UI','Meiryo',sans-serif;background:#12161f;" & _
             "color:#e8eaed;padding:32px;line-height:1.8;}" & vbLf
@@ -3727,20 +3727,20 @@ Private Function BuildD3ProbeHtml() As String
             "white-space:pre-wrap;word-break:break-all;}" & vbLf
     s = s & "  .note{color:#8ea2c8;font-size:12.5px;}" & vbLf
     s = s & "</style></head><body>" & vbLf
-    s = s & "<h1 id=""ttl"">D-3 書き込みと操作のプローブ</h1>" & vbLf
-    s = s & "<p class=""note"">このページは Test_D3_Write / Test_D3_Framework 専用です。" & _
-            "外部サイトに依存しません。</p>" & vbLf
+    s = s & ("<h1 id=""ttl"">D-3 " & ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H8FBC&) & ChrW(&H307F&) & ChrW(&H3068&) & ChrW(&H64CD&) & ChrW(&H4F5C&) & ChrW(&H306E&) & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</h1>") & vbLf
+    s = s & ("<p class=""note"">" & ChrW(&H3053&) & ChrW(&H306E&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B8&) & ChrW(&H306F&) & " Test_D3_Write / Test_D3_Framework " & ChrW(&H5C02&) & ChrW(&H7528&) & ChrW(&H3067&) & ChrW(&H3059&) & ChrW(&H3002&)) & _
+            (ChrW(&H5916&) & ChrW(&H90E8&) & ChrW(&H30B5&) & ChrW(&H30A4&) & ChrW(&H30C8&) & ChrW(&H306B&) & ChrW(&H4F9D&) & ChrW(&H5B58&) & ChrW(&H3057&) & ChrW(&H307E&) & ChrW(&H305B&) & ChrW(&H3093&) & ChrW(&H3002&) & "</p>") & vbLf
     s = s & "<div class=""card"">" & vbLf
-    s = s & "  <input id=""txt"" type=""text"" name=""q"" value=""初期値"">" & vbLf
-    s = s & "  <textarea id=""area"" rows=""2"">元のテキスト</textarea>" & vbLf
+    s = s & ("  <input id=""txt"" type=""text"" name=""q"" value=""" & ChrW(&H521D&) & ChrW(&H671F&) & ChrW(&H5024&) & """>") & vbLf
+    s = s & ("  <textarea id=""area"" rows=""2"">" & ChrW(&H5143&) & ChrW(&H306E&) & ChrW(&H30C6&) & ChrW(&H30AD&) & ChrW(&H30B9&) & ChrW(&H30C8&) & "</textarea>") & vbLf
     s = s & "  <select id=""sel""><option value=""a"">A</option>" & _
             "<option value=""b"" selected>B</option></select>" & vbLf
     s = s & "  <input id=""chk"" type=""checkbox"">" & vbLf
     s = s & "  <input id=""react"" type=""text"" value="""">" & vbLf
     s = s & "</div>" & vbLf
-    s = s & "<p><button id=""btn"" type=""button"">クリックしてね</button>" & _
-            "<span id=""btnlog"">未クリック</span></p>" & vbLf
-    s = s & "<div id=""dv"" class=""card"">属性の書き込み先</div>" & vbLf
+    s = s & ("<p><button id=""btn"" type=""button"">" & ChrW(&H30AF&) & ChrW(&H30EA&) & ChrW(&H30C3&) & ChrW(&H30AF&) & ChrW(&H3057&) & ChrW(&H3066&) & ChrW(&H306D&) & "</button>") & _
+            ("<span id=""btnlog"">" & ChrW(&H672A&) & ChrW(&H30AF&) & ChrW(&H30EA&) & ChrW(&H30C3&) & ChrW(&H30AF&) & "</span></p>") & vbLf
+    s = s & ("<div id=""dv"" class=""card"">" & ChrW(&H5C5E&) & ChrW(&H6027&) & ChrW(&H306E&) & ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H8FBC&) & ChrW(&H307F&) & ChrW(&H5148&) & "</div>") & vbLf
     s = s & "<pre id=""cnt""></pre>" & vbLf
     s = s & "<script>" & vbLf
     s = s & "(function(){" & vbLf
@@ -3756,7 +3756,7 @@ Private Function BuildD3ProbeHtml() As String
     s = s & "  b.addEventListener('click',function(ev){P.clicks++;" & vbLf
     s = s & "    P.clickInfo=ev.type+'/'+ev.bubbles+'/'+ev.isTrusted;" & vbLf
     s = s & "    document.getElementById('btnlog').textContent=" & _
-            "'クリック '+P.clicks+' 回';show();});" & vbLf
+            ("'" & ChrW(&H30AF&) & ChrW(&H30EA&) & ChrW(&H30C3&) & ChrW(&H30AF&) & " '+P.clicks+' " & ChrW(&H56DE&) & "';show();});") & vbLf
     s = s & "  var r=document.getElementById('react');" & vbLf
     s = s & "  var d=Object.getOwnPropertyDescriptor(r.constructor.prototype,'value');" & vbLf
     s = s & "  var last=d.get.call(r);" & vbLf
@@ -3777,14 +3777,14 @@ End Function
 
 
 ' ============================================================
-' Test_D3_Wait (D-3b の検証: DOM 条件待ち)
+' Test_D3_Wait (verification of D-3b: waiting for DOM conditions)
 '
-'   遅れて現れる / 遅れて消える要素を setTimeout で作り、
-'   WaitFor / WaitGone / ImplicitWaitSec が期待どおり粘るかを見る。
-'   ★待った秒数も出す★ 「粘った」だけでなく「粘りすぎない」ことも見たいため。
+'   Makes elements that appear late / disappear late with setTimeout, and checks
+'   whether WaitFor / WaitGone / ImplicitWaitSec hang on as expected.
+'   *Also outputs the seconds waited* because we want to see not only that it "hung on" but also that it does "not hang on too long".
 '
-'   ★実行中はブレーク/ステップ実行しないこと★ (仕様事実20)
-'   待ちループ全体が長い DoEvents 区間になる (未知2 のとおり)。
+'   *Do not break/step through during execution* (spec fact 20)
+'   The whole wait loop becomes a long DoEvents section (as in unknown 2).
 ' ============================================================
 Public Sub Test_D3_Wait()
     Dim b As Wv2Browser
@@ -3795,141 +3795,141 @@ Public Sub Test_D3_Wait()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D3_Wait: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D3_Wait: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD3ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D3_Wait: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D3_Wait: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-3 プローブ", 10) Then
-        Wv2Log.LogI "Test_D3_Wait: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-3 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D3_Wait: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D3_Wait 開始 ================"
-    Wv2Log.LogI "  --- (1) 既にある要素は待たずに返る ---"
+    Wv2Log.LogI "================ Test_D3_Wait start ================"
+    Wv2Log.LogI "  --- (1) An element that already exists returns without waiting ---"
 
     t0 = Timer
     Set el = p.WaitFor("#txt", 5)
     took = D3Took(t0)
-    TestBool "既にある要素を WaitFor で掴める", Not (el Is Nothing)
-    Wv2Log.LogI "        待った時間 = " & Format$(took, "0.00") & " 秒"
-    TestBool "  ★待たずに返る (0.5 秒未満)★", (took < 0.5)
+    TestBool "an element that already exists can be grabbed with WaitFor", Not (el Is Nothing)
+    Wv2Log.LogI "        time waited = " & Format$(took, "0.00") & " s"
+    TestBool "  *returns without waiting (under 0.5 s)*", (took < 0.5)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) 遅れて現れる要素 (800ms 後に追加) ---"
+    Wv2Log.LogI "  --- (2) An element that appears late (added after 800ms) ---"
 
     p.EvalSync "(function(){setTimeout(function(){" & _
                "var d=document.createElement('input');d.id='late';d.type='text';" & _
-               "d.value='遅れて出た';document.body.appendChild(d);},800);return 1;})()"
-    TestBool "遅延追加を仕掛けられた", p.LastEvalOk
+               ("d.value='" & ChrW(&H9045&) & ChrW(&H308C&) & ChrW(&H3066&) & ChrW(&H51FA&) & ChrW(&H305F&) & "';document.body.appendChild(d);},800);return 1;})()")
+    TestBool "the delayed addition could be set up", p.LastEvalOk
 
     t0 = Timer
     Set el = p.WaitFor("#late", 5)
     took = D3Took(t0)
-    TestBool "★遅れて現れた要素を掴めた★", Not (el Is Nothing)
-    Wv2Log.LogI "        待った時間 = " & Format$(took, "0.00") & " 秒 (仕掛けは 0.80 秒)"
-    TestBool "  待ち時間が妥当 (0.4～3.0 秒)", (took > 0.4 And took < 3)
+    TestBool "*the late-appearing element could be grabbed*", Not (el Is Nothing)
+    Wv2Log.LogI "        time waited = " & Format$(took, "0.00") & " s (the setup is 0.80 s)"
+    TestBool "  the wait time is reasonable (0.4-3.0 s)", (took > 0.4 And took < 3)
 
     If Not el Is Nothing Then
-        TestEq "  掴んだ要素の値が読める", el, el.value, "遅れて出た"
-        el.value = "待ってから書いた"
-        TestBool "  ★待った要素にそのまま書ける (D-3a との接続)★", el.LastOk
-        TestEq "    読み戻せる", el, el.value, "待ってから書いた"
+        TestEq "  the value of the grabbed element can be read", el, el.value, (ChrW(&H9045&) & ChrW(&H308C&) & ChrW(&H3066&) & ChrW(&H51FA&) & ChrW(&H305F&))
+        el.value = (ChrW(&H5F85&) & ChrW(&H3063&) & ChrW(&H3066&) & ChrW(&H304B&) & ChrW(&H3089&) & ChrW(&H66F8&) & ChrW(&H3044&) & ChrW(&H305F&))
+        TestBool "  *can write straight to the waited-for element (connection with D-3a)*", el.LastOk
+        TestEq "    can be read back", el, el.value, (ChrW(&H5F85&) & ChrW(&H3063&) & ChrW(&H3066&) & ChrW(&H304B&) & ChrW(&H3089&) & ChrW(&H66F8&) & ChrW(&H3044&) & ChrW(&H305F&))
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) 現れないもの (1 秒でタイムアウト) ---"
+    Wv2Log.LogI "  --- (3) Something that does not appear (timeout in 1 second) ---"
 
     t0 = Timer
     Set el = p.WaitFor("#never-ever", 1)
     took = D3Took(t0)
-    TestBool "現れないものは Nothing", (el Is Nothing)
-    TestBool "  ★LastEvalOk=True (現れなかった、の意味)★", (p.LastEvalOk = True)
-    Wv2Log.LogI "        待った時間 = " & Format$(took, "0.00") & " 秒 (指定は 1.00 秒)"
-    TestBool "  ちゃんと粘った (0.8 秒以上)", (took > 0.8)
-    TestBool "  粘りすぎない (2.5 秒未満)", (took < 2.5)
+    TestBool "something that does not appear is Nothing", (el Is Nothing)
+    TestBool "  *LastEvalOk=True (meaning it did not appear)*", (p.LastEvalOk = True)
+    Wv2Log.LogI "        time waited = " & Format$(took, "0.00") & " s (specified 1.00 s)"
+    TestBool "  it really hung on (0.8 s or more)", (took > 0.8)
+    TestBool "  it does not hang on too long (under 2.5 s)", (took < 2.5)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ★失敗は待たずに諦める★ (不正なセレクタ) ---"
+    Wv2Log.LogI "  --- (4) *A failure gives up without waiting* (invalid selector) ---"
 
     t0 = Timer
     Set el = p.WaitFor("###", 5)
     took = D3Took(t0)
-    TestBool "不正なセレクタは Nothing", (el Is Nothing)
-    TestBool "  ★LastEvalOk=False (失敗、の意味)★", (p.LastEvalOk = False)
-    Wv2Log.LogI "        待った時間 = " & Format$(took, "0.00") & " 秒 (指定は 5.00 秒)"
-    TestBool "  ★5 秒待たずに即座に返る (0.5 秒未満)★", (took < 0.5)
+    TestBool "an invalid selector is Nothing", (el Is Nothing)
+    TestBool "  *LastEvalOk=False (meaning it failed)*", (p.LastEvalOk = False)
+    Wv2Log.LogI "        time waited = " & Format$(took, "0.00") & " s (specified 5.00 s)"
+    TestBool "  *returns at once without waiting 5 s (under 0.5 s)*", (took < 0.5)
     Wv2Log.LogI "        LastEvalError = " & p.LastEvalError
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) WaitGone (800ms 後に #dv を消す) ---"
+    Wv2Log.LogI "  --- (5) WaitGone (remove #dv after 800ms) ---"
 
     p.EvalSync "(function(){setTimeout(function(){" & _
                "var e=document.getElementById('dv');" & _
                "if(e){e.parentNode.removeChild(e);}},800);return 1;})()"
-    TestBool "遅延削除を仕掛けられた", p.LastEvalOk
+    TestBool "the delayed removal could be set up", p.LastEvalOk
 
     t0 = Timer
-    TestBool "★消えるまで待てた★", p.WaitGone("#dv", 5)
+    TestBool "*could wait until it disappeared*", p.WaitGone("#dv", 5)
     took = D3Took(t0)
-    Wv2Log.LogI "        待った時間 = " & Format$(took, "0.00") & " 秒 (仕掛けは 0.80 秒)"
-    TestBool "  待ち時間が妥当 (0.4～3.0 秒)", (took > 0.4 And took < 3)
+    Wv2Log.LogI "        time waited = " & Format$(took, "0.00") & " s (the setup is 0.80 s)"
+    TestBool "  the wait time is reasonable (0.4-3.0 s)", (took > 0.4 And took < 3)
 
     t0 = Timer
-    TestBool "最初から無いものは即 True", p.WaitGone("#never-ever", 5)
-    TestBool "  待たずに返る (0.5 秒未満)", (D3Took(t0) < 0.5)
+    TestBool "something absent from the start is True at once", p.WaitGone("#never-ever", 5)
+    TestBool "  returns without waiting (under 0.5 s)", (D3Took(t0) < 0.5)
 
     t0 = Timer
-    TestBool "消えないものは False", (p.WaitGone("#ttl", 1) = False)
+    TestBool "something that does not disappear is False", (p.WaitGone("#ttl", 1) = False)
     took = D3Took(t0)
-    TestBool "  ★LastEvalOk=True (まだ居る、の意味)★", (p.LastEvalOk = True)
-    TestBool "  ちゃんと粘った (0.8 秒以上)", (took > 0.8)
+    TestBool "  *LastEvalOk=True (meaning it is still there)*", (p.LastEvalOk = True)
+    TestBool "  it really hung on (0.8 s or more)", (took > 0.8)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ImplicitWaitSec (論点2 案C の opt-in) ---"
+    Wv2Log.LogI "  --- (6) ImplicitWaitSec (opt-in of issue 2 plan C) ---"
 
-    TestBool "★既定は 0 (無効)★", (p.ImplicitWaitSec = 0)
+    TestBool "*the default is 0 (disabled)*", (p.ImplicitWaitSec = 0)
     t0 = Timer
     Set el = p.QuerySelector("#late2")
     took = D3Took(t0)
-    TestBool "既定では QuerySelector が待たずに Nothing", _
+    TestBool "by default QuerySelector returns Nothing without waiting", _
            (el Is Nothing And took < 0.5)
 
     p.EvalSync "(function(){setTimeout(function(){" & _
                "var d=document.createElement('div');d.id='late2';" & _
-               "d.textContent='後から出た 2';document.body.appendChild(d);},800);" & _
+               ("d.textContent='" & ChrW(&H5F8C&) & ChrW(&H304B&) & ChrW(&H3089&) & ChrW(&H51FA&) & ChrW(&H305F&) & " 2';document.body.appendChild(d);},800);") & _
                "return 1;})()"
-    TestBool "遅延追加を仕掛けられた", p.LastEvalOk
+    TestBool "the delayed addition could be set up", p.LastEvalOk
 
     p.ImplicitWaitSec = 5
     t0 = Timer
     Set el = p.QuerySelector("#late2")
     took = D3Took(t0)
-    TestBool "★ImplicitWaitSec=5 なら QuerySelector が粘って拾う★", _
+    TestBool "*with ImplicitWaitSec=5 QuerySelector hangs on and picks it up*", _
            Not (el Is Nothing)
-    Wv2Log.LogI "        待った時間 = " & Format$(took, "0.00") & " 秒 (仕掛けは 0.80 秒)"
-    TestBool "  待ち時間が妥当 (0.4～3.0 秒)", (took > 0.4 And took < 3)
+    Wv2Log.LogI "        time waited = " & Format$(took, "0.00") & " s (the setup is 0.80 s)"
+    TestBool "  the wait time is reasonable (0.4-3.0 s)", (took > 0.4 And took < 3)
 
     p.ImplicitWaitSec = 0
-    TestBool "0 に戻せる", (p.ImplicitWaitSec = 0)
+    TestBool "can be returned to 0", (p.ImplicitWaitSec = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D3_Wait 終了 ================"
+    Wv2Log.LogI "================ Test_D3_Wait end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' D3Took (D-3b: 経過秒。★Timer は深夜 0 時に 0 へ戻る★ ので補正する)
+' D3Took (D-3b: elapsed seconds. *Timer returns to 0 at midnight*, so correct for it)
 ' ============================================================
 Private Function D3Took(ByVal sinceTimer As Single) As Single
     Dim d As Single
@@ -3940,96 +3940,96 @@ Private Function D3Took(ByVal sinceTimer As Single) As Single
 End Function
 
 ' ============================================================
-' Test_D3_Help (D-3 の手順)
+' Test_D3_Help (procedure for D-3)
 ' ============================================================
 Public Sub Test_D3_Help()
     Debug.Print ""
     Debug.Print "=========================================================="
-    Debug.Print " D-3 検証手順 (書き込みと操作)"
+    Debug.Print " D-3 verification procedure (writes and operations)"
     Debug.Print "=========================================================="
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
-    Debug.Print "  1) Wv2Log.LogStart  … このテスト 1 回分を 1 ファイルに閉じる"
-    Debug.Print "  2) UserForm1.Show vbModeless して StartWebView2_Full を実行する"
-    Debug.Print "     ★Show が先★ フォームのウィンドウが無いと Frame1 の HWND が"
-    Debug.Print "     取れず、hWnd_Frame = 0 のまま Browser.Init が失敗する。"
-    Debug.Print "  3) ★イベントバーストが静まるまで待つ★ (仕様事実 20)"
+    Debug.Print "  --- Preparation ---"
+    Debug.Print "  1) Wv2Log.LogStart  ... contain this one test run in one file"
+    Debug.Print "  2) Run UserForm1.Show vbModeless, then run StartWebView2_Full"
+    Debug.Print "     *Show comes first* Without the form's window the HWND of Frame1 cannot"
+    Debug.Print "     be obtained, and Browser.Init fails with hWnd_Frame still 0."
+    Debug.Print "  3) *Wait until the event burst settles* (spec fact 20)"
     Debug.Print ""
-    Debug.Print "  --- 実行 (★この順番★) ---"
-    Debug.Print "  4) Test_D3_Probe_Promise … ★済★ 未知1 の実測 (2026-08-22 決着)"
-    Debug.Print "     ExecuteScript が Promise を待つかの実測。ここの結果で"
-    Debug.Print "     待ち API (WaitFor / WaitGone) の設計が決まる。"
-    Debug.Print "     ★アクティブなタブが要る★ (新しいタブは開かない)"
-    Debug.Print "  5) Test_D3_Write      … ★済★ 書き込み・操作 (33 件 OK)"
-    Debug.Print "  6) Test_D3_Framework  … ★済★ SPA に効くかの実測 (7 件 OK)"
-    Debug.Print "  7) Test_D3_Wait       … ★D-3b の検証★ 待ち API (タブを 1 枚開く)"
-    Debug.Print "     ※ 4～6 は決着済み。次に見るのは 7 だけでよい。"
+    Debug.Print "  --- Run (*in this order*) ---"
+    Debug.Print "  4) Test_D3_Probe_Promise ... *done* measuring unknown 1 (settled 2026-08-22)"
+    Debug.Print "     Measures whether ExecuteScript waits for a Promise. This result"
+    Debug.Print "     decides the design of the wait API (WaitFor / WaitGone)."
+    Debug.Print "     *An active tab is required* (it does not open a new tab)"
+    Debug.Print "  5) Test_D3_Write      ... *done* writes and operations (33 OK)"
+    Debug.Print "  6) Test_D3_Framework  ... *done* measuring whether it works on SPAs (7 OK)"
+    Debug.Print "  7) Test_D3_Wait       ... *verification of D-3b* the wait API (opens 1 tab)"
+    Debug.Print "     NOTE: 4-6 are settled. Only 7 needs to be looked at next."
     Debug.Print ""
-    Debug.Print "  ★実行中はブレーク/ステップ実行しないこと★ (仕様事実 20)"
+    Debug.Print "  *Do not break/step through during execution* (spec fact 20)"
     Debug.Print ""
-    Debug.Print "  --- ★判定はログファイルに残る★ ---"
-    Debug.Print "    D-3 のテストは判定を Wv2Log にも書く。イミディエイトは"
-    Debug.Print "    ExecuteScript の配管ログ (1 往復で 15 行) ですぐ流れるので、"
-    Debug.Print "    ★合否はログファイルで見る★:"
-    Debug.Print "      ?Wv2Log.LogPath      … ファイルの場所"
-    Debug.Print "      末尾の「★判定 n 件: OK x / FAIL y★」だけ見れば合否が分かる"
-    Debug.Print "      FAIL があれば [FAIL] で検索する"
+    Debug.Print "  --- *Verdicts remain in the log file* ---"
+    Debug.Print "    The D-3 tests also write their verdicts to Wv2Log. The Immediate window is"
+    Debug.Print "    flushed away at once by the ExecuteScript plumbing log (15 lines per round trip),"
+    Debug.Print "    so *check pass/fail in the log file*:"
+    Debug.Print "      ?Wv2Log.LogPath      ... location of the file"
+    Debug.Print "      Just look at the trailing ""*Verdicts n: OK x / FAIL y*"" to know pass/fail"
+    Debug.Print "      If there is a FAIL, search for [FAIL]"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D3_Probe_Promise) ---"
-    Debug.Print "  ・(B-1)(B-2) のマーカーの間に resultJson= の行が出たか"
-    Debug.Print "      (B-2) で {} が出た   → ★待たない★ = 論点3 の骨格どおり VBA でポーリング"
-    Debug.Print "      (B-2) で何も出ない   → ★待つ★   = 設計を組み直す"
+    Debug.Print "  --- What to look at (Test_D3_Probe_Promise) ---"
+    Debug.Print "  - Did lines of resultJson= appear between the markers of (B-1)(B-2)?"
+    Debug.Print "      {} appeared in (B-2)   -> *does not wait* = poll in VBA as in the skeleton of issue 3"
+    Debug.Print "      nothing appeared in (B-2)   -> *waits*   = redo the design"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D3_Write) ---"
-    Debug.Print "  ・(1)～(8) の全行が [OK  ] であること"
-    Debug.Print "  ・(1) の LastInfo が setter であること (ネイティブ setter 経由)"
-    Debug.Print "  ・(3) の input / change がどちらも 3 回であること (論点6 の両方撃ち)"
-    Debug.Print "  ・(7) が [OK  ] = 「JS が走った」と「効果が出た」の違いの確認"
-    Debug.Print "  ・(8) が [OK  ] = no-pane / stale の区別 (D-2 の規約踏襲)"
+    Debug.Print "  --- What to look at (Test_D3_Write) ---"
+    Debug.Print "  - All lines of (1)-(8) are [OK  ]"
+    Debug.Print "  - LastInfo of (1) is setter (via the native setter)"
+    Debug.Print "  - input / change of (3) are both 3 times (firing both, issue 6)"
+    Debug.Print "  - (7) is [OK  ] = confirms the difference between 'JS ran' and 'the effect appeared'"
+    Debug.Print "  - (8) is [OK  ] = distinguishing no-pane / stale (following the D-2 convention)"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D3_Framework) ★D-3 の核心★ ---"
-    Debug.Print "  ・(1) が notified=0 / ignored=1  … 素の代入では気づかれない"
-    Debug.Print "  ・(2) が notified=1 / trackedSet=1 のまま … D-3 の書き方なら気づく"
-    Debug.Print "    ここが FAIL なら React / Vue のページで .Value = が効かない。"
+    Debug.Print "  --- What to look at (Test_D3_Framework) *the heart of D-3* ---"
+    Debug.Print "  - (1) is notified=0 / ignored=1  ... a plain assignment is not noticed"
+    Debug.Print "  - (2) is notified=1 / trackedSet stays at 1 ... the D-3 way of writing is noticed"
+    Debug.Print "    If this FAILs, .Value = does not work on React / Vue pages."
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D3_Wait) ★D-3b★ ---"
-    Debug.Print "  ・(1)～(6) の全行が [OK  ] であること"
-    Debug.Print "  ・(2) 遅れて現れる要素を掴み、そのまま書き込めること"
-    Debug.Print "      = 待ち (D-3b) と書き込み (D-3a) が繋がっている証拠"
-    Debug.Print "  ・(3) 現れないものは★1 秒粘ってから★ Nothing + LastEvalOk=True"
-    Debug.Print "  ・(4) ★不正なセレクタは待たずに即座に諦める★"
-    Debug.Print "      ここが FAIL だと、ハンドラ内から呼んだとき待ち時間ぶん固まる"
-    Debug.Print "  ・(6) ImplicitWaitSec が既定 0 で、5 にすると QuerySelector が粘ること"
+    Debug.Print "  --- What to look at (Test_D3_Wait) *D-3b* ---"
+    Debug.Print "  - All lines of (1)-(6) are [OK  ]"
+    Debug.Print "  - (2) an element that appears late is grabbed and can be written to as is"
+    Debug.Print "      = evidence that the wait (D-3b) and the write (D-3a) are connected"
+    Debug.Print "  - (3) something that does not appear gives Nothing + LastEvalOk=True *after hanging on for 1 s*"
+    Debug.Print "  - (4) *an invalid selector gives up at once without waiting*"
+    Debug.Print "      If this FAILs, calling from inside a handler would freeze for the wait time"
+    Debug.Print "  - (6) ImplicitWaitSec defaults to 0, and with 5 QuerySelector hangs on"
     Debug.Print ""
-    Debug.Print "  --- 回帰確認 (D-3 は Wv2Pane と Wv2Element を触ったため) ---"
-    Debug.Print "  8) Test_D2_Find   … 読み取りが壊れていないこと"
-    Debug.Print "  9) Test_D2_Stale  … 世代と stale の扱いが壊れていないこと"
-    Debug.Print " 10) Test_D1_Eval / Test_D1_Guard … EvalSync とガード"
+    Debug.Print "  --- Regression check (because D-3 touched Wv2Pane and Wv2Element) ---"
+    Debug.Print "  8) Test_D2_Find   ... reading must not be broken"
+    Debug.Print "  9) Test_D2_Stale  ... the handling of generation and stale must not be broken"
+    Debug.Print " 10) Test_D1_Eval / Test_D1_Guard ... EvalSync and the guard"
     Debug.Print ""
-    Debug.Print "  --- 手で試したいとき ---"
+    Debug.Print "  --- If you want to try by hand ---"
     Debug.Print "  Set p = UserForm1.GetActivePane"
     Debug.Print "  Set el = p.QuerySelector(""input[name='q']"")"
-    Debug.Print "  el.Value = ""検索語"""
+    Debug.Print "  el.Value = ""search term"""
     Debug.Print "  ?el.LastOk : ?el.LastInfo : ?el.Value"
     Debug.Print "  ?p.QuerySelector(""button"").Click"
     Debug.Print ""
-    Debug.Print "  --- 待ち (D-3b) ---"
-    Debug.Print "  Set el = p.WaitFor(""#result"", 5)   ' 現れるまで最大 5 秒"
-    Debug.Print "  ?p.WaitGone("".spinner"", 10)        ' 消えるまで最大 10 秒"
-    Debug.Print "  p.ImplicitWaitSec = 5               ' 既定 0。検索に暗黙の粘りを足す"
+    Debug.Print "  --- Waiting (D-3b) ---"
+    Debug.Print "  Set el = p.WaitFor(""#result"", 5)   ' up to 5 seconds until it appears"
+    Debug.Print "  ?p.WaitGone("".spinner"", 10)        ' up to 10 seconds until it disappears"
+    Debug.Print "  p.ImplicitWaitSec = 5               ' default 0. Adds an implicit hang-on to searches"
     Debug.Print ""
-    Debug.Print "  ★待てるのは「DOM の条件」まで★"
-    Debug.Print "    WaitFor / WaitGone は指定した要素の有無しか見ない。"
-    Debug.Print "    「通信が全部終わって静かになるまで」を待つ静穏待ち"
-    Debug.Print "    (MutationObserver / fetch カウンタ) は D-4 の宿題。"
+    Debug.Print "  *What can be waited for is only 'DOM conditions'*"
+    Debug.Print "    WaitFor / WaitGone only look at the presence of the specified element."
+    Debug.Print "    The quiescence wait that waits for 'all communication to finish and things to go quiet'"
+    Debug.Print "    (MutationObserver / fetch counter) is an open item for D-4."
     Debug.Print ""
 End Sub
 
 ' ============================================================
-' Test_D4_Probe (D-4a の検証: ページ内 SPA プローブ)
+' Test_D4_Probe (verification of D-4a: in-page SPA probe)
 '
-'   ★D-4 の初手★ 待ちの本体を作る前に、観測する仕掛けが健全に立つことを確かめる
-'   (設計原則103: 測る前にプローブ自体を検算する)。
+'   *The first move of D-4* Before building the body of the wait, confirm that the observing mechanism stands up healthily
+'   (design principle 103: check the probe itself before measuring).
 ' ============================================================
 Public Sub Test_D4_Probe()
     Dim b As Wv2Browser
@@ -4042,75 +4042,75 @@ Public Sub Test_D4_Probe()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D4_Probe: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D4_Probe: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD4ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D4_Probe: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D4_Probe: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-4 プローブ", 10) Then
-        Wv2Log.LogI "Test_D4_Probe: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-4 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D4_Probe: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D4_Probe 開始 ================"
-    Wv2Log.LogI "  --- (1) 呼ぶまでプローブは作られない (未知4) ---"
+    Wv2Log.LogI "================ Test_D4_Probe start ================"
+    Wv2Log.LogI "  --- (1) The probe is not created until it is called (unknown 4) ---"
 
     st = p.EvalSync("typeof window.__wv2p")
-    TestBool "★設置前は undefined★", (Wv2Json.JsonUnescape(st) = "undefined")
+    TestBool "*undefined before installation*", (Wv2Json.JsonUnescape(st) = "undefined")
     Wv2Log.LogI "        typeof window.__wv2p = " & st
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) 往復コストの比較 (未知2) ---"
+    Wv2Log.LogI "  --- (2) Comparison of round-trip cost (unknown 2) ---"
 
     before = D4RoundTrip(p, 20)
-    Wv2Log.LogI "        設置前の 1 往復 = " & Format$(before, "0.0") & " ms"
+    Wv2Log.LogI "        1 round trip before installation = " & Format$(before, "0.0") & " ms"
 
     st = p.SpaProbeState()
-    TestBool "SpaProbeState が成功する", p.LastEvalOk
+    TestBool "SpaProbeState succeeds", p.LastEvalOk
     Wv2Log.LogI "        state = " & st
 
     after = D4RoundTrip(p, 20)
-    Wv2Log.LogI "        設置後の 1 往復 = " & Format$(after, "0.0") & " ms"
-    TestBool "  観測を張っても往復が極端に遅くならない (3 倍未満)", _
+    Wv2Log.LogI "        1 round trip after installation = " & Format$(after, "0.0") & " ms"
+    TestBool "  setting up the observation does not make the round trip extremely slow (under 3x)", _
              (after < before * 3 + 10)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) 初回の状態 ---"
+    Wv2Log.LogI "  --- (3) Initial state ---"
 
-    TestBool "★健康である (h=true)★", (InStr(1, st, """h"":true") > 0)
-    TestBool "  MutationObserver が生きている (ob=true)", _
+    TestBool "*healthy (h=true)*", (InStr(1, st, """h"":true") > 0)
+    TestBool "  MutationObserver is alive (ob=true)", _
              (InStr(1, st, """ob"":true") > 0)
-    TestBool "  版番号が 1", (Wv2Json.JsonGetNum(st, "v") = 1)
-    TestBool "  世代が 1", (Wv2Json.JsonGetNum(st, "g") = 1)
-    TestBool "  作り直し回数が 0", (Wv2Json.JsonGetNum(st, "rp") = 0)
-    TestBool "  実行中の通信は 0", _
+    TestBool "  version number is 1", (Wv2Json.JsonGetNum(st, "v") = 1)
+    TestBool "  generation is 1", (Wv2Json.JsonGetNum(st, "g") = 1)
+    TestBool "  rebuild count is 0", (Wv2Json.JsonGetNum(st, "rp") = 0)
+    TestBool "  in-flight communications is 0", _
              (Wv2Json.JsonGetNum(st, "f") = 0 And Wv2Json.JsonGetNum(st, "x") = 0)
-    TestBool "  SpaProbeHealthy も True", p.SpaProbeHealthy()
+    TestBool "  SpaProbeHealthy is also True", p.SpaProbeHealthy()
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) DOM 変化を数える ---"
+    Wv2Log.LogI "  --- (4) Counting DOM changes ---"
 
     st = p.SpaProbeState()
     n0 = Wv2Json.JsonGetNum(st, "m")
     p.EvalSync "(function(){document.getElementById('target')" & _
-               ".textContent='書き換えた '+Date.now();return 1;})()"
+               (".textContent='" & ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H63DB&) & ChrW(&H3048&) & ChrW(&H305F&) & " '+Date.now();return 1;})()")
     st = p.SpaProbeState()
-    TestBool "★DOM 変化が数えられた★", (Wv2Json.JsonGetNum(st, "m") > n0)
-    Wv2Log.LogI "        最後の変化からの経過 q = " & _
+    TestBool "*DOM changes were counted*", (Wv2Json.JsonGetNum(st, "m") > n0)
+    Wv2Log.LogI "        elapsed since the last change q = " & _
                 Wv2Json.JsonGetNum(st, "q") & " ms"
-    TestBool "  直後なので q が小さい (1000ms 未満)", _
+    TestBool "  q is small because it is right after (under 1000ms)", _
              (Wv2Json.JsonGetNum(st, "q") < 1000)
-    TestBool "  除外していないので sm = 0", (Wv2Json.JsonGetNum(st, "sm") = 0)
+    TestBool "  sm = 0 because nothing is excluded", (Wv2Json.JsonGetNum(st, "sm") = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) 通信を数える (blob URL なのでオフラインで完結) ---"
+    Wv2Log.LogI "  --- (5) Counting communications (a blob URL, so it completes offline) ---"
 
     st = p.SpaProbeState()
     n0 = Wv2Json.JsonGetNum(st, "n")
@@ -4119,82 +4119,82 @@ Public Sub Test_D4_Probe()
                "fetch(u).then(function(r){return r.text();});return 1;})()"
     D3Pump 1
     st = p.SpaProbeState()
-    TestBool "★fetch が数えられた★", (Wv2Json.JsonGetNum(st, "n") > n0)
-    TestBool "  完了して実行中が 0 に戻った", (Wv2Json.JsonGetNum(st, "f") = 0)
+    TestBool "*fetch was counted*", (Wv2Json.JsonGetNum(st, "n") > n0)
+    TestBool "  completed and the in-flight count returned to 0", (Wv2Json.JsonGetNum(st, "f") = 0)
 
     n0 = Wv2Json.JsonGetNum(st, "n")
     p.EvalSync "(function(){var u=URL.createObjectURL(new Blob(['hi']));" & _
                "var r=new XMLHttpRequest();r.open('GET',u);r.send();return 1;})()"
     D3Pump 1
     st = p.SpaProbeState()
-    TestBool "★XHR が数えられた★", (Wv2Json.JsonGetNum(st, "n") > n0)
-    TestBool "  完了して実行中が 0 に戻った", (Wv2Json.JsonGetNum(st, "x") = 0)
+    TestBool "*XHR was counted*", (Wv2Json.JsonGetNum(st, "n") > n0)
+    TestBool "  completed and the in-flight count returned to 0", (Wv2Json.JsonGetNum(st, "x") = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★健康診断と自動修復★ (未知1) ---"
+    Wv2Log.LogI "  --- (6) *Health check and automatic repair* (unknown 1) ---"
 
     st = p.SpaProbeState()
     g0 = Wv2Json.JsonGetNum(st, "g")
-    Wv2Log.LogI "        壊す前: 世代=" & g0 & " 作り直し=" & _
+    Wv2Log.LogI "        before breaking: generation=" & g0 & " rebuilds=" & _
                 Wv2Json.JsonGetNum(st, "rp")
 
-    Wv2Log.LogI "        ページ側が window.fetch を差し替えた状況を作る"
+    Wv2Log.LogI "        Create a situation where the page side replaced window.fetch"
     p.EvalSync "(function(){var o=window.fetch;" & _
                "window.fetch=function(){return o.apply(this,arguments);};return 1;})()"
 
     st = p.SpaProbeState()
-    TestBool "★壊れても呼べば健康に戻る (h=true)★", _
+    TestBool "*even if broken, calling it returns it to healthy (h=true)*", _
              (InStr(1, st, """h"":true") > 0)
-    TestBool "  ★作り直しが記録された (rp >= 1)★", _
+    TestBool "  *the rebuild was recorded (rp >= 1)*", _
              (Wv2Json.JsonGetNum(st, "rp") >= 1)
-    TestBool "  世代が 1 つ進んだ", (Wv2Json.JsonGetNum(st, "g") = g0 + 1)
-    Wv2Log.LogI "        壊した後: state = " & st
+    TestBool "  the generation advanced by 1", (Wv2Json.JsonGetNum(st, "g") = g0 + 1)
+    Wv2Log.LogI "        after breaking: state = " & st
 
     n0 = Wv2Json.JsonGetNum(st, "n")
     p.EvalSync "(function(){var u=URL.createObjectURL(new Blob(['hi']));" & _
                "fetch(u).then(function(r){return r.text();});return 1;})()"
     D3Pump 1
     st = p.SpaProbeState()
-    TestBool "  ★作り直した後も数えられる★", (Wv2Json.JsonGetNum(st, "n") > n0)
+    TestBool "  *it can count even after the rebuild*", (Wv2Json.JsonGetNum(st, "n") > n0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) SpaProbeReset (手動の作り直し) ---"
+    Wv2Log.LogI "  --- (7) SpaProbeReset (manual rebuild) ---"
 
     g0 = Wv2Json.JsonGetNum(st, "g")
-    TestBool "SpaProbeReset が成功する", p.SpaProbeReset()
+    TestBool "SpaProbeReset succeeds", p.SpaProbeReset()
     st = p.SpaProbeState()
-    TestBool "  世代が進んだ", (Wv2Json.JsonGetNum(st, "g") > g0)
-    TestBool "  数えた値が 0 に戻った", (Wv2Json.JsonGetNum(st, "n") = 0)
-    TestBool "  健康である", (InStr(1, st, """h"":true") > 0)
+    TestBool "  the generation advanced", (Wv2Json.JsonGetNum(st, "g") > g0)
+    TestBool "  the counted value returned to 0", (Wv2Json.JsonGetNum(st, "n") = 0)
+    TestBool "  healthy", (InStr(1, st, """h"":true") > 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (8) ページ遷移でプローブは消える (未知3) ---"
+    Wv2Log.LogI "  --- (8) The probe disappears on page navigation (unknown 3) ---"
 
     p.View_NavigateToString BuildD2SecondHtml()
-    If Not D2WaitTitle(p, "D-2 プローブ 2 枚目", 10) Then
-        Wv2Log.LogI "  [FAIL] 遷移を確認できませんでした"
+    If Not D2WaitTitle(p, ("D-2 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & " 2 " & ChrW(&H679A&) & ChrW(&H76EE&)), 10) Then
+        Wv2Log.LogI "  [FAIL] could not confirm the navigation"
         m_ngCount = m_ngCount + 1
     Else
         st = p.EvalSync("typeof window.__wv2p")
-        TestBool "★遷移後は undefined に戻る★", _
+        TestBool "*returns to undefined after navigation*", _
                  (Wv2Json.JsonUnescape(st) = "undefined")
         st = p.SpaProbeState()
-        TestBool "  新しいページでも立て直せる", _
+        TestBool "  can be set up again on the new page", _
                  (InStr(1, st, """h"":true") > 0)
-        TestBool "  世代は 1 から数え直し", (Wv2Json.JsonGetNum(st, "g") = 1)
+        TestBool "  the generation is counted again from 1", (Wv2Json.JsonGetNum(st, "g") = 1)
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D4_Probe 終了 ================"
+    Wv2Log.LogI "================ Test_D4_Probe end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' D4RoundTrip (D-4a: EvalSync 1 往復の平均 ms を測る)
-'   ★仕様事実52 (約 38ms) の測り直し★ プローブを張ると重くならないかを見る。
+' D4RoundTrip (D-4a: measure the average ms of one EvalSync round trip)
+'   *Re-measuring spec fact 52 (about 38ms)* Checks whether setting up the probe makes it heavy.
 ' ============================================================
 Private Function D4RoundTrip(ByVal p As Wv2Pane, ByVal shots As Long) As Single
     Dim i As Long
@@ -4210,22 +4210,22 @@ End Function
 
 
 ' ============================================================
-' BuildD4ProbeHtml (D-4 の検証ページ)
+' BuildD4ProbeHtml (the verification page of D-4)
 '
-'   ★読み込み直後は完全に静か★ にしてある (静穏待ちの検証に要る)。
-'   ページ側の口:
-'     startNoise(ms) … ms ごとに #noise を書き換え続ける (静まらないページの再現)
-'     stopNoise()    … 止める
-'     later(ms)      … ms 後に #late を足す (D-4b で使う)
-'     chain(ms)      … ms 後に blob を fetch し、その完了後にさらに DOM を書き換える
-'                      (★fetch → DOM 更新の連鎖★ = SPA の再現。D-4b で使う)
+'   Made *completely quiet right after loading* (needed for verifying the quiescence wait).
+'   Page-side entry points:
+'     startNoise(ms) ... keeps rewriting #noise every ms (reproduces a page that does not settle)
+'     stopNoise()    ... stops it
+'     later(ms)      ... adds #late after ms (used in D-4b)
+'     chain(ms)      ... fetches a blob after ms and, once that completes, rewrites the DOM further
+'                      (*the chain fetch -> DOM update* = reproduces an SPA. Used in D-4b)
 ' ============================================================
 Private Function BuildD4ProbeHtml() As String
     Dim s As String
 
     s = "<!DOCTYPE html>" & vbLf
     s = s & "<html lang=""ja""><head><meta charset=""UTF-8"">" & vbLf
-    s = s & "<title>D-4 プローブ</title>" & vbLf
+    s = s & ("<title>D-4 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</title>") & vbLf
     s = s & "<style>" & vbLf
     s = s & "  body{font-family:'Segoe UI','Meiryo',sans-serif;background:#12161f;" & _
             "color:#e8eaed;padding:32px;line-height:1.8;}" & vbLf
@@ -4234,28 +4234,28 @@ Private Function BuildD4ProbeHtml() As String
             "padding:14px 16px;margin:12px 0;background:rgba(255,255,255,.04);}" & vbLf
     s = s & "  .note{color:#8ea2c8;font-size:12.5px;}" & vbLf
     s = s & "</style></head><body>" & vbLf
-    s = s & "<h1 id=""ttl"">D-4 静穏待ちのプローブ</h1>" & vbLf
-    s = s & "<p class=""note"">読み込み直後は★何も動いていない★状態です。" & _
-            "startNoise() / later() / chain() で動きを作ります。</p>" & vbLf
-    s = s & "<div id=""target"" class=""card"">書き換え対象</div>" & vbLf
-    s = s & "<div id=""noise"" class=""card"">ノイズ: 停止中</div>" & vbLf
+    s = s & ("<h1 id=""ttl"">D-4 " & ChrW(&H9759&) & ChrW(&H7A4F&) & ChrW(&H5F85&) & ChrW(&H3061&) & ChrW(&H306E&) & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</h1>") & vbLf
+    s = s & ("<p class=""note"">" & ChrW(&H8AAD&) & ChrW(&H307F&) & ChrW(&H8FBC&) & ChrW(&H307F&) & ChrW(&H76F4&) & ChrW(&H5F8C&) & ChrW(&H306F&) & ChrW(&H2605&) & ChrW(&H4F55&) & ChrW(&H3082&) & ChrW(&H52D5&) & ChrW(&H3044&) & ChrW(&H3066&) & ChrW(&H3044&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H2605&) & ChrW(&H72B6&) & ChrW(&H614B&) & ChrW(&H3067&) & ChrW(&H3059&) & ChrW(&H3002&)) & _
+            ("startNoise() / later() / chain() " & ChrW(&H3067&) & ChrW(&H52D5&) & ChrW(&H304D&) & ChrW(&H3092&) & ChrW(&H4F5C&) & ChrW(&H308A&) & ChrW(&H307E&) & ChrW(&H3059&) & ChrW(&H3002&) & "</p>") & vbLf
+    s = s & ("<div id=""target"" class=""card"">" & ChrW(&H66F8&) & ChrW(&H304D&) & ChrW(&H63DB&) & ChrW(&H3048&) & ChrW(&H5BFE&) & ChrW(&H8C61&) & "</div>") & vbLf
+    s = s & ("<div id=""noise"" class=""card"">" & ChrW(&H30CE&) & ChrW(&H30A4&) & ChrW(&H30BA&) & ": " & ChrW(&H505C&) & ChrW(&H6B62&) & ChrW(&H4E2D&) & "</div>") & vbLf
     s = s & "<div id=""slot"" class=""card""></div>" & vbLf
-    s = s & "<p><button id=""btn"" type=""button"">押すと 400ms 後に更新</button></p>" & vbLf
+    s = s & ("<p><button id=""btn"" type=""button"">" & ChrW(&H62BC&) & ChrW(&H3059&) & ChrW(&H3068&) & " 400ms " & ChrW(&H5F8C&) & ChrW(&H306B&) & ChrW(&H66F4&) & ChrW(&H65B0&) & "</button></p>") & vbLf
     s = s & "<script>" & vbLf
     s = s & "(function(){" & vbLf
     s = s & "  var t=null;" & vbLf
     s = s & "  window.startNoise=function(ms){" & vbLf
     s = s & "    if(t){clearInterval(t);}" & vbLf
     s = s & "    t=setInterval(function(){" & vbLf
-    s = s & "      document.getElementById('noise').textContent='ノイズ '+Date.now();" & vbLf
+    s = s & ("      document.getElementById('noise').textContent='" & ChrW(&H30CE&) & ChrW(&H30A4&) & ChrW(&H30BA&) & " '+Date.now();") & vbLf
     s = s & "    },ms||200);return 1;};" & vbLf
     s = s & "  window.stopNoise=function(){" & vbLf
     s = s & "    if(t){clearInterval(t);t=null;}" & vbLf
-    s = s & "    document.getElementById('noise').textContent='ノイズ: 停止中';return 1;};" & vbLf
+    s = s & ("    document.getElementById('noise').textContent='" & ChrW(&H30CE&) & ChrW(&H30A4&) & ChrW(&H30BA&) & ": " & ChrW(&H505C&) & ChrW(&H6B62&) & ChrW(&H4E2D&) & "';return 1;};") & vbLf
     s = s & "  window.later=function(ms){" & vbLf
     s = s & "    setTimeout(function(){" & vbLf
     s = s & "      var d=document.createElement('div');d.id='late';" & vbLf
-    s = s & "      d.textContent='遅れて出た';" & vbLf
+    s = s & ("      d.textContent='" & ChrW(&H9045&) & ChrW(&H308C&) & ChrW(&H3066&) & ChrW(&H51FA&) & ChrW(&H305F&) & "';") & vbLf
     s = s & "      document.getElementById('slot').appendChild(d);" & vbLf
     s = s & "    },ms||800);return 1;};" & vbLf
     s = s & "  window.chain=function(ms){" & vbLf
@@ -4263,14 +4263,14 @@ Private Function BuildD4ProbeHtml() As String
     s = s & "      var u=URL.createObjectURL(new Blob(['ok']));" & vbLf
     s = s & "      fetch(u).then(function(r){return r.text();}).then(function(x){" & vbLf
     s = s & "        setTimeout(function(){" & vbLf
-    s = s & "          document.getElementById('target').textContent='連鎖の結果 '+x;" & vbLf
+    s = s & ("          document.getElementById('target').textContent='" & ChrW(&H9023&) & ChrW(&H9396&) & ChrW(&H306E&) & ChrW(&H7D50&) & ChrW(&H679C&) & " '+x;") & vbLf
     s = s & "        },300);" & vbLf
     s = s & "      });" & vbLf
     s = s & "    },ms||500);return 1;};" & vbLf
     s = s & "  document.getElementById('btn').addEventListener('click',function(){" & vbLf
     s = s & "    setTimeout(function(){" & vbLf
     s = s & "      document.getElementById('target').textContent=" & _
-            "'クリックの結果 '+Date.now();" & vbLf
+            ("'" & ChrW(&H30AF&) & ChrW(&H30EA&) & ChrW(&H30C3&) & ChrW(&H30AF&) & ChrW(&H306E&) & ChrW(&H7D50&) & ChrW(&H679C&) & " '+Date.now();") & vbLf
     s = s & "    },400);" & vbLf
     s = s & "  });" & vbLf
     s = s & "})();" & vbLf
@@ -4282,12 +4282,12 @@ End Function
 
 
 ' ============================================================
-' Test_D4_Settle (D-4b の検証: 静穏待ち)
+' Test_D4_Settle (verification of D-4b: quiescence wait)
 '
-'   ★D-4 の核心★ 「fetch が終わった」ではなく「その後の DOM 更新まで終わった」
-'   ところで返ることを、決定的に確かめる。
+'   *The heart of D-4* Deterministically confirms that it returns not at "the fetch finished" but at the point
+'   where "even the DOM update after that has finished".
 '
-'   ★実行中はブレーク/ステップ実行しないこと★ (仕様事実20)
+'   *Do not break/step through during execution* (spec fact 20)
 ' ============================================================
 Public Sub Test_D4_Settle()
     Dim b As Wv2Browser
@@ -4300,154 +4300,154 @@ Public Sub Test_D4_Settle()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D4_Settle: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D4_Settle: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD4ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D4_Settle: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D4_Settle: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-4 プローブ", 10) Then
-        Wv2Log.LogI "Test_D4_Settle: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-4 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D4_Settle: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D4_Settle 開始 ================"
-    Wv2Log.LogI "  --- (1) 静かなページ ---"
+    Wv2Log.LogI "================ Test_D4_Settle start ================"
+    Wv2Log.LogI "  --- (1) A quiet page ---"
 
     t0 = Timer
     ok = p.WaitSettled(5)
     took = D3Took(t0)
-    TestBool "静かなページでは静穏に達する", ok
+    TestBool "a quiet page reaches quiescence", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
-    Wv2Log.LogI "        かかった時間 = " & Format$(took, "0.00") & " 秒"
-    TestBool "  ★最低でも静穏窓ぶんは見張る (0.4 秒以上)★", (took > 0.4)
-    TestBool "  無駄に長くはない (2 秒未満)", (took < 2)
+    Wv2Log.LogI "        time taken = " & Format$(took, "0.00") & " s"
+    TestBool "  *watches for at least the quiescence window (0.4 s or more)*", (took > 0.4)
+    TestBool "  not needlessly long (under 2 s)", (took < 2)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★fetch → DOM 更新の連鎖★ (D-4 の核心) ---"
-    Wv2Log.LogI "        100ms 後に fetch し、その完了の 300ms 後に #target を書き換える"
+    Wv2Log.LogI "  --- (2) *The chain fetch -> DOM update* (the heart of D-4) ---"
+    Wv2Log.LogI "        Fetch after 100ms and rewrite #target 300ms after that completes"
 
     p.EvalSync "(function(){document.getElementById('target')" & _
-               ".textContent='まだ';return 1;})()"
+               (".textContent='" & ChrW(&H307E&) & ChrW(&H3060&) & "';return 1;})()")
     p.EvalSync "window.chain(100)"
 
     t0 = Timer
     ok = p.WaitSettled(5)
     took = D3Took(t0)
-    TestBool "連鎖の後で静穏に達する", ok
+    TestBool "reaches quiescence after the chain", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
-    Wv2Log.LogI "        かかった時間 = " & Format$(took, "0.00") & " 秒"
+    Wv2Log.LogI "        time taken = " & Format$(took, "0.00") & " s"
 
     Set el = D2El(p, "target")
     txt = el.InnerText
-    Wv2Log.LogI "        待ち終わった時点の #target = " & txt
-    TestBool "★★ DOM 更新まで待てている (通信の完了だけで返っていない) ★★", _
-             (InStr(1, txt, "連鎖の結果") > 0)
-    TestBool "  連鎖ぶん待っている (0.7 秒以上)", (took > 0.7)
+    Wv2Log.LogI "        #target at the point the wait ended = " & txt
+    TestBool "** it waited until the DOM update (did not return on the communication finishing alone) **", _
+             (InStr(1, txt, (ChrW(&H9023&) & ChrW(&H9396&) & ChrW(&H306E&) & ChrW(&H7D50&) & ChrW(&H679C&))) > 0)
+    TestBool "  waited for the chain (0.7 s or more)", (took > 0.7)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) 静まらないページ (50ms ごとに書き換え続ける) ---"
+    Wv2Log.LogI "  --- (3) A page that does not settle (keeps rewriting every 50ms) ---"
 
     p.EvalSync "window.startNoise(50)"
     t0 = Timer
     ok = p.WaitSettled(2)
     took = D3Took(t0)
-    TestBool "★静まらなければ False★", (ok = False)
-    TestBool "  ★LastEvalOk=True (失敗ではなく時間切れ)★", (p.LastEvalOk = True)
+    TestBool "*False if it does not settle*", (ok = False)
+    TestBool "  *LastEvalOk=True (not a failure but a timeout)*", (p.LastEvalOk = True)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が timeout であること", (InStr(1, p.LastSettleInfo, "timeout") > 0)
-    TestBool "  指定どおり 2 秒粘った", (took > 1.7 And took < 4)
+    TestBool "  the breakdown is timeout", (InStr(1, p.LastSettleInfo, "timeout") > 0)
+    TestBool "  it hung on for 2 seconds as specified", (took > 1.7 And took < 4)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ★ノイズ除外が効く★ (論点5) ---"
-    Wv2Log.LogI "        ノイズは鳴らしたまま、#noise の変化だけ静穏判定から外す"
+    Wv2Log.LogI "  --- (4) *Noise exclusion works* (issue 5) ---"
+    Wv2Log.LogI "        Keep the noise going, and exclude only the changes of #noise from the quiescence judgment"
 
     p.IgnoreSelectors = "#noise"
     t0 = Timer
     ok = p.WaitSettled(5)
     took = D3Took(t0)
-    TestBool "★除外すれば静穏に達する★", ok
+    TestBool "*with the exclusion it reaches quiescence*", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
-    Wv2Log.LogI "        かかった時間 = " & Format$(took, "0.00") & " 秒"
+    Wv2Log.LogI "        time taken = " & Format$(took, "0.00") & " s"
 
     Wv2Log.LogI "        state = " & p.SpaProbeState()
-    TestBool "  除外した DOM 変化が数えられている (sm > 0)", _
+    TestBool "  the excluded DOM changes are counted (sm > 0)", _
              (Wv2Json.JsonGetNum(p.SpaProbeState(), "sm") > 0)
 
     p.IgnoreSelectors = ""
     ok = p.WaitSettled(2)
-    TestBool "  ★除外を外すとまた静まらない★", (ok = False)
+    TestBool "  *removing the exclusion makes it not settle again*", (ok = False)
     p.EvalSync "window.stopNoise()"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) stableMs を変えると待ちが伸びる ---"
+    Wv2Log.LogI "  --- (5) Changing stableMs lengthens the wait ---"
 
     t0 = Timer
     ok = p.WaitSettled(6, 2000)
     took = D3Took(t0)
-    TestBool "静穏窓 2000ms でも達する", ok
+    TestBool "it reaches quiescence even with a 2000ms quiescence window", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  2 秒以上かかっている", (took > 1.9)
+    TestBool "  it takes 2 seconds or more", (took > 1.9)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★AutoWaitAfterAction★ (論点7 の opt-in) ---"
+    Wv2Log.LogI "  --- (6) *AutoWaitAfterAction* (opt-in of issue 7) ---"
 
-    TestBool "既定は False", (p.AutoWaitAfterAction = False)
+    TestBool "the default is False", (p.AutoWaitAfterAction = False)
 
     p.EvalSync "(function(){document.getElementById('target')" & _
-               ".textContent='押す前';return 1;})()"
+               (".textContent='" & ChrW(&H62BC&) & ChrW(&H3059&) & ChrW(&H524D&) & "';return 1;})()")
     Set el = D2El(p, "btn")
     el.Click
     Set el = D2El(p, "target")
     txt = el.InnerText
-    Wv2Log.LogI "        自動待ち OFF: クリック直後の #target = " & txt
-    TestBool "★OFF なら更新前の値が見える (待っていない)★", (txt = "押す前")
+    Wv2Log.LogI "        auto wait OFF: #target right after the click = " & txt
+    TestBool "*with OFF the pre-update value is seen (not waiting)*", (txt = (ChrW(&H62BC&) & ChrW(&H3059&) & ChrW(&H524D&)))
 
     p.AutoWaitAfterAction = True
     p.EvalSync "(function(){document.getElementById('target')" & _
-               ".textContent='押す前';return 1;})()"
+               (".textContent='" & ChrW(&H62BC&) & ChrW(&H3059&) & ChrW(&H524D&) & "';return 1;})()")
     Set el = D2El(p, "btn")
     t0 = Timer
     el.Click
     took = D3Took(t0)
     Set el = D2El(p, "target")
     txt = el.InnerText
-    Wv2Log.LogI "        自動待ち ON: Click に " & Format$(took, "0.00") & " 秒"
-    Wv2Log.LogI "        クリック直後の #target = " & txt
-    TestBool "★ON なら更新後の値が見える (待っている)★", _
-             (InStr(1, txt, "クリックの結果") > 0)
+    Wv2Log.LogI "        auto wait ON: Click took " & Format$(took, "0.00") & " s"
+    Wv2Log.LogI "        #target right after the click = " & txt
+    TestBool "*with ON the post-update value is seen (it is waiting)*", _
+             (InStr(1, txt, (ChrW(&H30AF&) & ChrW(&H30EA&) & ChrW(&H30C3&) & ChrW(&H30AF&) & ChrW(&H306E&) & ChrW(&H7D50&) & ChrW(&H679C&))) > 0)
     Wv2Log.LogI "        " & p.LastSettleInfo
     p.AutoWaitAfterAction = False
-    TestBool "  False に戻せる", (p.AutoWaitAfterAction = False)
+    TestBool "  can be returned to False", (p.AutoWaitAfterAction = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) 除外リスト (通信) の口 ---"
+    Wv2Log.LogI "  --- (7) Entry point of the exclusion list (communications) ---"
 
-    TestBool "AddIgnoreNetwork が成功する", p.AddIgnoreNetwork("example.invalid")
-    TestBool "  同じものを足しても True (重複しない)", _
+    TestBool "AddIgnoreNetwork succeeds", p.AddIgnoreNetwork("example.invalid")
+    TestBool "  adding the same one is still True (no duplicate)", _
              p.AddIgnoreNetwork("example.invalid")
-    TestBool "  除外を入れても静穏判定は動く", p.WaitSettled(5)
+    TestBool "  the quiescence judgment works even with an exclusion in", p.WaitSettled(5)
     p.ClearIgnoreNetwork
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D4_Settle 終了 ================"
+    Wv2Log.LogI "================ Test_D4_Settle end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D4_Signal (D-4c の検証: 明示シグナル)
+' Test_D4_Signal (verification of D-4c: explicit signal)
 '
-'   ★D-4c の存在意義★ 静穏だけでは「アプリが終わった」と「アプリが無視した」を
-'   区別できない。arm した目印が観測されるまで待つことで、後者を落とせる。
-'   (3) がまさにその確認 ― ★静穏だけなら成功してしまう場面で、正しく失敗する★
+'   *The reason D-4c exists* Quiescence alone cannot distinguish "the app finished" from "the app ignored it".
+'   By waiting until the armed marker is observed, the latter can be ruled out.
+'   (3) is exactly that check - *it correctly fails in a situation where quiescence alone would succeed*
 ' ============================================================
 Public Sub Test_D4_Signal()
     Dim b As Wv2Browser
@@ -4458,127 +4458,127 @@ Public Sub Test_D4_Signal()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D4_Signal: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D4_Signal: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD4ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D4_Signal: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D4_Signal: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-4 プローブ", 10) Then
-        Wv2Log.LogI "Test_D4_Signal: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-4 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D4_Signal: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D4_Signal 開始 ================"
-    Wv2Log.LogI "  --- (1) arm は fail-fast (その場で気づける) ---"
+    Wv2Log.LogI "================ Test_D4_Signal start ================"
+    Wv2Log.LogI "  --- (1) arm is fail-fast (you notice on the spot) ---"
 
-    TestBool "★無い要素は arm できない★", _
+    TestBool "*an element that does not exist cannot be armed*", _
              (p.ArmContentSignal("#nope-nope") = False)
     Wv2Log.LogI "        LastEvalError = " & p.LastEvalError
-    TestBool "  理由が not-found", (p.LastEvalError = "not-found")
+    TestBool "  the reason is not-found", (p.LastEvalError = "not-found")
 
-    TestBool "★不正なセレクタも arm できない★", (p.ArmContentSignal("###") = False)
-    TestBool "  理由が bad-selector", (p.LastEvalError = "bad-selector")
+    TestBool "*an invalid selector cannot be armed either*", (p.ArmContentSignal("###") = False)
+    TestBool "  the reason is bad-selector", (p.LastEvalError = "bad-selector")
 
-    TestBool "既存の器なら arm できる", p.ArmContentSignal("#slot")
+    TestBool "an existing container can be armed", p.ArmContentSignal("#slot")
     p.DisarmSignals
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★arm してから act する★ ---"
-    Wv2Log.LogI "        #slot を arm し、800ms 後にその中へ要素を足す"
+    Wv2Log.LogI "  --- (2) *Arm, then act* ---"
+    Wv2Log.LogI "        Arm #slot, and add an element into it after 800ms"
 
-    TestBool "arm できる", p.ArmContentSignal("#slot")
+    TestBool "can arm", p.ArmContentSignal("#slot")
     p.EvalSync "window.later(800)"
 
     t0 = Timer
     ok = p.WaitSettled(5)
     took = D3Took(t0)
-    TestBool "★シグナルが当たって静穏に達する★", ok
+    TestBool "*the signal hits and quiescence is reached*", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
-    Wv2Log.LogI "        かかった時間 = " & Format$(took, "0.00") & " 秒"
-    TestBool "  内訳が dom:hit", (InStr(1, p.LastSettleInfo, "dom:hit") > 0)
-    TestBool "  仕掛けぶん待っている (0.8 秒以上)", (took > 0.8)
+    Wv2Log.LogI "        time taken = " & Format$(took, "0.00") & " s"
+    TestBool "  the breakdown is dom:hit", (InStr(1, p.LastSettleInfo, "dom:hit") > 0)
+    TestBool "  it waited for the setup (0.8 s or more)", (took > 0.8)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★★ arm したのに何も起きない ★★ (D-4c の核心) ---"
-    Wv2Log.LogI "        ページは静かなまま。静穏だけなら成功してしまう場面"
+    Wv2Log.LogI "  --- (3) ** Armed but nothing happens ** (the heart of D-4c) ---"
+    Wv2Log.LogI "        The page stays quiet. A situation where quiescence alone would succeed"
 
-    TestBool "arm できる", p.ArmContentSignal("#slot")
+    TestBool "can arm", p.ArmContentSignal("#slot")
     t0 = Timer
     ok = p.WaitSettled(2)
     took = D3Took(t0)
-    TestBool "★★ 静かでも False (無視されたことを検出できる) ★★", (ok = False)
-    TestBool "  LastEvalOk=True (失敗ではなく時間切れ)", (p.LastEvalOk = True)
+    TestBool "** False even though quiet (being ignored can be detected) **", (ok = False)
+    TestBool "  LastEvalOk=True (not a failure but a timeout)", (p.LastEvalOk = True)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が dom:miss", (InStr(1, p.LastSettleInfo, "dom:miss") > 0)
-    TestBool "  指定どおり 2 秒粘った", (took > 1.7)
+    TestBool "  the breakdown is dom:miss", (InStr(1, p.LastSettleInfo, "dom:miss") > 0)
+    TestBool "  it hung on for 2 seconds as specified", (took > 1.7)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ワンショット (次の待ちには持ち越さない) ---"
+    Wv2Log.LogI "  --- (4) One-shot (not carried over to the next wait) ---"
 
     t0 = Timer
     ok = p.WaitSettled(5)
     took = D3Took(t0)
-    TestBool "★arm は消費済みなので普通に静穏に達する★", ok
-    TestBool "  待ち時間も普通 (2 秒未満)", (took < 2)
+    TestBool "*the arm is consumed, so quiescence is reached normally*", ok
+    TestBool "  the wait time is also normal (under 2 s)", (took < 2)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳に signal= が出ない", _
+    TestBool "  signal= does not appear in the breakdown", _
              (InStr(1, p.LastSettleInfo, "signal=") = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) 通信シグナル ---"
+    Wv2Log.LogI "  --- (5) Communication signal ---"
 
-    TestBool "arm できる (blob:)", p.ArmNetworkSignal("blob:")
+    TestBool "can arm (blob:)", p.ArmNetworkSignal("blob:")
     p.EvalSync "window.chain(100)"
     ok = p.WaitSettled(5)
-    TestBool "★通信シグナルが当たる★", ok
+    TestBool "*the communication signal hits*", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が net:hit", (InStr(1, p.LastSettleInfo, "net:hit") > 0)
+    TestBool "  the breakdown is net:hit", (InStr(1, p.LastSettleInfo, "net:hit") > 0)
 
-    TestBool "当たらないパターンでも arm はできる", _
+    TestBool "can arm even with a pattern that will not hit", _
              p.ArmNetworkSignal("this-never-matches-xyz")
     p.EvalSync "window.chain(100)"
     ok = p.WaitSettled(3)
-    TestBool "★当たらなければ False★", (ok = False)
+    TestBool "*False if it does not hit*", (ok = False)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が net:miss", (InStr(1, p.LastSettleInfo, "net:miss") > 0)
+    TestBool "  the breakdown is net:miss", (InStr(1, p.LastSettleInfo, "net:miss") > 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★signal-lost★ (arm が消えたら黙って直さない) ---"
+    Wv2Log.LogI "  --- (6) *signal-lost* (if the arm vanishes, do not quietly fix it) ---"
 
-    TestBool "arm できる", p.ArmContentSignal("#slot")
-    TestBool "  プローブを作り直す (arm ごと消える)", p.SpaProbeReset()
+    TestBool "can arm", p.ArmContentSignal("#slot")
+    TestBool "  rebuild the probe (the arm vanishes along with it)", p.SpaProbeReset()
     ok = p.WaitSettled(3)
-    TestBool "★arm が消えたら False★", (ok = False)
+    TestBool "*False if the arm vanished*", (ok = False)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が signal-lost", _
+    TestBool "  the breakdown is signal-lost", _
              (InStr(1, p.LastSettleInfo, "signal-lost") > 0)
-    TestBool "  ★即座に返る (待たされない)★", True
+    TestBool "  *returns at once (does not make you wait)*", True
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) DisarmSignals (手で取り下げる) ---"
+    Wv2Log.LogI "  --- (7) DisarmSignals (withdraw by hand) ---"
 
-    TestBool "arm できる", p.ArmContentSignal("#slot")
-    TestBool "  DisarmSignals が成功する", p.DisarmSignals()
+    TestBool "can arm", p.ArmContentSignal("#slot")
+    TestBool "  DisarmSignals succeeds", p.DisarmSignals()
     ok = p.WaitSettled(3)
-    TestBool "★取り下げれば普通に静穏に達する★", ok
+    TestBool "*if withdrawn, quiescence is reached normally*", ok
     Wv2Log.LogI "        " & p.LastSettleInfo
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D4_Signal 終了 ================"
+    Wv2Log.LogI "================ Test_D4_Signal end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D4_Log (D-4e の検証: in-flight 台帳 / 診断ログ / URL シグナル)
+' Test_D4_Log (verification of D-4e: in-flight ledger / diagnostic log / URL signal)
 ' ============================================================
 Public Sub Test_D4_Log()
     Dim b As Wv2Browser
@@ -4589,49 +4589,49 @@ Public Sub Test_D4_Log()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D4_Log: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D4_Log: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD4ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D4_Log: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D4_Log: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-4 プローブ", 10) Then
-        Wv2Log.LogI "Test_D4_Log: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-4 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D4_Log: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D4_Log 開始 ================"
-    Wv2Log.LogI "  --- (1) 診断ログの ON / OFF ---"
+    Wv2Log.LogI "================ Test_D4_Log start ================"
+    Wv2Log.LogI "  --- (1) Diagnostic log ON / OFF ---"
 
-    TestBool "既定は無効", (p.SpaProbeLogging = False)
+    TestBool "disabled by default", (p.SpaProbeLogging = False)
     p.SpaProbeLogging = True
-    TestBool "  有効にできる", p.SpaProbeLogging
+    TestBool "  can be enabled", p.SpaProbeLogging
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★出来事が溜まる★ ---"
+    Wv2Log.LogI "  --- (2) *Events accumulate* ---"
 
     p.EvalSync "window.chain(100)"
     D3Pump 1.5
     st = p.SpaProbeState()
-    TestBool "ログ件数が増えている", (Wv2Json.JsonGetNum(st, "lgN") > 0)
+    TestBool "the log count has increased", (Wv2Json.JsonGetNum(st, "lgN") > 0)
 
     n = p.SpaProbeDrainLog()
-    TestBool "★取り出せる★", (n > 0)
-    TestBool "  取り出したら空になる", (p.SpaProbeDrainLog() = 0)
+    TestBool "*can be fetched*", (n > 0)
+    TestBool "  empty once fetched", (p.SpaProbeDrainLog() = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★in-flight の台帳★ ---"
+    Wv2Log.LogI "  --- (3) *The in-flight ledger* ---"
 
-    ' ★30 秒前から飛んでいる要求を仕込む★
-    '   自前ページでは blob の fetch が 1ms で終わってしまい、EvalSync の往復
-    '   (38ms) の間に消える。台帳と居座り判定を決定的に確かめるために、
-    '   ロングポーリング相当の項目を直接押し込む。
+    ' *Plant a request that has been in flight since 30 seconds ago*
+    '   On our own page a blob fetch finishes in 1ms and vanishes within one EvalSync round trip
+    '   (38ms). To check the ledger and the lingering judgment deterministically,
+    '   we directly push in an item equivalent to a long poll.
     p.EvalSync "(function(){var q=window.__wv2p;" & _
                "q.ifl.push({u:'fake://long-poll',t:performance.now()-30000,w:'xhr'});" & _
                "return 1;})()"
@@ -4639,78 +4639,78 @@ Public Sub Test_D4_Log()
     st = p.SpaProbeState()
     Wv2Json.JsonPickStr st, "il", il
     Wv2Log.LogI "        il = " & il
-    TestBool "★飛んでいる要求が一覧に出る★", (InStr(1, il, "fake://long-poll") > 0)
-    TestBool "  種別と経過時間が分かる", (InStr(1, il, "xhr 30") > 0)
+    TestBool "*the in-flight request appears in the list*", (InStr(1, il, "fake://long-poll") > 0)
+    TestBool "  the type and elapsed time are known", (InStr(1, il, "xhr 30") > 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3b) ★居座り判定 (StaleInflightMs)★ ---"
+    Wv2Log.LogI "  --- (3b) *Lingering judgment (StaleInflightMs)* ---"
 
-    TestBool "既定は 10000ms", (p.StaleInflightMs = 10000)
-    TestBool "★居座りは静穏判定から外れる (ifn=0)★", _
+    TestBool "the default is 10000ms", (p.StaleInflightMs = 10000)
+    TestBool "*a lingering request is excluded from the quiescence judgment (ifn=0)*", _
              (Wv2Json.JsonGetNum(st, "ifn") = 0)
-    TestBool "  居座りとして数えられている (ifo=1)", _
+    TestBool "  it is counted as lingering (ifo=1)", _
              (Wv2Json.JsonGetNum(st, "ifo") = 1)
-    TestBool "★居座りがあっても静穏に達する★", p.WaitSettled(5)
+    TestBool "*quiescence is reached even with a lingering request*", p.WaitSettled(5)
     Wv2Log.LogI "        " & p.LastSettleInfo
 
     p.StaleInflightMs = 0
     st = p.SpaProbeState()
-    TestBool "★無効にすると数える (ifn=1)★", (Wv2Json.JsonGetNum(st, "ifn") = 1)
-    TestBool "  そのときは静穏に達しない", (p.WaitSettled(2) = False)
+    TestBool "*if disabled, it is counted (ifn=1)*", (Wv2Json.JsonGetNum(st, "ifn") = 1)
+    TestBool "  in that case quiescence is not reached", (p.WaitSettled(2) = False)
     Wv2Log.LogI "        " & p.LastSettleInfo
     p.StaleInflightMs = 10000
 
-    ' 仕込んだ項目を片付ける
+    ' clean up the planted item
     p.EvalSync "(function(){window.__wv2p.ifl=[];return 1;})()"
     st = p.SpaProbeState()
     Wv2Json.JsonPickStr st, "il", il
-    TestBool "  片付ければ一覧から消える", (Len(il) = 0)
+    TestBool "  once cleaned up it vanishes from the list", (Len(il) = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ★URL シグナル★ ---"
-    Wv2Log.LogI "        このページの URL = " & p.View_GetSource()
+    Wv2Log.LogI "  --- (4) *URL signal* ---"
+    Wv2Log.LogI "        URL of this page = " & p.View_GetSource()
 
-    TestBool "arm できる (当たるはずの文字列)", p.ArmUrlSignal("blank")
-    TestBool "★URL に含まれていれば静穏に達する★", p.WaitSettled(5)
+    TestBool "can arm (a string that should hit)", p.ArmUrlSignal("blank")
+    TestBool "*quiescence is reached if it is contained in the URL*", p.WaitSettled(5)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が url:hit", (InStr(1, p.LastSettleInfo, "url:hit") > 0)
+    TestBool "  the breakdown is url:hit", (InStr(1, p.LastSettleInfo, "url:hit") > 0)
 
-    TestBool "arm できる (当たらない文字列)", p.ArmUrlSignal("zzz-not-here")
-    TestBool "★含まれていなければ False★", (p.WaitSettled(2) = False)
+    TestBool "can arm (a string that will not hit)", p.ArmUrlSignal("zzz-not-here")
+    TestBool "*False if it is not contained*", (p.WaitSettled(2) = False)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    TestBool "  内訳が url:miss", (InStr(1, p.LastSettleInfo, "url:miss") > 0)
+    TestBool "  the breakdown is url:miss", (InStr(1, p.LastSettleInfo, "url:miss") > 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ★時間切れのときに実行中の要求を見せる★ (D-4d の教訓) ---"
+    Wv2Log.LogI "  --- (5) *Show the requests in flight at timeout* (the lesson of D-4d) ---"
 
     p.SpaProbeLogging = False
-    TestBool "  無効に戻せる", (p.SpaProbeLogging = False)
+    TestBool "  can be returned to disabled", (p.SpaProbeLogging = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D4_Log 終了 ================"
+    Wv2Log.LogI "================ Test_D4_Log end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D4_Site (D-4d: ★Google Maps の偵察★)
+' Test_D4_Site (D-4d: *reconnaissance of Google Maps*)
 '
-'   ★合否を判定しない★ 実サイトは落ちるし DOM も予告なく変わる (設計原則75)。
-'   ここでやるのは★観測して数字を残すこと★ に徹する。判定するのは
-'   「タブが開けたか」「検索ボックスが見つかったか」のような構造的な数点だけ。
+'   *No pass/fail verdict* Real sites go down and their DOM changes without notice (design principle 75).
+'   What is done here is devoted to *observing and leaving numbers*. What is judged is only
+'   a few structural points such as "could the tab be opened" and "was the search box found".
 '
-'   何を知りたいか:
-'     (a) ★Maps に静穏は訪れるのか★ タイル取得とアニメーションが止まらない
-'         ページで、q (最後の DOM 変化からの経過) がどこまで伸びるか
-'     (b) ★どのくらい騒がしいのか★ 毎秒の DOM 変化数と通信数
-'     (c) ★重いページでの往復コスト★ (未知2 の本番値。軽いページでは +0.9ms だった)
-'     (d) ★何が完了の目印になるか★ 検索後に document.title と URL がどう変わるか
-'         (URL の /@緯度,経度,ズーム は座標取得の目的そのものでもある)
+'   What we want to know:
+'     (a) *Does quiescence ever come to Maps?* On a page where tile fetching and animation do not stop,
+'         how far does q (the time since the last DOM change) grow?
+'     (b) *How noisy is it?* DOM changes and communications per second
+'     (c) *Round-trip cost on a heavy page* (the production value of unknown 2. It was +0.9ms on a light page)
+'     (d) *What becomes the marker of completion?* How document.title and the URL change after a search
+'         (the /@latitude,longitude,zoom in the URL is also the very purpose of obtaining coordinates)
 '
-'   ★外部サイトに実アクセスする★ 唯一の Test_*。ネットワークが要る。
+'   *Accesses an external site for real* The only Test_*. Needs a network.
 ' ============================================================
-Public Sub Test_D4_Site(Optional ByVal searchAddr As String = "東京都千代田区丸の内1-9-1")
+Public Sub Test_D4_Site(Optional ByVal searchAddr As String = (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1"))
     Dim b As Wv2Browser
     Dim p As Wv2Pane
     Dim el As Wv2Element
@@ -4719,42 +4719,42 @@ Public Sub Test_D4_Site(Optional ByVal searchAddr As String = "東京都千代�
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D4_Site: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D4_Site: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D4_Site 開始 ================"
-    Wv2Log.LogI "  ★観測が目的。合否は付けない (実サイトは変わるため)★"
-    Wv2Log.LogI "  検索する住所: " & searchAddr
+    Wv2Log.LogI "================ Test_D4_Site start ================"
+    Wv2Log.LogI "  *The aim is observation. No pass/fail is given (because real sites change)*"
+    Wv2Log.LogI "  address to search: " & searchAddr
 
     Set p = b.AddTabWithUrl("https://www.google.com/maps")
     If p Is Nothing Then
-        Wv2Log.LogI "  [FAIL] タブの生成に失敗しました。"
+        Wv2Log.LogI "  [FAIL] failed to create the tab."
         m_ngCount = m_ngCount + 1
         TestCountPrint
         Exit Sub
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) 読み込みを待つ (D-3 の WaitFor で検索ボックスを掴む) ---"
+    Wv2Log.LogI "  --- (1) Wait for loading (grab the search box with D-3's WaitFor) ---"
 
-    ' ★先に Pane が JS を受け付ける状態になるまで待つ★
-    '   タブを開いた直後は View がまだ無く、EvalSync が no-view で失敗する。
-    '   WaitFor は「失敗なら待たずに諦める」ので、そのまま呼ぶと即座に落ちる。
-    TestBool "Pane が JS を受け付けるようになった", D4WaitPane(p, 30)
+    ' *First wait until the Pane is in a state to accept JS*
+    '   Right after opening a tab there is no View yet, and EvalSync fails with no-view.
+    '   WaitFor "gives up without waiting on failure", so calling it as is fails immediately.
+    TestBool "the Pane has come to accept JS", D4WaitPane(p, 30)
 
-    ' ★セレクタは候補を順に試す★ 実サイトの id は自動生成に変わりうる
-    '   (2026-08-22 の実測: かつての #searchboxinput は消え、id は ucc-1 だった。
-    '    name='q' と form の構造は残っていたので、そちらを先に試す)
+    ' *Selectors are tried in order of candidates* The id of a real site may change to an auto-generated one
+    '   (measured on 2026-08-22: the former #searchboxinput was gone and the id was ucc-1.
+    '    name='q' and the form structure remained, so that one is tried first)
     Set el = D4FindFirst(p, "input[name='q']" & Chr$(1) & _
                             "#searchboxinput" & Chr$(1) & _
                             "form input[type='text']", 30)
-    TestBool "検索ボックスが見つかった", Not (el Is Nothing)
+    TestBool "the search box was found", Not (el Is Nothing)
     If el Is Nothing Then
-        Wv2Log.LogI "  ★見つからない★ 同意画面やレイアウト変更の可能性がある。"
+        Wv2Log.LogI "  *Not found* There may be a consent screen or a layout change."
         Wv2Log.LogI "        title = " & p.View_GetDocumentTitle()
         Wv2Log.LogI "        url   = " & p.View_GetSource()
         Wv2Log.LogI "        LastEvalOk=" & p.LastEvalOk & " err=" & p.LastEvalError
@@ -4766,56 +4766,56 @@ Public Sub Test_D4_Site(Optional ByVal searchAddr As String = "東京都千代�
     Wv2Log.LogI "        url   = " & p.View_GetSource()
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★往復コスト (未知2 の本番値)★ ---"
+    Wv2Log.LogI "  --- (2) *Round-trip cost (production value of unknown 2)* ---"
 
     ms = D4RoundTrip(p, 20)
-    Wv2Log.LogI "        プローブ設置前の 1 往復 = " & Format$(ms, "0.0") & " ms"
+    Wv2Log.LogI "        1 round trip before installing the probe = " & Format$(ms, "0.0") & " ms"
     Wv2Log.LogI "        state = " & p.SpaProbeState()
     ms = D4RoundTrip(p, 20)
-    Wv2Log.LogI "        プローブ設置後の 1 往復 = " & Format$(ms, "0.0") & " ms"
-    Wv2Log.LogI "        (軽いページでは 35.4 → 36.3 ms だった)"
+    Wv2Log.LogI "        1 round trip after installing the probe = " & Format$(ms, "0.0") & " ms"
+    Wv2Log.LogI "        (on a light page it was 35.4 -> 36.3 ms)"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★静穏は訪れるか★ 何もせず 15 秒観測 ---"
+    Wv2Log.LogI "  --- (3) *Does quiescence come?* Observe for 15 seconds doing nothing ---"
     D4Watch p, 15
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) 静穏待ちを試す (結果は記録するだけ) ---"
+    Wv2Log.LogI "  --- (4) Try the quiescence wait (the result is only recorded) ---"
 
     Wv2Log.LogI "        WaitSettled(10) = " & p.WaitSettled(10)
     Wv2Log.LogI "        " & p.LastSettleInfo
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) 住所を入力して検索する ---"
+    Wv2Log.LogI "  --- (5) Enter the address and search ---"
 
-    ' ★D-4e の道具を使う★ 診断ログを入れ、URL の変化を arm してから操作する
+    ' *Use the tools of D-4e* Turn on the diagnostic log, arm the URL change, then operate
     p.SpaProbeLogging = True
-    Wv2Log.LogI "        診断ログを有効にした"
-    TestBool "URL シグナルを arm できる", p.ArmUrlSignal("/place/")
+    Wv2Log.LogI "        enabled the diagnostic log"
+    TestBool "the URL signal can be armed", p.ArmUrlSignal("/place/")
 
     Set el = D4FindFirst(p, "input[name='q']" & Chr$(1) & _
                             "#searchboxinput" & Chr$(1) & _
                             "form input[type='text']", 5)
-    TestBool "検索ボックスを掴み直せる", Not (el Is Nothing)
+    TestBool "the search box can be grabbed again", Not (el Is Nothing)
     If el Is Nothing Then
         TestCountPrint
         Exit Sub
     End If
 
     el.value = searchAddr
-    TestBool "★住所を書き込めた (D-3 の .Value =)★", el.LastOk
-    Wv2Log.LogI "        経路 = " & el.LastInfo
-    Wv2Log.LogI "        読み戻し = " & el.value
+    TestBool "*the address could be written (D-3's .Value =)*", el.LastOk
+    Wv2Log.LogI "        route = " & el.LastInfo
+    Wv2Log.LogI "        read back = " & el.value
 
-    ' ★検索の実行★ ボタンがあれば押す。無ければ Enter キーを合成する。
-    Set el = D4FindFirst(p, "button[aria-label='検索']" & Chr$(1) & _
+    ' *Run the search* Press the button if there is one. Otherwise synthesize the Enter key.
+    Set el = D4FindFirst(p, ("button[aria-label='" & ChrW(&H691C&) & ChrW(&H7D22&) & "']") & Chr$(1) & _
                             "#searchbox-searchbutton" & Chr$(1) & _
                             "button[aria-label='Search']", 3)
     If el Is Nothing Then
-        Wv2Log.LogI "        検索ボタンが無いので Enter を合成する"
-        ' ★CSS の属性値は二重引用符にする★ JS の文字列はシングルクォート、
-        '   セレクタ内は二重引用符 ("""" で書く) とすれば、
-        '   バックスラッシュを一切使わずに入れ子にできる (プロジェクト規則)。
+        Wv2Log.LogI "        there is no search button, so synthesizing Enter"
+        ' *Make CSS attribute values double quotes* JS strings are single quotes,
+        '   and inside the selector double quotes (written with """"), so that
+        '   they can be nested without using any backslash (project rule).
         p.EvalSync "(function(){var e=document.querySelector('input[name=""q""]')" & _
                    "||document.getElementById('searchboxinput');" & _
                    "if(!e){return 0;}" & _
@@ -4825,64 +4825,64 @@ Public Sub Test_D4_Site(Optional ByVal searchAddr As String = "東京都千代�
         clicked = p.LastEvalOk
     Else
         clicked = el.Click()
-        Wv2Log.LogI "        検索ボタンを押した (経路=" & el.LastInfo & ")"
+        Wv2Log.LogI "        pressed the search button (route=" & el.LastInfo & ")"
     End If
-    TestBool "検索を実行できた", clicked
+    TestBool "the search could be run", clicked
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★arm した URL シグナルつきで待つ★ ---"
+    Wv2Log.LogI "  --- (6) *Wait with the armed URL signal* ---"
 
     Wv2Log.LogI "        WaitSettled(20) = " & p.WaitSettled(20)
     Wv2Log.LogI "        " & p.LastSettleInfo
-    Wv2Log.LogI "        ★時間切れなら 実行中: に居座っている要求が出る★"
+    Wv2Log.LogI "        *On timeout, the requests lingering in 'in flight:' appear*"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6b) ★個別除外を足して待ち直す★ (案A の実演) ---"
-    Wv2Log.LogI "        居座っていた要求を名指しで静穏判定から外す"
+    Wv2Log.LogI "  --- (6b) *Add individual exclusions and wait again* (a demonstration of plan A) ---"
+    Wv2Log.LogI "        Exclude the lingering request by name from the quiescence judgment"
 
-    TestBool "AddIgnoreNetwork できる", p.AddIgnoreNetwork("/search?tbm=map")
+    TestBool "AddIgnoreNetwork works", p.AddIgnoreNetwork("/search?tbm=map")
     Wv2Log.LogI "        WaitSettled(10) = " & p.WaitSettled(10)
     Wv2Log.LogI "        " & p.LastSettleInfo
     p.ClearIgnoreNetwork
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6c) 検索後の 10 秒 ---"
+    Wv2Log.LogI "  --- (6c) 10 seconds after the search ---"
     D4Watch p, 10
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6d) ★診断ログ★ 何が起きていたか ---"
-    Wv2Log.LogI "        取り出した件数: " & p.SpaProbeDrainLog()
-    Wv2Log.LogI "        (60 件で切れる。続きは次の呼び出しで取れる)"
-    Wv2Log.LogI "        取り出した件数: " & p.SpaProbeDrainLog()
+    Wv2Log.LogI "  --- (6d) *Diagnostic log* what was happening ---"
+    Wv2Log.LogI "        number fetched: " & p.SpaProbeDrainLog()
+    Wv2Log.LogI "        (cut off at 60 items. The rest can be fetched on the next call)"
+    Wv2Log.LogI "        number fetched: " & p.SpaProbeDrainLog()
     p.SpaProbeLogging = False
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) 結果 ---"
+    Wv2Log.LogI "  --- (7) Result ---"
     Wv2Log.LogI "        title = " & p.View_GetDocumentTitle()
     Wv2Log.LogI "        url   = " & p.View_GetSource()
-    Wv2Log.LogI "        ★URL に /@緯度,経度,ズーム が入っていれば座標が取れる★"
+    Wv2Log.LogI "        *If /@latitude,longitude,zoom is in the URL, the coordinates can be obtained*"
     Wv2Log.LogI "        WaitSettled(10) = " & p.WaitSettled(10)
     Wv2Log.LogI "        " & p.LastSettleInfo
     Wv2Log.LogI "        state = " & p.SpaProbeState()
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "  ※ この判定数は構造的な数点のみ。観測の中身はログ本文を読むこと。"
-    Wv2Log.LogI "================ Test_D4_Site 終了 ================"
+    Wv2Log.LogI "  NOTE: the number of verdicts here is only a few structural points. Read the body of the log for the content of the observation."
+    Wv2Log.LogI "================ Test_D4_Site end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' D4FindFirst (D-4d: 候補セレクタを順に試して最初に当たったものを返す)
+' D4FindFirst (D-4d: try candidate selectors in order and return the first that hits)
 '
-'   ★実サイトのセレクタは予告なく変わる (設計原則75)★
-'   1 つに賭けず候補を並べ、★どれが当たったかをログに残す★。次に壊れたときに
-'   「何が変わったか」が分かる。候補は Chr$(1) 区切りで渡す。
+'   *Selectors of real sites change without notice (design principle 75)*
+'   Do not bet on one; line up candidates and *leave in the log which one hit*. The next time it breaks
+'   you can tell "what changed". Candidates are passed separated by Chr$(1).
 '
-'   1 つ目だけは timeoutSec ぶん待つ (ページの読み込み中を想定)。
-'   2 つ目以降は 1 往復で見るだけ。全部外れたら Nothing。
+'   Only the first one waits for timeoutSec (assuming the page is still loading).
+'   The second and later are just looked at in one round trip. If all miss, Nothing.
 ' ============================================================
 Private Function D4FindFirst(ByVal p As Wv2Pane, _
                              ByVal selectorList As String, _
@@ -4901,23 +4901,23 @@ Private Function D4FindFirst(ByVal p As Wv2Pane, _
         End If
 
         If Not el Is Nothing Then
-            Wv2Log.LogI "        セレクタ [" & cands(i) & "] で見つかった"
+            Wv2Log.LogI "        found with selector [" & cands(i) & "]"
             Set D4FindFirst = el
             Exit Function
         End If
 
-        Wv2Log.LogI "        セレクタ [" & cands(i) & "] は外れ" & _
-                    IIf(p.LastEvalOk, "", " (失敗: " & p.LastEvalError & ")")
+        Wv2Log.LogI "        selector [" & cands(i) & "] missed" & _
+                    IIf(p.LastEvalOk, "", " (failed: " & p.LastEvalError & ")")
     Next i
 End Function
 
 ' ============================================================
-' D4WaitPane (D-4d: Pane が JS を受け付けるまで待つ)
+' D4WaitPane (D-4d: wait until the Pane accepts JS)
 '
-'   ★タブを開いた直後は EvalSync が no-view で失敗する★
-'   D-3 の WaitFor / D-4 の WaitSettled はどちらも「失敗は待っても直らない」
-'   という方針 (設計原則104) なので、準備前に呼ぶと即座に諦めてしまう。
-'   実サイトを開く回はこれを先に挟む。
+'   *Right after opening a tab EvalSync fails with no-view*
+'   WaitFor of D-3 and WaitSettled of D-4 both follow the policy that "a failure is not fixed by waiting"
+'   (design principle 104), so calling them before preparation makes them give up at once.
+'   For rounds that open a real site, insert this first.
 ' ============================================================
 Private Function D4WaitPane(ByVal p As Wv2Pane, ByVal timeoutSec As Single) As Boolean
     Dim t0 As Single
@@ -4930,7 +4930,7 @@ Private Function D4WaitPane(ByVal p As Wv2Pane, ByVal timeoutSec As Single) As B
             Exit Function
         End If
         If D3Took(t0) >= timeoutSec Then
-            Wv2Log.LogW "D4WaitPane: 時間切れ err=" & p.LastEvalError
+            Wv2Log.LogW "D4WaitPane: timed out err=" & p.LastEvalError
             Exit Function
         End If
         D3Pump 0.3
@@ -4939,10 +4939,10 @@ End Function
 
 
 ' ============================================================
-' D4Watch (D-4d: 1 秒ごとに状態・タイトル・URL を記録する)
+' D4Watch (D-4d: record the state, title and URL every second)
 '
-'   ★静穏が訪れるかを見る道具★ q が伸び続ければ静かになっている。
-'   タイトルと URL は COM 経由で取る (EvalSync を使わないので観測が軽い)。
+'   *A tool for seeing whether quiescence comes* If q keeps growing, it has gone quiet.
+'   The title and URL are taken via COM (EvalSync is not used, so the observation is light).
 ' ============================================================
 Private Sub D4Watch(ByVal p As Wv2Pane, ByVal seconds As Long)
     Dim i As Long
@@ -4969,21 +4969,21 @@ Private Sub D4Watch(ByVal p As Wv2Pane, ByVal seconds As Long)
 End Sub
 
 ' ============================================================
-' Test_D4_Dom (D-4d 補: ★アクティブなタブの DOM を覗く★)
+' Test_D4_Dom (D-4d supplement: *peek at the DOM of the active tab*)
 '
-'   ★「何を待つべきか」を推測でなく観測で決めるための道具★
-'   実サイトのセレクタは予告なく変わる (設計原則75)。当てずっぽうに
-'   セレクタを書く前に、実際に何があるのかを見る。
+'   *A tool for deciding "what to wait for" by observation rather than guesswork*
+'   Selectors of real sites change without notice (design principle 75). Before writing
+'   selectors by guesswork, look at what is actually there.
 '
-'   使い方: ブラウザで目的のページを表示してから、イミディエイトで
-'           Test_D4_Dom           … 入力欄・ボタン・role つきの要素を列挙
-'           Test_D4_Dom "h1,h2"  … セレクタを指定して列挙
+'   Usage: display the target page in the browser, then in the Immediate window
+'           Test_D4_Dom           ... lists input fields, buttons and elements with a role
+'           Test_D4_Dom "h1,h2"  ... lists by the specified selector
 '
-'   出す情報: タグ / id / name / type / class (先頭 40 字) / placeholder /
-'             aria-label / 可視かどうか / テキスト (先頭 30 字)
+'   Information output: tag / id / name / type / class (first 40 chars) / placeholder /
+'             aria-label / whether visible / text (first 30 chars)
 '
-'   ★D-4e (診断ログ) の原型★ 時系列は取らないが、まず「今そこに何があるか」を
-'   知るのはこれで足りる。
+'   *The prototype of D-4e (diagnostic log)* It does not take a time series, but for first learning
+'   "what is there right now" this is enough.
 ' ============================================================
 Public Sub Test_D4_Dom(Optional ByVal sel As String = "")
     Dim p As Wv2Pane
@@ -4994,7 +4994,7 @@ Public Sub Test_D4_Dom(Optional ByVal sel As String = "")
 
     Set p = UserForm1.GetActivePane
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D4_Dom: アクティブな Pane がありません。"
+        Wv2Log.LogI "Test_D4_Dom: there is no active Pane."
         Exit Sub
     End If
 
@@ -5004,14 +5004,14 @@ Public Sub Test_D4_Dom(Optional ByVal sel As String = "")
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "================ Test_D4_Dom 開始 ================"
+    Wv2Log.LogI "================ Test_D4_Dom start ================"
     Wv2Log.LogI "  url   = " & p.View_GetSource()
     Wv2Log.LogI "  title = " & p.View_GetDocumentTitle()
-    Wv2Log.LogI "  セレクタ: " & sel
+    Wv2Log.LogI "  selector: " & sel
 
     js = "(function(){var out=[],q=document.querySelectorAll(" & _
          p.JsQuote(sel) & ");" & _
-         "out.push('全 '+q.length+' 件');" & _
+         "out.push('total '+q.length+' items');" & _
          "for(var i=0;i<q.length&&out.length<41;i++){var e=q[i];" & _
          "var g=function(a){var v=(e.getAttribute?e.getAttribute(a):null);" & _
          "return v?String(v).slice(0,40):'-';};" & _
@@ -5028,8 +5028,8 @@ Public Sub Test_D4_Dom(Optional ByVal sel As String = "")
 
     res = p.EvalSync(js, 10)
     If Not p.LastEvalOk Then
-        Wv2Log.LogI "  ★失敗★ err=" & p.LastEvalError
-        Wv2Log.LogI "================ Test_D4_Dom 終了 ================"
+        Wv2Log.LogI "  *failed* err=" & p.LastEvalError
+        Wv2Log.LogI "================ Test_D4_Dom end ================"
         Exit Sub
     End If
 
@@ -5038,18 +5038,18 @@ Public Sub Test_D4_Dom(Optional ByVal sel As String = "")
         Wv2Log.LogI "  " & parts(i)
     Next i
 
-    Wv2Log.LogI "================ Test_D4_Dom 終了 ================"
+    Wv2Log.LogI "================ Test_D4_Dom end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D5_Geocode (D-5 の検証: 住所 → 座標)
+' Test_D5_Geocode (verification of D-5: address -> coordinates)
 '
-'   ★D 軸の部品が業務で使える形になったかを見る★
-'   3 件の住所を★同じタブで続けて★処理し、緯度経度と正規化後の名前を出す。
+'   *Checks whether the parts of the D axis have become usable for business work*
+'   Processes 3 addresses *in succession in the same tab*, and outputs latitude/longitude and the normalized name.
 '
-'   ★外部サイトに実アクセスする★ ネットワークが要る。
-'   実サイトなので合否は緩く見る (座標が妥当な範囲に入っているか)。
+'   *Accesses an external site for real* Needs a network.
+'   It is a real site, so the verdict is lenient (whether the coordinates fall within a plausible range).
 ' ============================================================
 Public Sub Test_D5_Geocode()
     Dim b As Wv2Browser
@@ -5064,29 +5064,29 @@ Public Sub Test_D5_Geocode()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D5_Geocode: Browser が起動していません。" & _
-                    "先に UserForm1.Show vbModeless と StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_D5_Geocode: Browser is not started." & _
+                    "Run UserForm1.Show vbModeless and StartWebView2_Full first."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D5_Geocode 開始 ================"
+    Wv2Log.LogI "================ Test_D5_Geocode start ================"
 
     t0 = Timer
     Set p = Wv2Maps.MapsOpen(b)
-    TestBool "★Maps を開いて操作できる状態にできた★", Not (p Is Nothing)
-    Wv2Log.LogI "        かかった時間 = " & Format$(D3Took(t0), "0.0") & " 秒"
+    TestBool "*Maps could be opened into an operable state*", Not (p Is Nothing)
+    Wv2Log.LogI "        time taken = " & Format$(D3Took(t0), "0.0") & " s"
     If p Is Nothing Then
-        Wv2Log.LogI "        理由 = " & Wv2Maps.MapsLastError
+        Wv2Log.LogI "        reason = " & Wv2Maps.MapsLastError
         TestCountPrint
         Exit Sub
     End If
 
     addrs = Array( _
-        "東京都千代田区丸の内1-9-1", _
-        "大阪府大阪市中央区大阪城1-1", _
-        "北海道札幌市中央区北1条西2丁目")
+        (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1"), _
+        (ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E9C&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E02&) & ChrW(&H4E2D&) & ChrW(&H592E&) & ChrW(&H533A&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H57CE&) & "1-1"), _
+        (ChrW(&H5317&) & ChrW(&H6D77&) & ChrW(&H9053&) & ChrW(&H672D&) & ChrW(&H5E4C&) & ChrW(&H5E02&) & ChrW(&H4E2D&) & ChrW(&H592E&) & ChrW(&H533A&) & ChrW(&H5317&) & "1" & ChrW(&H6761&) & ChrW(&H897F&) & "2" & ChrW(&H4E01&) & ChrW(&H76EE&)))
 
     For i = LBound(addrs) To UBound(addrs)
         Wv2Log.LogI ""
@@ -5095,38 +5095,38 @@ Public Sub Test_D5_Geocode()
         t0 = Timer
         ok = Wv2Maps.MapsGeocode(p, CStr(addrs(i)), lat, lng, nm)
 
-        Wv2Log.LogI "        かかった時間 = " & Format$(D3Took(t0), "0.0") & " 秒"
-        Wv2Log.LogI "        緯度経度 = " & lat & ", " & lng
-        Wv2Log.LogI "        名前     = " & nm
-        If Not ok Then Wv2Log.LogI "        理由     = " & Wv2Maps.MapsLastError
+        Wv2Log.LogI "        time taken = " & Format$(D3Took(t0), "0.0") & " s"
+        Wv2Log.LogI "        latitude/longitude = " & lat & ", " & lng
+        Wv2Log.LogI "        name     = " & nm
+        If Not ok Then Wv2Log.LogI "        reason   = " & Wv2Maps.MapsLastError
 
-        TestBool "  ★1 件に確定した★", ok
-        TestBool "  緯度が日本の範囲 (20～46)", (lat > 20 And lat < 46)
-        TestBool "  経度が日本の範囲 (122～154)", (lng > 122 And lng < 154)
-        TestBool "  名前が取れている", (Len(nm) > 0)
+        TestBool "  *settled to exactly 1*", ok
+        TestBool "  latitude is in the range of Japan (20-46)", (lat > 20 And lat < 46)
+        TestBool "  longitude is in the range of Japan (122-154)", (lng > 122 And lng < 154)
+        TestBool "  the name was obtained", (Len(nm) > 0)
     Next i
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- 失敗の扱い ---"
+    Wv2Log.LogI "  --- Handling of failure ---"
 
-    ok = Wv2Maps.MapsGeocode(p, "ZZZZ存在しない住所ZZZZ", lat, lng, nm, 8)
-    Wv2Log.LogI "        戻り値 = " & ok & " 理由 = " & Wv2Maps.MapsLastError
-    TestBool "★でたらめな住所では確定しない★", (ok = False)
+    ok = Wv2Maps.MapsGeocode(p, ("ZZZZ" & ChrW(&H5B58&) & ChrW(&H5728&) & ChrW(&H3057&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H4F4F&) & ChrW(&H6240&) & "ZZZZ"), lat, lng, nm, 8)
+    Wv2Log.LogI "        return value = " & ok & " reason = " & Wv2Maps.MapsLastError
+    TestBool "*a nonsense address is not settled*", (ok = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D5_Geocode 終了 ================"
+    Wv2Log.LogI "================ Test_D5_Geocode end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D5_Sheet (D-5b の検証: シート連携)
+' Test_D5_Sheet (verification of D-5b: sheet integration)
 '
-'   ★新しいブックを作って試し、保存せずに閉じる★
-'   開発用ブックにシートを足すと、Excel が終了時に保存を聞いてきて鬱陶しい。
+'   *Create a new workbook to try it and close it without saving*
+'   If a sheet is added to the development workbook, Excel asks whether to save on exit, which is annoying.
 '
-'   ★外部サイトに実アクセスする★ ネットワークが要る。
+'   *Accesses an external site for real* Needs a network.
 ' ============================================================
 Public Sub Test_D5_Sheet()
     Dim wb As Workbook
@@ -5134,60 +5134,60 @@ Public Sub Test_D5_Sheet()
     Dim n As Long
 
     If UserForm1.CurrentBrowser Is Nothing Then
-        Wv2Log.LogI "Test_D5_Sheet: Browser が起動していません。"
+        Wv2Log.LogI "Test_D5_Sheet: Browser is not started."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D5_Sheet 開始 ================"
+    Wv2Log.LogI "================ Test_D5_Sheet start ================"
 
     Set wb = Workbooks.Add
     Set sh = wb.Worksheets(1)
 
-    sh.Cells(1, 1).value = "住所"
-    sh.Cells(1, 2).value = "緯度"
-    sh.Cells(1, 3).value = "経度"
-    sh.Cells(1, 4).value = "正規化住所"
-    sh.Cells(1, 5).value = "状態"
-    sh.Cells(2, 1).value = "東京都千代田区丸の内1-9-1"
-    sh.Cells(3, 1).value = "大阪府大阪市中央区大阪城1-1"
-    sh.Cells(4, 1).value = "ZZZZ存在しない住所ZZZZ"
+    sh.Cells(1, 1).value = (ChrW(&H4F4F&) & ChrW(&H6240&))
+    sh.Cells(1, 2).value = (ChrW(&H7DEF&) & ChrW(&H5EA6&))
+    sh.Cells(1, 3).value = (ChrW(&H7D4C&) & ChrW(&H5EA6&))
+    sh.Cells(1, 4).value = (ChrW(&H6B63&) & ChrW(&H898F&) & ChrW(&H5316&) & ChrW(&H4F4F&) & ChrW(&H6240&))
+    sh.Cells(1, 5).value = (ChrW(&H72B6&) & ChrW(&H614B&))
+    sh.Cells(2, 1).value = (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1")
+    sh.Cells(3, 1).value = (ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E9C&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E02&) & ChrW(&H4E2D&) & ChrW(&H592E&) & ChrW(&H533A&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H57CE&) & "1-1")
+    sh.Cells(4, 1).value = ("ZZZZ" & ChrW(&H5B58&) & ChrW(&H5728&) & ChrW(&H3057&) & ChrW(&H306A&) & ChrW(&H3044&) & ChrW(&H4F4F&) & ChrW(&H6240&) & "ZZZZ")
 
-    Wv2Log.LogI "  3 行 (うち 1 行はでたらめ) を処理する"
+    Wv2Log.LogI "  Process 3 rows (1 of which is nonsense)"
     n = Wv2Maps.MapsGeocodeSheet(sh)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- 書き込まれた内容 ---"
-    Wv2Log.LogI "  2 行目: " & sh.Cells(2, 2).value & " / " & _
+    Wv2Log.LogI "  --- Contents written ---"
+    Wv2Log.LogI "  row 2: " & sh.Cells(2, 2).value & " / " & _
                 sh.Cells(2, 3).value & " / " & sh.Cells(2, 4).value & " / " & sh.Cells(2, 5).value
-    Wv2Log.LogI "  3 行目: " & sh.Cells(3, 2).value & " / " & _
+    Wv2Log.LogI "  row 3: " & sh.Cells(3, 2).value & " / " & _
                 sh.Cells(3, 3).value & " / " & sh.Cells(3, 4).value & " / " & sh.Cells(3, 5).value
-    Wv2Log.LogI "  4 行目: " & sh.Cells(4, 2).value & " / " & _
+    Wv2Log.LogI "  row 4: " & sh.Cells(4, 2).value & " / " & _
                 sh.Cells(4, 3).value & " / " & sh.Cells(4, 4).value & " / " & sh.Cells(4, 5).value
 
-    TestBool "★2 行が ok になった★", (n = 2)
-    TestBool "  2 行目の緯度が東京", (Abs(sh.Cells(2, 2).value - 35.68) < 0.1)
-    TestBool "  3 行目の緯度が大阪", (Abs(sh.Cells(3, 2).value - 34.69) < 0.1)
-    TestBool "  2 行目の状態が ok", (sh.Cells(2, 5).value = "ok")
-    TestBool "★でたらめな行は ok にならない★", (sh.Cells(4, 5).value <> "ok")
-    TestBool "  その理由が残っている", (Len(sh.Cells(4, 5).value) > 0)
+    TestBool "*2 rows became ok*", (n = 2)
+    TestBool "  the latitude of row 2 is Tokyo", (Abs(sh.Cells(2, 2).value - 35.68) < 0.1)
+    TestBool "  the latitude of row 3 is Osaka", (Abs(sh.Cells(3, 2).value - 34.69) < 0.1)
+    TestBool "  the status of row 2 is ok", (sh.Cells(2, 5).value = "ok")
+    TestBool "*the nonsense row does not become ok*", (sh.Cells(4, 5).value <> "ok")
+    TestBool "  its reason is kept", (Len(sh.Cells(4, 5).value) > 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- ★再開できるか★ (ok の行は飛ばす) ---"
+    Wv2Log.LogI "  --- *Can it resume?* (rows that are ok are skipped) ---"
     n = Wv2Maps.MapsGeocodeSheet(sh)
-    TestBool "2 回目も同じ件数を返す (飛ばしても数える)", (n = 2)
+    TestBool "the 2nd run returns the same count (counted even when skipped)", (n = 2)
 
     wb.Close SaveChanges:=False
 
     Wv2Log.LogI ""
     TestCountPrint
-    Wv2Log.LogI "================ Test_D5_Sheet 終了 ================"
+    Wv2Log.LogI "================ Test_D5_Sheet end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D6_All (D-6 の検証: QuerySelectorAll と寿命管理)
+' Test_D6_All (verification of D-6: QuerySelectorAll and lifetime management)
 ' ============================================================
 Public Sub Test_D6_All()
     Dim b As Wv2Browser
@@ -5199,100 +5199,100 @@ Public Sub Test_D6_All()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_D6_All: Browser が起動していません。"
+        Wv2Log.LogI "Test_D6_All: Browser is not started."
         Exit Sub
     End If
 
     Set p = b.AddTabWithHtml(BuildD4ProbeHtml())
     If p Is Nothing Then
-        Wv2Log.LogI "Test_D6_All: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_D6_All: failed to create the tab."
         Exit Sub
     End If
-    If Not D2WaitTitle(p, "D-4 プローブ", 10) Then
-        Wv2Log.LogI "Test_D6_All: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("D-4 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_D6_All: could not confirm that the verification page loaded."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D6_All 開始 ================"
-    Wv2Log.LogI "  --- (1) まとめて掴む ---"
+    Wv2Log.LogI "================ Test_D6_All start ================"
+    Wv2Log.LogI "  --- (1) Grab them all together ---"
 
     Set els = p.QuerySelectorAll("div")
-    TestBool "★Collection が返る★", Not (els Is Nothing)
-    TestBool "  3 件ある", (els.Count = 3)
-    TestBool "  打ち切っていない", (p.LastAllTruncated = False)
+    TestBool "*a Collection is returned*", Not (els Is Nothing)
+    TestBool "  there are 3", (els.Count = 3)
+    TestBool "  not truncated", (p.LastAllTruncated = False)
 
-    ' ★For Each で自然に回せることが論点2 の眼目★
+    ' *The point of issue 2 is that it can be looped over naturally with For Each*
     For Each el In els
         ids = ids & el.GetAttribute("id") & ","
     Next el
-    Wv2Log.LogI "        文書順の id = " & ids
-    TestBool "★文書順で返る★", (ids = "target,noise,slot,")
+    Wv2Log.LogI "        ids in document order = " & ids
+    TestBool "*returned in document order*", (ids = "target,noise,slot,")
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) 0 件と失敗の区別 (設計原則93) ---"
+    Wv2Log.LogI "  --- (2) Distinguishing 0 results from failure (design principle 93) ---"
 
     Set els = p.QuerySelectorAll("blockquote")
-    TestBool "0 件でも Collection が返る (Nothing ではない)", Not (els Is Nothing)
-    TestBool "  Count が 0", (els.Count = 0)
-    TestBool "  ★LastEvalOk=True (本当に無い)★", (p.LastEvalOk = True)
+    TestBool "a Collection is returned even for 0 results (not Nothing)", Not (els Is Nothing)
+    TestBool "  Count is 0", (els.Count = 0)
+    TestBool "  *LastEvalOk=True (really none)*", (p.LastEvalOk = True)
 
     Set els = p.QuerySelectorAll("###")
-    TestBool "不正なセレクタでも Collection が返る", Not (els Is Nothing)
-    TestBool "  Count が 0", (els.Count = 0)
-    TestBool "  ★LastEvalOk=False (失敗)★", (p.LastEvalOk = False)
+    TestBool "a Collection is returned even for an invalid selector", Not (els Is Nothing)
+    TestBool "  Count is 0", (els.Count = 0)
+    TestBool "  *LastEvalOk=False (failure)*", (p.LastEvalOk = False)
     Wv2Log.LogI "        LastEvalError = " & p.LastEvalError
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★打ち切りは黙ってやらない★ ---"
+    Wv2Log.LogI "  --- (3) *Truncation is not done silently* ---"
 
     Set els = p.QuerySelectorAll("div", 2)
-    TestBool "上限どおり 2 件", (els.Count = 2)
-    TestBool "★打ち切ったことが分かる★", p.LastAllTruncated
+    TestBool "2 items as per the limit", (els.Count = 2)
+    TestBool "*it is known that it was truncated*", p.LastAllTruncated
 
     Set els = p.QuerySelectorAll("div", 200)
-    TestBool "  上限内なら False に戻る", (p.LastAllTruncated = False)
+    TestBool "  returns to False when within the limit", (p.LastAllTruncated = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) 掴んだ要素がそのまま使える ---"
+    Wv2Log.LogI "  --- (4) The grabbed elements can be used as they are ---"
 
     Set els = p.QuerySelectorAll("div")
     Set el = els(1)
-    TestEq "1 件目を読める", el, el.GetAttribute("id"), "target"
-    TestBool "  書き込める (D-3 の SetAttribute)", _
+    TestEq "the first item can be read", el, el.GetAttribute("id"), "target"
+    TestBool "  can write (SetAttribute of D-3)", _
              el.SetAttribute("data-mark", "1")
-    TestEq "  読み戻せる", el, el.GetAttribute("data-mark"), "1"
+    TestEq "  can be read back", el, el.GetAttribute("data-mark"), "1"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ★寿命管理は見せるだけ★ ---"
+    Wv2Log.LogI "  --- (5) *Lifetime management only shows* ---"
 
     n0 = p.ElementCount
-    Wv2Log.LogI "        今レジストリに積まれている数 = " & n0
-    TestBool "ElementCount が読める", (n0 > 0)
+    Wv2Log.LogI "        number now accumulated in the registry = " & n0
+    TestBool "ElementCount can be read", (n0 > 0)
 
     Set els = p.QuerySelectorAll("div")
-    TestBool "★掴むたびに積み上がる (勝手に捨てない)★", (p.ElementCount > n0)
+    TestBool "*it piles up with every grab (nothing is discarded on its own)*", (p.ElementCount > n0)
 
-    TestBool "ClearElementRegistry で作り直せる", p.ClearElementRegistry()
-    TestBool "  レジストリが空になる", (p.ElementCount = 0)
-    TestBool "  ★手元の要素は stale になる★", (el.IsStale = True)
+    TestBool "it can be rebuilt with ClearElementRegistry", p.ClearElementRegistry()
+    TestBool "  the registry becomes empty", (p.ElementCount = 0)
+    TestBool "  *the element in hand becomes stale*", (el.IsStale = True)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D6_All 終了 ================"
+    Wv2Log.LogI "================ Test_D6_All end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D6_Pick (D-6b の検証: 候補一覧から 1 番目を採る)
+' Test_D6_Pick (verification of D-6b: take the first from the candidate list)
 '
-'   ★D-6 の QuerySelectorAll が実サイトで効くかを見る出口★
-'   カテゴリ検索 (「コンビニ 東京駅」) は候補一覧になるので、
-'   pickFirst の有無で結果が変わることを確かめる。
+'   *An exit to see whether D-6's QuerySelectorAll works on a real site*
+'   A category search (e.g. "convenience store near Tokyo Station") produces a candidate list, so
+'   we confirm that the result changes depending on whether pickFirst is used.
 '
-'   ★外部サイトに実アクセスする★ 実サイトなので合否は緩く見る。
+'   *Accesses an external site for real* It is a real site, so the verdict is lenient.
 ' ============================================================
 Public Sub Test_D6_Pick()
     Dim p As Wv2Pane
@@ -5302,68 +5302,68 @@ Public Sub Test_D6_Pick()
     Dim ok As Boolean
 
     If UserForm1.CurrentBrowser Is Nothing Then
-        Wv2Log.LogI "Test_D6_Pick: Browser が起動していません。"
+        Wv2Log.LogI "Test_D6_Pick: Browser is not started."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D6_Pick 開始 ================"
+    Wv2Log.LogI "================ Test_D6_Pick start ================"
 
     Set p = Wv2Maps.MapsOpen(UserForm1.CurrentBrowser)
-    TestBool "Maps を開けた", Not (p Is Nothing)
+    TestBool "Maps could be opened", Not (p Is Nothing)
     If p Is Nothing Then
         TestCountPrint
         Exit Sub
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) 候補が複数になる検索 (選ばない) ---"
+    Wv2Log.LogI "  --- (1) A search that yields multiple candidates (do not pick) ---"
 
-    ok = Wv2Maps.MapsGeocode(p, "コンビニ 東京駅", lat, lng, nm, 15)
-    Wv2Log.LogI "        戻り値=" & ok & " 理由=" & Wv2Maps.MapsLastError
-    Wv2Log.LogI "        座標=" & lat & "," & lng & "  名前=" & nm
-    TestBool "★選ばなければ確定しない★", (ok = False)
-    TestBool "  候補から選んでいない", (Wv2Maps.MapsLastPicked = False)
+    ok = Wv2Maps.MapsGeocode(p, (ChrW(&H30B3&) & ChrW(&H30F3&) & ChrW(&H30D3&) & ChrW(&H30CB&) & " " & ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H99C5&)), lat, lng, nm, 15)
+    Wv2Log.LogI "        return value=" & ok & " reason=" & Wv2Maps.MapsLastError
+    Wv2Log.LogI "        coordinates=" & lat & "," & lng & "  name=" & nm
+    TestBool "*it is not settled if we do not pick*", (ok = False)
+    TestBool "  not picked from the candidates", (Wv2Maps.MapsLastPicked = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★候補の 1 件目を採る★ ---"
+    Wv2Log.LogI "  --- (2) *Take the first of the candidates* ---"
 
-    ok = Wv2Maps.MapsGeocode(p, "コンビニ 東京駅", lat, lng, nm, 15, True)
-    Wv2Log.LogI "        戻り値=" & ok & " 理由=" & Wv2Maps.MapsLastError
-    Wv2Log.LogI "        座標=" & lat & "," & lng
-    Wv2Log.LogI "        名前=" & nm
-    Wv2Log.LogI "        候補から選んだか=" & Wv2Maps.MapsLastPicked
+    ok = Wv2Maps.MapsGeocode(p, (ChrW(&H30B3&) & ChrW(&H30F3&) & ChrW(&H30D3&) & ChrW(&H30CB&) & " " & ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H99C5&)), lat, lng, nm, 15, True)
+    Wv2Log.LogI "        return value=" & ok & " reason=" & Wv2Maps.MapsLastError
+    Wv2Log.LogI "        coordinates=" & lat & "," & lng
+    Wv2Log.LogI "        name=" & nm
+    Wv2Log.LogI "        picked from the candidates=" & Wv2Maps.MapsLastPicked
 
-    TestBool "★候補を採れば確定する★", ok
+    TestBool "*it is settled if we take a candidate*", ok
     If ok Then
-        TestBool "  ★候補から選んだ印が付く★", Wv2Maps.MapsLastPicked
-        TestBool "  緯度が日本の範囲", (lat > 20 And lat < 46)
-        TestBool "  経度が日本の範囲", (lng > 122 And lng < 154)
-        TestBool "  名前が取れている", (Len(nm) > 0)
+        TestBool "  *the mark of being picked from the candidates is set*", Wv2Maps.MapsLastPicked
+        TestBool "  latitude is in the range of Japan", (lat > 20 And lat < 46)
+        TestBool "  longitude is in the range of Japan", (lng > 122 And lng < 154)
+        TestBool "  the name was obtained", (Len(nm) > 0)
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) 確定する住所では印が付かない ---"
+    Wv2Log.LogI "  --- (3) No mark is set for an address that settles ---"
 
-    ok = Wv2Maps.MapsGeocode(p, "東京都千代田区丸の内1-9-1", lat, lng, nm, 15, True)
-    TestBool "確定する", ok
-    TestBool "★候補から選んだ印は付かない★", (Wv2Maps.MapsLastPicked = False)
-    Wv2Log.LogI "        座標=" & lat & "," & lng & "  名前=" & nm
+    ok = Wv2Maps.MapsGeocode(p, (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1"), lat, lng, nm, 15, True)
+    TestBool "it settles", ok
+    TestBool "*the mark of being picked from the candidates is not set*", (Wv2Maps.MapsLastPicked = False)
+    Wv2Log.LogI "        coordinates=" & lat & "," & lng & "  name=" & nm
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  レジストリに積まれた数: " & p.ElementCount
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  number accumulated in the registry: " & p.ElementCount
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_D6_Pick 終了 ================"
+    Wv2Log.LogI "================ Test_D6_Pick end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D7_Cancel (D-7 の検証: 中断の口と分母)
+' Test_D7_Cancel (verification of D-7: the abort entry point and the denominator)
 '
-'   ★ネットワークもブラウザも要らない★ 実サイトを叩く中断の検証は
-'   Test_D7_Sheet (手で Esc を押す) の方。
+'   *Needs neither the network nor the browser* The verification of aborting while hitting a real site is
+'   Test_D7_Sheet (press Esc by hand).
 ' ============================================================
 Public Sub Test_D7_Cancel()
     Dim wb As Workbook
@@ -5378,54 +5378,54 @@ Public Sub Test_D7_Cancel()
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D7_Cancel 開始 ================"
+    Wv2Log.LogI "================ Test_D7_Cancel start ================"
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) 外から中断を立てる口 ---"
+    Wv2Log.LogI "  --- (1) Entry point to raise an abort from outside ---"
 
     Wv2Maps.MapsCancel = True
-    TestBool "★立てたら立つ★", (Wv2Maps.MapsCancel = True)
+    TestBool "*if raised, it stands*", (Wv2Maps.MapsCancel = True)
     Wv2Maps.MapsCancel = False
-    TestBool "  下ろしたら下りる", (Wv2Maps.MapsCancel = False)
+    TestBool "  if lowered, it goes down", (Wv2Maps.MapsCancel = False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★中断状態は入口で捨てられる★ (設計原則106) ---"
-    Wv2Log.LogI "        立てっぱなしにして、次の呼び出しが殺されないことを見る"
+    Wv2Log.LogI "  --- (2) *The abort state is discarded at entry* (design principle 106) ---"
+    Wv2Log.LogI "        Leave it raised and see that the next call is not killed"
 
     Wv2Maps.MapsCancel = True
-    ok = Wv2Maps.MapsGeocode(Nothing, "東京駅", lat, lng, nm, 1)
-    Wv2Log.LogI "        戻り値 = " & ok & " 理由 = " & Wv2Maps.MapsLastError
-    TestBool "呼べる (中身は no-pane で失敗する)", (ok = False)
-    TestBool "★理由が canceled ではない★ (入口で捨てたから)", _
+    ok = Wv2Maps.MapsGeocode(Nothing, (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H99C5&)), lat, lng, nm, 1)
+    Wv2Log.LogI "        return value = " & ok & " reason = " & Wv2Maps.MapsLastError
+    TestBool "can be called (the body fails with no-pane)", (ok = False)
+    TestBool "*the reason is not canceled* (because it was discarded at entry)", _
              (Wv2Maps.MapsLastError = "no-pane")
-    TestBool "  中断要求が下りている", (Wv2Maps.MapsCancel = False)
-    TestBool "  中断で終わった印も下りている", (Wv2Maps.MapsCanceled = False)
+    TestBool "  the abort request is lowered", (Wv2Maps.MapsCancel = False)
+    TestBool "  the mark of having ended by abort is also lowered", (Wv2Maps.MapsCanceled = False)
 
-    ' --- D-7b: ★戻し忘れると Excel 全体で Esc が効かなくなる★ ---
+    ' --- D-7b: *If you forget to restore it, Esc stops working in all of Excel* ---
     Wv2Log.LogI "        EnableCancelKey = " & Application.EnableCancelKey & _
                 " (xlInterrupt = " & xlInterrupt & ")"
-    TestBool "★EnableCancelKey が戻っている★", _
+    TestBool "*EnableCancelKey is restored*", _
              (Application.EnableCancelKey = xlInterrupt)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★分母を数える★ (MapsCountRows) ---"
+    Wv2Log.LogI "  --- (3) *Count the denominator* (MapsCountRows) ---"
 
     Set wb = Workbooks.Add
     Set sh = wb.Worksheets(1)
-    sh.Cells(1, 1).value = "住所"
-    sh.Cells(2, 1).value = "東京都千代田区丸の内1-9-1"
-    sh.Cells(3, 1).value = "大阪府大阪市中央区大阪城1-1"
-    sh.Cells(4, 1).value = "京都府京都市下京区東塩小路町"
-    ' 5 行目は空 ― ★ここで止まる★
-    sh.Cells(6, 1).value = "空白の向こうは数えない"
+    sh.Cells(1, 1).value = (ChrW(&H4F4F&) & ChrW(&H6240&))
+    sh.Cells(2, 1).value = (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1")
+    sh.Cells(3, 1).value = (ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E9C&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E02&) & ChrW(&H4E2D&) & ChrW(&H592E&) & ChrW(&H533A&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H57CE&) & "1-1")
+    sh.Cells(4, 1).value = (ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5E9C&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5E02&) & ChrW(&H4E0B&) & ChrW(&H4EAC&) & ChrW(&H533A&) & ChrW(&H6771&) & ChrW(&H5869&) & ChrW(&H5C0F&) & ChrW(&H8DEF&) & ChrW(&H753A&))
+    ' Row 5 is empty - *it stops here*
+    sh.Cells(6, 1).value = (ChrW(&H7A7A&) & ChrW(&H767D&) & ChrW(&H306E&) & ChrW(&H5411&) & ChrW(&H3053&) & ChrW(&H3046&) & ChrW(&H306F&) & ChrW(&H6570&) & ChrW(&H3048&) & ChrW(&H306A&) & ChrW(&H3044&))
 
-    TestBool "★空セルで止めて 3 件と数える★", (Wv2Maps.MapsCountRows(sh) = 3)
-    TestBool "  開始行を 3 にすれば 2 件", (Wv2Maps.MapsCountRows(sh, 3) = 2)
-    TestBool "  住所の無い列を見れば 0 件", (Wv2Maps.MapsCountRows(sh, 2, 5) = 0)
-    TestBool "  シートが無ければ 0 件", (Wv2Maps.MapsCountRows(Nothing) = 0)
+    TestBool "*stops at the empty cell and counts 3*", (Wv2Maps.MapsCountRows(sh) = 3)
+    TestBool "  starting from row 3 gives 2", (Wv2Maps.MapsCountRows(sh, 3) = 2)
+    TestBool "  looking at a column with no address gives 0", (Wv2Maps.MapsCountRows(sh, 2, 5) = 0)
+    TestBool "  if there is no sheet, 0", (Wv2Maps.MapsCountRows(Nothing) = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ★0 件ならタブを開かずに帰る★ ---"
+    Wv2Log.LogI "  --- (4) *With 0 rows it returns without opening a tab* ---"
 
     Set sh2 = wb.Worksheets.Add
     beforeTabs = -1
@@ -5434,48 +5434,48 @@ Public Sub Test_D7_Cancel()
     End If
 
     n = Wv2Maps.MapsGeocodeSheet(sh2)
-    TestBool "0 を返す", (n = 0)
-    TestBool "  理由が no-rows", (Wv2Maps.MapsLastError = "no-rows")
+    TestBool "returns 0", (n = 0)
+    TestBool "  the reason is no-rows", (Wv2Maps.MapsLastError = "no-rows")
 
     If beforeTabs >= 0 Then
-        Wv2Log.LogI "        タブ数 " & beforeTabs & " → " & _
+        Wv2Log.LogI "        tab count " & beforeTabs & " -> " & _
                     UserForm1.CurrentBrowser.TabCount
-        TestBool "★タブが増えていない★", _
+        TestBool "*the tabs did not increase*", _
                  (UserForm1.CurrentBrowser.TabCount = beforeTabs)
     Else
-        Wv2Log.LogI "        (ブラウザ未起動なのでタブ数の判定は省略)"
+        Wv2Log.LogI "        (the browser is not started, so the tab-count verdict is skipped)"
     End If
 
-    Application.StatusBar = Empty   ' D-7d: 前のテストの残りを消してから見る
-    TestBool "  ステータスバーが汚れていない", _
+    Application.StatusBar = Empty   ' D-7d: clear what the previous test left before looking
+    TestBool "  the status bar is not dirty", _
              (TypeName(Application.StatusBar) = "Boolean")
 
     wb.Close SaveChanges:=False
 
     Wv2Log.LogI ""
     TestCountPrint
-    Wv2Log.LogI "================ Test_D7_Cancel 終了 ================"
+    Wv2Log.LogI "================ Test_D7_Cancel end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D7_Sheet (D-7b の検証: ★実行中に手で Esc を押す★)
+' Test_D7_Sheet (verification of D-7b: *press Esc by hand during execution*)
 '
-'   ★外部サイトに実アクセスする★ ネットワークが要る。
-'   ★新しいブックを作って試し、保存せずに閉じる★
+'   *Accesses an external site for real* Needs a network.
+'   *Create a new workbook to try it and close it without saving*
 '
-'   手順:
-'     1) 実行すると 4 件の住所を順に処理し始める (1 件 8 秒ほど)。
-'     2) ★ステータスバーを見ながら 2 件目あたりで Esc を押す★
-'        押しっぱなしでなくてよい。焦点はどこにあってもよい。
-'        ★D-7b からは「コードの実行が中断されました」は出ない★ (エラー18 として
-'        受け取って中断に変える)。出たら D-7b が効いていないということ。
-'     3) 中断されたことと、★中断した行に何も書かれていないこと★を判定する。
-'     4) そのまま呼び直して★続きから埋まること★を判定する (設計原則110)。
+'   Procedure:
+'     1) When run, it starts processing 4 addresses in order (about 8 seconds each).
+'     2) *Press Esc around the 2nd one, watching the status bar*
+'        There is no need to hold it down. The focus may be anywhere.
+'        *From D-7b on, "code execution has been interrupted" does not appear* (it is
+'        received as error 18 and turned into an abort). If it appears, D-7b is not working.
+'     3) Judge that it was aborted and that *nothing was written to the row where it was aborted*.
+'     4) Call it again as is and judge that *it fills in from where it left off* (design principle 110).
 '
-'   ★Esc を押さなければ FAIL になる★ 押し忘れたらもう一度実行する。
-'   ★住所はすべて「1 件に確定する」ものを選んである★ (D-7 では ambiguous な
-'   住所が混ざって 1 件 27 秒かかり、判定も間接的になっていた)。
+'   *It FAILs if you do not press Esc* If you forgot to press, run it again.
+'   *All addresses are chosen to "settle to exactly 1"* (in D-7 an ambiguous
+'   address was mixed in, each took 27 seconds, and the verdict became indirect).
 ' ============================================================
 Public Sub Test_D7_Sheet()
     Dim wb As Workbook
@@ -5487,93 +5487,93 @@ Public Sub Test_D7_Sheet()
     Dim wasCanceled As Boolean
 
     If UserForm1.CurrentBrowser Is Nothing Then
-        Wv2Log.LogI "Test_D7_Sheet: Browser が起動していません。"
+        Wv2Log.LogI "Test_D7_Sheet: Browser is not started."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D7_Sheet 開始 ================"
-    Wv2Log.LogI "  ★★★ 2 件目あたりで Esc を押してください ★★★"
+    Wv2Log.LogI "================ Test_D7_Sheet start ================"
+    Wv2Log.LogI "  *** Please press Esc around the 2nd one ***"
     Debug.Print ""
-    Debug.Print "  ★★★ 2 件目あたりで Esc を押してください ★★★"
-    Debug.Print "  (連打しなくてよい。1 回で効きます)"
+    Debug.Print "  *** Please press Esc around the 2nd one ***"
+    Debug.Print "  (No need to mash it. Once is enough)"
 
     Set wb = Workbooks.Add
     Set sh = wb.Worksheets(1)
-    sh.Cells(1, 1).value = "住所"
-    sh.Cells(2, 1).value = "東京都千代田区丸の内1-9-1"
-    sh.Cells(3, 1).value = "大阪府大阪市中央区大阪城1-1"
-    sh.Cells(4, 1).value = "北海道札幌市北区北6条西4丁目"
-    sh.Cells(5, 1).value = "宮城県仙台市青葉区中央1-1-1"
+    sh.Cells(1, 1).value = (ChrW(&H4F4F&) & ChrW(&H6240&))
+    sh.Cells(2, 1).value = (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1")
+    sh.Cells(3, 1).value = (ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E9C&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E02&) & ChrW(&H4E2D&) & ChrW(&H592E&) & ChrW(&H533A&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H57CE&) & "1-1")
+    sh.Cells(4, 1).value = (ChrW(&H5317&) & ChrW(&H6D77&) & ChrW(&H9053&) & ChrW(&H672D&) & ChrW(&H5E4C&) & ChrW(&H5E02&) & ChrW(&H5317&) & ChrW(&H533A&) & ChrW(&H5317&) & "6" & ChrW(&H6761&) & ChrW(&H897F&) & "4" & ChrW(&H4E01&) & ChrW(&H76EE&))
+    sh.Cells(5, 1).value = (ChrW(&H5BAE&) & ChrW(&H57CE&) & ChrW(&H770C&) & ChrW(&H4ED9&) & ChrW(&H53F0&) & ChrW(&H5E02&) & ChrW(&H9752&) & ChrW(&H8449&) & ChrW(&H533A&) & ChrW(&H4E2D&) & ChrW(&H592E&) & "1-1-1")
 
     n = Wv2Maps.MapsGeocodeSheet(sh)
     wasCanceled = Wv2Maps.MapsCanceled
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "        ok = " & n & " / 中断 = " & wasCanceled & _
-                " / 理由 = " & Wv2Maps.MapsLastError
+    Wv2Log.LogI "        ok = " & n & " / aborted = " & wasCanceled & _
+                " / reason = " & Wv2Maps.MapsLastError
     TestDumpStatusBar "StatusBar"
-    Wv2Log.LogI "        ★中断検知の呼び出し = " & Wv2Maps.MapsCheckCount & " 回★"
+    Wv2Log.LogI "        *calls of abort detection = " & Wv2Maps.MapsCheckCount & " times*"
 
-    TestBool "★中断された★ (押していなければ FAIL。もう一度どうぞ)", wasCanceled
-    TestBool "  理由が canceled", (Wv2Maps.MapsLastError = "canceled")
-    ' D-7d: Empty で戻すようにしたので判定を復活させた
-    TestBool "★ステータスバーが戻っている★", _
+    TestBool "*it was aborted* (FAIL if you did not press. Please try once more)", wasCanceled
+    TestBool "  the reason is canceled", (Wv2Maps.MapsLastError = "canceled")
+    ' D-7d: restoring with Empty is now used, so the verdict was brought back
+    TestBool "*the status bar is restored*", _
              (TypeName(Application.StatusBar) = "Boolean")
-    TestBool "★EnableCancelKey が戻っている★", _
+    TestBool "*EnableCancelKey is restored*", _
              (Application.EnableCancelKey = xlInterrupt)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- ★書きかけの行を残していないか★ (設計原則111) ---"
+    Wv2Log.LogI "  --- *Did it leave a half-written row?* (design principle 111) ---"
 
     blanks = 0
     For i = 2 To 5
         If Len(CStr(sh.Cells(i, 5).value)) = 0 Then
             blanks = blanks + 1
-            TestBool "  " & i & " 行目は手つかず (座標も空)", _
+            TestBool "  row " & i & " is untouched (coordinates also empty)", _
                      (Len(CStr(sh.Cells(i, 2).value)) = 0 And _
                       Len(CStr(sh.Cells(i, 3).value)) = 0)
         End If
     Next i
-    Wv2Log.LogI "        手つかずの行 = " & blanks & " 件"
-    ' ★これが「途中で止まった」の直接の証拠★ (n < 4 は間接指標なので使わない)
-    TestBool "★手つかずの行がある★", (blanks >= 1)
+    Wv2Log.LogI "        untouched rows = " & blanks & " items"
+    ' *This is the direct evidence of "it stopped midway"* (n < 4 is an indirect indicator so it is not used)
+    TestBool "*there are untouched rows*", (blanks >= 1)
 
-    ' --- D-7e: ★止まったことを人に見せて、指が離れるのを待つ★ ---
+    ' --- D-7e: *show a human that it stopped, and wait for the finger to come off* ---
     Wv2Log.LogI ""
     Debug.Print ""
     If wasCanceled Then
-        Debug.Print "  ★★★ 止まりました (" & n & " 件処理して中断) ★★★"
-        Wv2Log.LogI "  ★★★ 止まりました (" & n & " 件処理して中断) ★★★"
+        Debug.Print "  *** It stopped (aborted after processing " & n & " items) ***"
+        Wv2Log.LogI "  *** It stopped (aborted after processing " & n & " items) ***"
     Else
-        Debug.Print "  ★止まりませんでした★ Esc を押しましたか?"
-        Wv2Log.LogI "  ★止まりませんでした★"
+        Debug.Print "  *It did not stop* Did you press Esc?"
+        Wv2Log.LogI "  *It did not stop*"
     End If
-    Debug.Print "  ★Esc から指を離してください★ 静かになったら再開を試します"
+    Debug.Print "  *Please take your finger off Esc* We will try to resume once it is quiet"
     TestWaitEscReleased 15
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- ★呼び直して続きから★ (今度は Esc を押さないでください) ---"
-    Debug.Print "  --- 再開します (Esc は押さないでください) ---"
+    Wv2Log.LogI "  --- *Call again and continue from where it left off* (this time please do not press Esc) ---"
+    Debug.Print "  --- Resuming (please do not press Esc) ---"
 
     n2 = Wv2Maps.MapsGeocodeSheet(sh)
-    Wv2Log.LogI "        2 回目の ok = " & n2 & " / 中断 = " & Wv2Maps.MapsCanceled
+    Wv2Log.LogI "        ok of the 2nd run = " & n2 & " / aborted = " & Wv2Maps.MapsCanceled
 
     blanks = 0
     For i = 2 To 5
-        Wv2Log.LogI "        " & i & " 行目: " & sh.Cells(i, 2).value & " / " & _
+        Wv2Log.LogI "        row " & i & ": " & sh.Cells(i, 2).value & " / " & _
                     sh.Cells(i, 3).value & " / " & sh.Cells(i, 5).value
         If Len(CStr(sh.Cells(i, 5).value)) = 0 Then blanks = blanks + 1
     Next i
 
-    TestBool "★2 回目は中断していない★ (入口で捨てられた)", _
+    TestBool "*the 2nd run was not aborted* (discarded at entry)", _
              (Wv2Maps.MapsCanceled = False)
-    TestBool "★手つかずの行が無くなった★", (blanks = 0)
-    TestBool "  ok が減っていない", (n2 >= n)
-    TestBool "  EnableCancelKey が戻っている", _
+    TestBool "*the untouched rows are gone*", (blanks = 0)
+    TestBool "  ok has not decreased", (n2 >= n)
+    TestBool "  EnableCancelKey is restored", _
              (Application.EnableCancelKey = xlInterrupt)
-    TestBool "  ステータスバーが戻っている", _
+    TestBool "  the status bar is restored", _
              (TypeName(Application.StatusBar) = "Boolean")
     TestDumpStatusBar "StatusBar"
 
@@ -5581,18 +5581,18 @@ Public Sub Test_D7_Sheet()
 
     Wv2Log.LogI ""
     TestCountPrint
-    Wv2Log.LogI "================ Test_D7_Sheet 終了 ================"
+    Wv2Log.LogI "================ Test_D7_Sheet end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_D7_Resume (D-7b の検証: ★中断後の状態から再開できるか★)
+' Test_D7_Resume (verification of D-7b: *can it resume from the post-abort state?*)
 '
-'   ★Esc を押さなくてよい★ 中断された後のシート ―― 前半だけ埋まっていて
-'   後半が手つかず ―― を人工的に作り、そこから呼び直す。
-'   これで「再開」の回帰確認を毎回自動で回せる。
+'   *No need to press Esc* Artificially builds a sheet as it is after an abort -- the first half
+'   filled in and the second half untouched -- and calls again from there.
+'   This lets the regression check of "resume" run automatically every time.
 '
-'   ★外部サイトに実アクセスする★ 処理するのは 2 件だけ (15 秒ほど)。
+'   *Accesses an external site for real* Only 2 items are processed (about 15 seconds).
 ' ============================================================
 Public Sub Test_D7_Resume()
     Dim wb As Workbook
@@ -5602,87 +5602,87 @@ Public Sub Test_D7_Resume()
     Dim blanks As Long
 
     If UserForm1.CurrentBrowser Is Nothing Then
-        Wv2Log.LogI "Test_D7_Resume: Browser が起動していません。"
+        Wv2Log.LogI "Test_D7_Resume: Browser is not started."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D7_Resume 開始 ================"
+    Wv2Log.LogI "================ Test_D7_Resume start ================"
 
     Set wb = Workbooks.Add
     Set sh = wb.Worksheets(1)
-    sh.Cells(1, 1).value = "住所"
-    sh.Cells(2, 1).value = "東京都千代田区丸の内1-9-1"
-    sh.Cells(3, 1).value = "大阪府大阪市中央区大阪城1-1"
-    sh.Cells(4, 1).value = "北海道札幌市北区北6条西4丁目"
-    sh.Cells(5, 1).value = "宮城県仙台市青葉区中央1-1-1"
+    sh.Cells(1, 1).value = (ChrW(&H4F4F&) & ChrW(&H6240&))
+    sh.Cells(2, 1).value = (ChrW(&H6771&) & ChrW(&H4EAC&) & ChrW(&H90FD&) & ChrW(&H5343&) & ChrW(&H4EE3&) & ChrW(&H7530&) & ChrW(&H533A&) & ChrW(&H4E38&) & ChrW(&H306E&) & ChrW(&H5185&) & "1-9-1")
+    sh.Cells(3, 1).value = (ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E9C&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H5E02&) & ChrW(&H4E2D&) & ChrW(&H592E&) & ChrW(&H533A&) & ChrW(&H5927&) & ChrW(&H962A&) & ChrW(&H57CE&) & "1-1")
+    sh.Cells(4, 1).value = (ChrW(&H5317&) & ChrW(&H6D77&) & ChrW(&H9053&) & ChrW(&H672D&) & ChrW(&H5E4C&) & ChrW(&H5E02&) & ChrW(&H5317&) & ChrW(&H533A&) & ChrW(&H5317&) & "6" & ChrW(&H6761&) & ChrW(&H897F&) & "4" & ChrW(&H4E01&) & ChrW(&H76EE&))
+    sh.Cells(5, 1).value = (ChrW(&H5BAE&) & ChrW(&H57CE&) & ChrW(&H770C&) & ChrW(&H4ED9&) & ChrW(&H53F0&) & ChrW(&H5E02&) & ChrW(&H9752&) & ChrW(&H8449&) & ChrW(&H533A&) & ChrW(&H4E2D&) & ChrW(&H592E&) & "1-1-1")
 
-    ' --- ★中断された後の状態を人工的に作る★ 前半 2 行は処理済み ---
+    ' --- *Artificially build the post-abort state* the first 2 rows are already processed ---
     sh.Cells(2, 2).value = 11.111
     sh.Cells(2, 3).value = 22.222
-    sh.Cells(2, 4).value = "見張り番 1"
+    sh.Cells(2, 4).value = (ChrW(&H898B&) & ChrW(&H5F35&) & ChrW(&H308A&) & ChrW(&H756A&) & " 1")
     sh.Cells(2, 5).value = "ok"
     sh.Cells(3, 2).value = 33.333
     sh.Cells(3, 3).value = 44.444
-    sh.Cells(3, 4).value = "見張り番 2"
-    sh.Cells(3, 5).value = "ok(候補1)"
+    sh.Cells(3, 4).value = (ChrW(&H898B&) & ChrW(&H5F35&) & ChrW(&H308A&) & ChrW(&H756A&) & " 2")
+    sh.Cells(3, 5).value = "ok(candidate 1)"
 
-    Wv2Log.LogI "  4 行のうち前半 2 行を「済み」にしてから呼ぶ"
+    Wv2Log.LogI "  Mark the first 2 of the 4 rows as 'done' and then call"
     n = Wv2Maps.MapsGeocodeSheet(sh)
 
-    Wv2Log.LogI "        戻り値 = " & n & " / 中断 = " & Wv2Maps.MapsCanceled
+    Wv2Log.LogI "        return value = " & n & " / aborted = " & Wv2Maps.MapsCanceled
     For i = 2 To 5
-        Wv2Log.LogI "        " & i & " 行目: " & sh.Cells(i, 2).value & " / " & _
+        Wv2Log.LogI "        row " & i & ": " & sh.Cells(i, 2).value & " / " & _
                     sh.Cells(i, 3).value & " / " & sh.Cells(i, 5).value
     Next i
 
-    ' ★済みの行に触っていないこと★ (見張り番の値がそのまま残っているか)
-    TestBool "★済みの行は書き換えない★ (2 行目)", (sh.Cells(2, 2).value = 11.111)
-    TestBool "  ok(候補1) も済み扱いになる (3 行目)", (sh.Cells(3, 2).value = 33.333)
+    ' *The done rows must not be touched* (do the sentinel values remain as they are?)
+    TestBool "*done rows are not rewritten* (row 2)", (sh.Cells(2, 2).value = 11.111)
+    TestBool "  ok(candidate 1) also counts as done (row 3)", (sh.Cells(3, 2).value = 33.333)
 
     blanks = 0
     For i = 2 To 5
         If Len(CStr(sh.Cells(i, 5).value)) = 0 Then blanks = blanks + 1
     Next i
-    TestBool "★手つかずの行が埋まった★", (blanks = 0)
-    TestBool "  4 行目に座標が入った", (Len(CStr(sh.Cells(4, 2).value)) > 0)
-    TestBool "  5 行目に座標が入った", (Len(CStr(sh.Cells(5, 2).value)) > 0)
-    TestBool "★戻り値は「済み」も数える★ (4 = 2 + 2)", (n = 4)
-    TestBool "  中断していない", (Wv2Maps.MapsCanceled = False)
-    TestBool "  EnableCancelKey が戻っている", _
+    TestBool "*the untouched rows were filled in*", (blanks = 0)
+    TestBool "  coordinates went into row 4", (Len(CStr(sh.Cells(4, 2).value)) > 0)
+    TestBool "  coordinates went into row 5", (Len(CStr(sh.Cells(5, 2).value)) > 0)
+    TestBool "*the return value also counts the 'done' ones* (4 = 2 + 2)", (n = 4)
+    TestBool "  not aborted", (Wv2Maps.MapsCanceled = False)
+    TestBool "  EnableCancelKey is restored", _
              (Application.EnableCancelKey = xlInterrupt)
 
     wb.Close SaveChanges:=False
 
     Wv2Log.LogI ""
     TestCountPrint
-    Wv2Log.LogI "================ Test_D7_Resume 終了 ================"
+    Wv2Log.LogI "================ Test_D7_Resume end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_K4_Quiet (K-4a の実験) - ★閉じる前に全タブを静める★
+' Test_K4_Quiet (experiment of K-4a) - *quiet all tabs before closing*
 '
-'   解放が遅い原因の切り分け。仮説は
-'   ★「ページが動き続けているので WebView2 が忙しく、COM の応答が遅い」★。
-'   全タブを about:blank に飛ばしてから閉じれば、速くなるはず。
+'   Isolating the cause of slow release. The hypothesis is
+'   *"the pages keep running so WebView2 is busy and COM responses are slow"*.
+'   If all tabs are sent to about:blank and then closed, it should become faster.
 '
-'   ★製品コードは 1 行も変えない★ ここでやることは、利用者が手でできること
-'   (別のページへ移動する) と同じ。効いたら製品側にどう入れるかを別途決める。
+'   *Not one line of product code is changed* What is done here is the same as what a user can do by hand
+'   (navigate to another page). If it works, how to put it into the product side will be decided separately.
 '
-'   使い方:
+'   Usage:
 '     1) Wv2Log.LogStart
-'     2) UserForm1.Show vbModeless → StartWebView2_Full
-'     3) Wv2Maps.MapsOpen UserForm1.CurrentBrowser   (重いページを 1 枚作る)
-'     4) ★Test_K4_Quiet 3★ / ★Test_K4_Quiet 1★ / ★Test_K4_Quiet 0★
-'     5) フォームを × で閉じる
+'     2) UserForm1.Show vbModeless -> StartWebView2_Full
+'     3) Wv2Maps.MapsOpen UserForm1.CurrentBrowser   (make one heavy page)
+'     4) *Test_K4_Quiet 3* / *Test_K4_Quiet 1* / *Test_K4_Quiet 0*
+'     5) Close the form with x
 '
-'   ★K-4b: 待ち秒数を引数にした★ 3 秒では合計時間で得をしない
-'   (静めるのに 1.6 秒 + 待ち 3 秒 = 4.6 秒かけて、解放が 6.7 → 0.37 秒)。
-'   ★0 秒 (飛ばすだけ) で効くなら合計でも勝てる★ ので、そこを測る。
+'   *K-4b: the wait seconds became an argument* With 3 seconds there is no gain in total time
+'   (it takes 1.6 seconds to quiet + 3 seconds of waiting = 4.6 seconds, and release goes 6.7 -> 0.37 seconds).
+'   *If it works with 0 seconds (just navigating away) we can win in total too*, so measure that.
 '
-'   実測済み: 何もしない = 6.718 秒 / 3 秒待つ = 0.367 秒
+'   Measured: do nothing = 6.718 s / wait 3 s = 0.367 s
 ' ============================================================
 Public Sub Test_K4_Quiet(Optional ByVal waitSec As Single = 3)
     Dim b As Wv2Browser
@@ -5692,14 +5692,14 @@ Public Sub Test_K4_Quiet(Optional ByVal waitSec As Single = 3)
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_K4_Quiet: Browser が起動していません。"
+        Wv2Log.LogI "Test_K4_Quiet: Browser is not started."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "================ Test_K4_Quiet 開始 ================"
-    Wv2Log.LogI "  ★全 " & b.TabCount & " タブを about:blank に飛ばす★" & _
-                " (そのあと " & waitSec & " 秒待つ)"
+    Wv2Log.LogI "================ Test_K4_Quiet start ================"
+    Wv2Log.LogI "  *Send all " & b.TabCount & " tabs to about:blank*" & _
+                " (then wait " & waitSec & " s)"
 
     t0 = Timer
 
@@ -5707,14 +5707,14 @@ Public Sub Test_K4_Quiet(Optional ByVal waitSec As Single = 3)
         Set p = b.PaneAt(i)
         If Not p Is Nothing Then
             p.View_Navigate "about:blank"
-            Wv2Log.LogI "        タブ " & i & " を about:blank へ"
+            Wv2Log.LogI "        tab " & i & " to about:blank"
         End If
     Next i
 
-    Wv2Log.LogI "  ★飛ばし終えた (" & Format$(Timer - t0, "0.00") & " 秒)★"
+    Wv2Log.LogI "  *Finished sending (" & Format$(Timer - t0, "0.00") & " s)*"
 
-    ' ★飛ばした直後は「これから止まる」ところ★ なので、落ち着くまで待つ
-    '   waitSec = 0 なら待たない (飛ばすだけで効くかを測るため)
+    ' *Right after sending, things are "about to stop"*, so wait until they settle
+    '   if waitSec = 0 do not wait (to measure whether just sending is enough)
     If waitSec > 0 Then
         t0 = Timer
         Do
@@ -5722,55 +5722,55 @@ Public Sub Test_K4_Quiet(Optional ByVal waitSec As Single = 3)
         Loop Until Timer - t0 >= waitSec Or Timer < t0
     End If
 
-    Wv2Log.LogI "  ★静めた。この状態でフォームを × で閉じてください★"
+    Wv2Log.LogI "  *Quieted. In this state, please close the form with x*"
     Debug.Print ""
-    Debug.Print "  ★静めました。フォームを × で閉じてください★"
-    Wv2Log.LogI "================ Test_K4_Quiet 終了 ================"
+    Debug.Print "  *Quieted. Please close the form with x*"
+    Wv2Log.LogI "================ Test_K4_Quiet end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_K4_Step (K-4c) - ★何が「閉じるのを遅くする」のかを二分探索する★
+' Test_K4_Step (K-4c) - *bisect what "slows down the closing"*
 '
-'   実測で分かっていること:
-'     AddTabWithUrl だけ … 閉じるのは★速い★
-'     MapsOpen 相当     … 閉じるのが★遅い★ (5 秒)
-'   差分は EvalSync を何度も撃つことと、QuerySelector で要素レジストリを
-'   作ることの 2 つ。どちらが効いているのかを段階的に再現して確かめる。
+'   What is known from measurements:
+'     AddTabWithUrl only ... closing is *fast*
+'     MapsOpen equivalent     ... closing is *slow* (5 seconds)
+'   The differences are firing EvalSync many times and building the element registry
+'   with QuerySelector. Reproduce them stage by stage to check which one is responsible.
 '
-'   使い方 ★1 段階ごとに Excel の再起動は不要。フォームを開き直すだけ★:
+'   Usage: *No need to restart Excel at each stage. Just reopen the form*:
 '     Wv2Log.LogStart
-'     UserForm1.Show vbModeless → StartWebView2_Full
-'     ★UserForm1.CurrentBrowser.QuietOnShutdown = False★  ← これを忘れない
-'     Test_K4_Step 1   (または 2 / 3 / 4)
-'     フォームを × で閉じる → ログの解放時間を見る
+'     UserForm1.Show vbModeless -> StartWebView2_Full
+'     *UserForm1.CurrentBrowser.QuietOnShutdown = False*  <- do not forget this
+'     Test_K4_Step 1   (or 2 / 3 / 4)
+'     close the form with x -> look at the release time in the log
 '
-'   ★QuietOnShutdown = False が要る★ K-4c で解放前に静めるようにしたので、
-'   そのままだと全部速くなって切り分けにならない (設計原則103: プローブを検算する)。
+'   *QuietOnShutdown = False is needed* K-4c made it quiet things before release, so
+'   as it is everything becomes fast and nothing is isolated (design principle 103: check the probe).
 '
-'   段階ごとの内容:
-'     1 … AddTabWithUrl だけ (既知: 速い)
-'     2 … + EvalSync を 20 回
-'     3 … + QuerySelector を 5 回
-'     4 … MapsOpen 相当 (全部)                        (既知: 遅い)
-'     5 … ★DoEvents を 15 秒回すだけ★ (JS は撃たない)   (実測: 速い)
-'     6 … ★EvalSync を 300 回★     (MapsOpen 相当の回数)
-'     7 … ★View_GetSource を 300 回★ (COM で読むだけ)   (実測: 速い)
-'     8 … + JS が通るまで待つ           (MapsOpen の第 1 段)
-'     9 … + ★WaitFor で検索ボックスを待つ★ (唯一まだ試していない要素)
-'    10 … + /@ が付くまで待つ           (= MapsOpen 相当)   (実測: 速い)
-'    11 … + ★EnableCancelKey 操作 + AddIgnoreNetwork★ (最後の差分)
+'   Contents of each stage:
+'     1 ... AddTabWithUrl only (known: fast)
+'     2 ... + EvalSync 20 times
+'     3 ... + QuerySelector 5 times
+'     4 ... MapsOpen equivalent (everything)                        (known: slow)
+'     5 ... *just run DoEvents for 15 seconds* (no JS fired)   (measured: fast)
+'     6 ... *EvalSync 300 times*     (the count of MapsOpen)
+'     7 ... *View_GetSource 300 times* (just reading via COM)   (measured: fast)
+'     8 ... + wait until JS goes through           (stage 1 of MapsOpen)
+'     9 ... + *wait for the search box with WaitFor* (the only element not yet tried)
+'    10 ... + wait until /@ appears           (= MapsOpen equivalent)   (measured: fast)
+'    11 ... + *EnableCancelKey operation + AddIgnoreNetwork* (the last difference)
 '
-'   ★8→9→10 と進めて、遅くなった段階が答え★
+'   *Proceed 8 -> 9 -> 10; the stage where it became slow is the answer*
 '
-'   ★実測で分かったこと (K-4c の切り分け)★
-'     Step 1 + 30 秒待ち … 速い  ← ただし★VBA は止まっていた★
-'     Step 2 (EvalSync×20) … 速い
-'     Step 3 (+QuerySelector×5) … 速い / +30 秒待ち でも速い
-'     MapsOpen … ★遅い★
-'     Step 5 (DoEvents 15 秒 / 69 万回) … 速い
-'   → ★「JS を撃つ」「時間」「DoEvents」はすべて無罪★。
-'     残るのは ★回数★ (MapsOpen は EvalSync を 200 回前後撃っている)。それが段階6/7。
+'   *What was learned from measurements (isolation of K-4c)*
+'     Step 1 + 30 seconds wait ... fast  <- but *VBA was stopped*
+'     Step 2 (EvalSync x 20) ... fast
+'     Step 3 (+QuerySelector x 5) ... fast / fast even with +30 seconds wait
+'     MapsOpen ... *slow*
+'     Step 5 (DoEvents 15 seconds / 690,000 times) ... fast
+'   -> *"firing JS", "time" and "DoEvents" are all innocent*.
+'     What remains is *the count* (MapsOpen fires EvalSync around 200 times). That is stages 6/7.
 ' ============================================================
 Public Sub Test_K4_Step(Optional ByVal stepNo As Long = 1)
     Dim b As Wv2Browser
@@ -5783,62 +5783,62 @@ Public Sub Test_K4_Step(Optional ByVal stepNo As Long = 1)
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_K4_Step: Browser が起動していません。"
+        Wv2Log.LogI "Test_K4_Step: Browser is not started."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "================ Test_K4_Step " & stepNo & " 開始 ================"
+    Wv2Log.LogI "================ Test_K4_Step " & stepNo & " start ================"
     If b.QuietOnShutdown Then
-        Wv2Log.LogW "  ★QuietOnShutdown が True のままです★ 切り分けになりません。"
-        Wv2Log.LogW "  UserForm1.CurrentBrowser.QuietOnShutdown = False を先に打つこと。"
-        Debug.Print "  ★QuietOnShutdown = False を先に打ってください★"
+        Wv2Log.LogW "  *QuietOnShutdown is still True* It does not isolate anything."
+        Wv2Log.LogW "  Type UserForm1.CurrentBrowser.QuietOnShutdown = False first."
+        Debug.Print "  *Please type QuietOnShutdown = False first*"
     End If
 
-    ' --- 段階1: タブを開く (全段階で共通) ---
+    ' --- stage 1: open a tab (common to all stages) ---
     t0 = Timer
     Set p = b.AddTabWithUrl("https://www.google.com/maps")
-    Wv2Log.LogI "  [1] AddTabWithUrl … " & Format$(Timer - t0, "0.00") & " 秒"
+    Wv2Log.LogI "  [1] AddTabWithUrl ... " & Format$(Timer - t0, "0.00") & " s"
     If p Is Nothing Then
-        Wv2Log.LogI "      タブを開けなかった"
+        Wv2Log.LogI "      could not open a tab"
         Exit Sub
     End If
 
     If stepNo >= 2 And stepNo <= 4 Then
-        ' --- 段階2: EvalSync を 20 回 ---
+        ' --- stage 2: EvalSync 20 times ---
         t0 = Timer
         For i = 1 To 20
             p.EvalSync "1", 3
         Next i
-        Wv2Log.LogI "  [2] EvalSync × 20 … " & Format$(Timer - t0, "0.00") & " 秒"
+        Wv2Log.LogI "  [2] EvalSync x 20 ... " & Format$(Timer - t0, "0.00") & " s"
     End If
 
     If stepNo >= 3 And stepNo <= 4 Then
-        ' --- 段階3: QuerySelector を 5 回 (要素レジストリを作る) ---
+        ' --- stage 3: QuerySelector 5 times (build the element registry) ---
         t0 = Timer
         For i = 1 To 5
             Set el = p.QuerySelector("input")
         Next i
-        Wv2Log.LogI "  [3] QuerySelector × 5 … " & Format$(Timer - t0, "0.00") & _
-                    " 秒 (レジストリ " & p.ElementCount & " 個)"
+        Wv2Log.LogI "  [3] QuerySelector x 5 ... " & Format$(Timer - t0, "0.00") & _
+                    " s (registry " & p.ElementCount & " items)"
     End If
 
     If stepNo >= 11 Then
-        ' [11] ★MapsOpen と同じ順序で包む★
-        '   本物は「入る前に arm → 全部やる → 最後に AddIgnoreNetwork → disarm」。
-        '   ★arm が一瞬では再現にならない★ ので、ここで掛けて最後に外す。
+        ' [11] *wrap in the same order as MapsOpen*
+        '   The real one is "arm before entering -> do everything -> AddIgnoreNetwork at the end -> disarm".
+        '   *An arm that lasts only an instant is not a reproduction*, so apply it here and remove it at the end.
         savedKey = Application.EnableCancelKey
         Application.EnableCancelKey = xlDisabled
-        Wv2Log.LogI "  [11] EnableCancelKey = xlDisabled にした"
+        Wv2Log.LogI "  [11] set EnableCancelKey = xlDisabled"
     End If
 
     If stepNo >= 8 Then
-        ' --- 段階8/9/10 (K-4c): ★MapsOpen の中身を段階的に再現する★ ---
-        '   候補を当てにいって 6 連敗したので、当てるのをやめて
-        '   ★MapsOpen を分解し、途中で止めて閉じる★ 方式にした。
-        '   MapsOpen 全体は確実に遅いので、どこかに必ず境界がある。
+        ' --- stages 8/9/10 (K-4c): *reproduce the contents of MapsOpen stage by stage* ---
+        '   After 6 straight losses trying to guess the candidates, we stopped guessing and
+        '   adopted the *take MapsOpen apart, stop partway and close* approach.
+        '   MapsOpen as a whole is definitely slow, so there must be a boundary somewhere.
 
-        ' [8] JS が通るようになるまで待つ (MapsOpenCore の第 1 段)
+        ' [8] wait until JS goes through (stage 1 of MapsOpenCore)
         t0 = Timer
         Do
             p.EvalSync "1", 3
@@ -5846,42 +5846,42 @@ Public Sub Test_K4_Step(Optional ByVal stepNo As Long = 1)
             If Timer - t0 >= 30 Or Timer < t0 Then Exit Do
             DoEvents
         Loop
-        Wv2Log.LogI "  [8] JS が通るまで … " & Format$(Timer - t0, "0.00") & " 秒"
+        Wv2Log.LogI "  [8] until JS goes through ... " & Format$(Timer - t0, "0.00") & " s"
 
         If stepNo >= 9 Then
-            ' [9] ★検索ボックスが出るまで WaitFor★ (唯一まだ試していない要素)
+            ' [9] *WaitFor until the search box appears* (the only element not yet tried)
             t0 = Timer
             Set el = p.WaitFor("input[name='q']", 30)
-            Wv2Log.LogI "  [9] WaitFor … " & Format$(Timer - t0, "0.00") & " 秒 " & _
-                        IIf(el Is Nothing, "(見つからなかった)", "(見つかった)") & _
-                        " レジストリ " & p.ElementCount & " 個"
+            Wv2Log.LogI "  [9] WaitFor ... " & Format$(Timer - t0, "0.00") & " s " & _
+                        IIf(el Is Nothing, "(not found)", "(found)") & _
+                        " registry " & p.ElementCount & " items"
         End If
 
         If stepNo >= 10 Then
-            ' [10] 地図が位置を持つまで待つ (= MapsOpen 相当)
+            ' [10] wait until the map has a position (= MapsOpen equivalent)
             t0 = Timer
             Do
                 If InStr(1, p.View_GetSource(), "/@") > 0 Then Exit Do
                 If Timer - t0 >= 8 Or Timer < t0 Then Exit Do
                 DoEvents
             Loop
-            Wv2Log.LogI "  [10] /@ が付くまで … " & Format$(Timer - t0, "0.00") & " 秒"
+            Wv2Log.LogI "  [10] until /@ appears ... " & Format$(Timer - t0, "0.00") & " s"
         End If
 
         If stepNo >= 11 Then
             p.AddIgnoreNetwork "/search?tbm=map"
             Application.EnableCancelKey = savedKey
-            Wv2Log.LogI "  [11] AddIgnoreNetwork して EnableCancelKey を戻した"
+            Wv2Log.LogI "  [11] did AddIgnoreNetwork and restored EnableCancelKey"
         End If
     End If
 
     If stepNo = 6 Or stepNo = 7 Then
-        ' --- 段階6/7 (K-4c): ★回数を桁で増やす★ ---
-        '   段階2 の EvalSync は 20 回で速かったが、MapsOpen は 17 秒ぶん
-        '   ポーリングするので ★200 回前後★ 撃っている計算になる。桁が違う。
-        '     6 … EvalSync (JS を撃つ) を 300 回
-        '     7 … View_GetSource (COM で URL を読むだけ) を 300 回
-        '   ★どちらが効くかで「JS 側が溜まる」か「COM 側が溜まる」かが分かれる★
+        ' --- stages 6/7 (K-4c): *increase the count by an order of magnitude* ---
+        '   EvalSync of stage 2 was fast at 20 times, but MapsOpen polls for 17 seconds, so
+        '   by calculation it fires *around 200 times*. The order of magnitude is different.
+        '     6 ... EvalSync (fires JS) 300 times
+        '     7 ... View_GetSource (just reads the URL via COM) 300 times
+        '   *Which one works tells whether "the JS side piles up" or "the COM side piles up"*
         t0 = Timer
         For i = 1 To 300
             If stepNo = 6 Then
@@ -5892,105 +5892,105 @@ Public Sub Test_K4_Step(Optional ByVal stepNo As Long = 1)
         Next i
         Wv2Log.LogI "  [" & stepNo & "] " & _
                     IIf(stepNo = 6, "EvalSync", "View_GetSource") & _
-                    " × 300 … " & Format$(Timer - t0, "0.00") & " 秒"
-        Wv2Log.LogI "      レジストリ " & p.ElementCount & " 個 / " & _
-                    "最後の EvalSync は " & p.LastEvalOk
+                    " x 300 ... " & Format$(Timer - t0, "0.00") & " s"
+        Wv2Log.LogI "      registry " & p.ElementCount & " items / " & _
+                    "the last EvalSync was " & p.LastEvalOk
     End If
 
     If stepNo = 5 Then
-        ' --- 段階5 (K-4c): ★DoEvents を回すだけ★ JS は 1 回も撃たない ---
-        '   Step 1 + 30 秒待ち は速かったが、そのとき VBA は★止まっていた★。
-        '   MapsOpen は 15 秒間 DoEvents を回し続ける = ★WebView2 のイベントが
-        '   VBA のコールバックへ配送され続ける★。ここが唯一の差分。
+        ' --- stage 5 (K-4c): *just run DoEvents* no JS is fired even once ---
+        '   Step 1 + 30 seconds wait was fast, but at that time VBA was *stopped*.
+        '   MapsOpen keeps running DoEvents for 15 seconds = *WebView2 events keep being
+        '   delivered to VBA callbacks*. This is the only difference.
         t0 = Timer
         loops = 0
         Do
             DoEvents
             loops = loops + 1
         Loop Until Timer - t0 >= 15 Or Timer < t0
-        Wv2Log.LogI "  [5] DoEvents を 15 秒 … " & loops & " 回まわした"
+        Wv2Log.LogI "  [5] ran DoEvents for 15 seconds ... " & loops & " loops"
     End If
 
     If stepNo = 4 Then
-        ' --- 段階4: MapsOpen 相当 (待ちも含めて丸ごと) ---
-        '   ★= 4 であって >= 4 ではない★ 段階5 に巻き込むと切り分けにならない
-        '   (K-4c で実際にやらかした。設計原則103: プローブ自体を検算する)
+        ' --- stage 4: MapsOpen equivalent (the whole thing including waits) ---
+        '   *It is = 4, not >= 4* Rolling it into stage 5 would not isolate anything
+        '   (we actually blundered on this in K-4c. Design principle 103: check the probe itself)
         t0 = Timer
         Wv2Maps.MapsOpen b
-        Wv2Log.LogI "  [4] MapsOpen … " & Format$(Timer - t0, "0.00") & " 秒"
+        Wv2Log.LogI "  [4] MapsOpen ... " & Format$(Timer - t0, "0.00") & " s"
     End If
 
-    Wv2Log.LogI "  ★この状態でフォームを × で閉じてください★"
+    Wv2Log.LogI "  *In this state, please close the form with x*"
     Debug.Print ""
-    Debug.Print "  ★段階 " & stepNo & " まで実行しました。× で閉じてください★"
-    Wv2Log.LogI "================ Test_K4_Step " & stepNo & " 終了 ================"
+    Debug.Print "  *Ran up to stage " & stepNo & ". Please close with x*"
+    Wv2Log.LogI "================ Test_K4_Step " & stepNo & " end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' Test_K4_Help (K-4a の手順)
+' Test_K4_Help (procedure for K-4a)
 ' ============================================================
 Public Sub Test_K4_Help()
     Debug.Print ""
     Debug.Print "=========================================================="
-    Debug.Print " K-4a 実測手順 (フォームを閉じたときの解放が遅い)"
+    Debug.Print " K-4a measurement procedure (slow release when the form is closed)"
     Debug.Print "=========================================================="
     Debug.Print ""
-    Debug.Print "  ★毎回 Wv2Log.LogStart から始める★ 1 回分が 1 ファイルに閉じる。"
+    Debug.Print "  *Start with Wv2Log.LogStart each time* One run is contained in one file."
     Debug.Print ""
-    Debug.Print "  --- ケース1: 素の状態 (実測済み 0.336 秒) ---"
+    Debug.Print "  --- Case 1: bare state (measured 0.336 s) ---"
     Debug.Print "  1) Wv2Log.LogStart"
-    Debug.Print "  2) UserForm1.Show vbModeless → StartWebView2_Full"
-    Debug.Print "  3) すぐ × で閉じる"
+    Debug.Print "  2) UserForm1.Show vbModeless -> StartWebView2_Full"
+    Debug.Print "  3) Close at once with x"
     Debug.Print ""
-    Debug.Print "  --- ケース2: 重いページを開いた後 (実測済み ★6.718 秒★) ---"
+    Debug.Print "  --- Case 2: after opening a heavy page (measured *6.718 s*) ---"
     Debug.Print "  3) Wv2Maps.MapsOpen UserForm1.CurrentBrowser"
-    Debug.Print "  4) × で閉じる"
+    Debug.Print "  4) Close with x"
     Debug.Print ""
-    Debug.Print "  --- ケース3: 閉じる前に静める (実測済み ★0.367 秒★) ---"
+    Debug.Print "  --- Case 3: quiet before closing (measured *0.367 s*) ---"
     Debug.Print "  3) Wv2Maps.MapsOpen UserForm1.CurrentBrowser"
-    Debug.Print "  4) ★Test_K4_Quiet 3★  (about:blank に飛ばして 3 秒待つ)"
-    Debug.Print "  5) × で閉じる"
+    Debug.Print "  4) *Test_K4_Quiet 3*  (send to about:blank and wait 3 seconds)"
+    Debug.Print "  5) Close with x"
     Debug.Print ""
-    Debug.Print "  --- ケース3b: ★待ち時間を削る★ (これから測る) ---"
-    Debug.Print "  4) Test_K4_Quiet 1   … 1 秒待つ"
-    Debug.Print "  4) Test_K4_Quiet 0   … ★待たない (飛ばすだけ)★"
-    Debug.Print "  ★合計時間で勝てるのはこちら★ 静めるのに 1.6 秒かかるので、"
-    Debug.Print "  3 秒待つと合計 5 秒で「何もしない 6.7 秒」とあまり変わらない。"
+    Debug.Print "  --- Case 3b: *cut the wait time* (to be measured) ---"
+    Debug.Print "  4) Test_K4_Quiet 1   ... wait 1 second"
+    Debug.Print "  4) Test_K4_Quiet 0   ... *do not wait (just send)*"
+    Debug.Print "  *This is the one that wins on total time* It takes 1.6 seconds to quiet things down, so"
+    Debug.Print "  waiting 3 seconds makes a total of 5 seconds, not much different from 'do nothing 6.7 seconds'."
     Debug.Print ""
-    Debug.Print "  --- ケース4: 重いタブを閉じてから (これから測る) ---"
+    Debug.Print "  --- Case 4: after closing the heavy tab (to be measured) ---"
     Debug.Print "  3) Wv2Maps.MapsOpen UserForm1.CurrentBrowser"
-    Debug.Print "  4) UserForm1.CurrentBrowser.CloseTab 4   ' Maps のタブ番号"
-    Debug.Print "  5) × で閉じる"
+    Debug.Print "  4) UserForm1.CurrentBrowser.CloseTab 4   ' the tab number of Maps"
+    Debug.Print "  5) Close with x"
     Debug.Print ""
-    Debug.Print "  ★見るのはログの解放部分★ Wv2NavBar.Shutdown 開始 から"
-    Debug.Print "  Wv2Browser.Terminate 完了 までの経過。?Wv2Log.LogPath"
+    Debug.Print "  *What to look at is the release part of the log* The elapsed time from Wv2NavBar.Shutdown start to"
+    Debug.Print "  Wv2Browser.Terminate completion. ?Wv2Log.LogPath"
     Debug.Print ""
-    Debug.Print "  --- K-4c: 対策が入った後の切り分け ---"
-    Debug.Print "  ★既定では解放の前に about:blank へ飛ばすので速い★"
-    Debug.Print "  遅い状態を再現するには:"
+    Debug.Print "  --- K-4c: isolation after the countermeasure went in ---"
+    Debug.Print "  *By default it navigates to about:blank before release, so it is fast*"
+    Debug.Print "  To reproduce the slow state:"
     Debug.Print "    UserForm1.CurrentBrowser.QuietOnShutdown = False"
-    Debug.Print "  何が遅くしているかの二分探索:"
-    Debug.Print "    Test_K4_Step 1  … AddTabWithUrl だけ (既知: 速い)"
-    Debug.Print "    Test_K4_Step 2  … + EvalSync × 20"
-    Debug.Print "    Test_K4_Step 3  … + QuerySelector × 5"
-    Debug.Print "    Test_K4_Step 4  … MapsOpen 相当 (既知: 遅い)"
+    Debug.Print "  Bisecting what makes it slow:"
+    Debug.Print "    Test_K4_Step 1  ... AddTabWithUrl only (known: fast)"
+    Debug.Print "    Test_K4_Step 2  ... + EvalSync x 20"
+    Debug.Print "    Test_K4_Step 3  ... + QuerySelector x 5"
+    Debug.Print "    Test_K4_Step 4  ... MapsOpen equivalent (known: slow)"
     Debug.Print ""
 End Sub
 
 ' ============================================================
-' Test_D7_Key (D-7d のプローブ) - ★GetAsyncKeyState が Esc を見えているか★
+' Test_D7_Key (probe of D-7d) - *can GetAsyncKeyState see Esc?*
 '
-'   D-7c で Esc が拾えなかった。原因は 2 つのどちらか:
-'     A. MapsPump が回っておらず、そもそも呼ばれていない
-'     B. 呼んでも API が Esc を見えていない
-'   ★このプローブは B だけを測る★ 製品コードの待ちを通さず、
-'   ここで自前に回して生の値を記録する (設計原則103)。
+'   Esc could not be picked up in D-7c. The cause is one of two:
+'     A. MapsPump is not running, so it is not called in the first place
+'     B. Even when called, the API cannot see Esc
+'   *This probe measures only B* It does not go through the product code's wait,
+'   and runs on its own here to record the raw value (design principle 103).
 '
-'   ★実行中は EnableCancelKey を xlDisabled にする★ さもないと Esc で
-'   VBA が break して測定にならない。10 秒で必ず終わり、必ず元に戻す。
+'   *EnableCancelKey is set to xlDisabled during execution* Otherwise VBA breaks on Esc
+'   and nothing is measured. It always ends in 10 seconds and is always restored.
 '
-'   ネットワークもブラウザも要らない。
+'   Needs neither the network nor the browser.
 ' ============================================================
 Public Sub Test_D7_Key()
     Dim savedKey As Long
@@ -6004,16 +6004,16 @@ Public Sub Test_D7_Key()
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_D7_Key 開始 ================"
+    Wv2Log.LogI "================ Test_D7_Key start ================"
 
-    ' ★D-7e: 「これから 10 秒」では読む前に終わる★ 押されるまで待つ形にした。
+    ' D-7e: *"10 seconds from now" finishes before it can be read* so it was changed to wait until pressed.
     Debug.Print ""
-    Debug.Print "  ★★★ 今から Esc を押してください ★★★"
-    Debug.Print "  (押されたら即座に終わります。最大 30 秒待ちます)"
-    Wv2Log.LogI "  ★押されるまで待つ★ (最大 30 秒)"
+    Debug.Print "  *** Please press Esc now ***"
+    Debug.Print "  (It ends immediately once pressed. It waits at most 30 seconds)"
+    Wv2Log.LogI "  *wait until pressed* (at most 30 seconds)"
 
     savedKey = Application.EnableCancelKey
-    Application.EnableCancelKey = xlDisabled   ' さもないと Esc で break する
+    Application.EnableCancelKey = xlDisabled   ' otherwise it breaks on Esc
 
     firstHit = -1
     lastSec = -1
@@ -6028,15 +6028,15 @@ Public Sub Test_D7_Key()
             If firstHit < 0 Then
                 firstHit = Timer - t0
                 seen = k
-                Debug.Print "  ★検出した★ 生の値 = " & k
+                Debug.Print "  *detected* raw value = " & k
             End If
-            ' 押されたことが分かれば十分 (毎秒 4 万回まわるのですぐ貯まる)
+    ' it is enough to know it was pressed (it runs 40,000 times per second so it accumulates quickly)
             If hits >= 500 Then Exit Do
         End If
 
         If Int(Timer - t0) <> lastSec Then
             lastSec = Int(Timer - t0)
-            Debug.Print "  ... 残り " & (30 - lastSec) & " 秒"
+    Debug.Print "  ... " & (30 - lastSec) & " seconds left"
         End If
 
         If Timer - t0 >= 30 Or Timer < t0 Then Exit Do
@@ -6045,38 +6045,38 @@ Public Sub Test_D7_Key()
     Application.EnableCancelKey = savedKey
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "        ポーリング " & polls & " 回 / " & _
-                Format$(Timer - t0, "0.0") & " 秒"
-    Wv2Log.LogI "        検出       " & hits & " 回"
+    Wv2Log.LogI "        polling " & polls & " times / " & _
+                Format$(Timer - t0, "0.0") & " s"
+    Wv2Log.LogI "        detections " & hits & " times"
     If hits > 0 Then
-        Wv2Log.LogI "        最初の検出 " & Format$(firstHit, "0.00") & " 秒後"
-        Wv2Log.LogI "        生の値     " & seen & " (&H" & Hex$(seen And &HFFFF&) & ")"
+        Wv2Log.LogI "        first detection " & Format$(firstHit, "0.00") & " s later"
+        Wv2Log.LogI "        raw value  " & seen & " (&H" & Hex$(seen And &HFFFF&) & ")"
     End If
 
-    TestBool "★GetAsyncKeyState は Esc を見えている★", (hits > 0)
+    TestBool "*GetAsyncKeyState can see Esc*", (hits > 0)
 
     Wv2Log.LogI ""
     If hits > 0 Then
-        Wv2Log.LogI "  ★結論: API は見えている★"
+        Wv2Log.LogI "  *Conclusion: the API can see it*"
     Else
-        Wv2Log.LogI "  ★結論: 30 秒待っても検出できなかった★"
-        Wv2Log.LogI "         ★押し忘れでなければ★ キーの拾い方を変える必要がある。"
+        Wv2Log.LogI "  *Conclusion: it could not be detected even after waiting 30 seconds*"
+        Wv2Log.LogI "         *Unless you forgot to press*, the way keys are picked up must be changed."
     End If
 
     TestCountPrint
-    Wv2Log.LogI "================ Test_D7_Key 終了 ================"
+    Wv2Log.LogI "================ Test_D7_Key end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' TestWaitEscReleased (D-7e、Private) - ★Esc から指が離れるまで待つ★
+' TestWaitEscReleased (D-7e, Private) - *wait until the finger comes off Esc*
 '
-'   D-7d で、中断した直後に 2 回目を走らせたら、連打していた Esc が
-'   そちらにも効いて判定が 3 件 FAIL になった。製品側は正しく、
-'   ★検証の段取りが悪かった★。静かになるまで待ってから次へ進む。
+'   In D-7d, when the 2nd run was started right after the abort, the Esc that was being mashed
+'   took effect on it too and 3 verdicts FAILed. The product side was correct and
+'   *the sequencing of the verification was bad*. Wait until it is quiet, then go on.
 '
-'   ★待っている間は xlDisabled にする★ 戻したままだと、待ちの最中に
-'   押された Esc で VBA が break してしまう。
+'   *Set xlDisabled while waiting* If left restored, an Esc pressed
+'   during the wait makes VBA break.
 ' ============================================================
 Private Sub TestWaitEscReleased(ByVal maxSec As Single)
     Dim savedKey As Long
@@ -6092,7 +6092,7 @@ Private Sub TestWaitEscReleased(ByVal maxSec As Single)
         DoEvents
         If Wv2Maps.MapsRawEscState() = 0 Then
             If quiet < 0 Then quiet = Timer
-            If Timer - quiet >= 2 Then Exit Do   ' ★2 秒静かなら離れたと見なす★
+            If Timer - quiet >= 2 Then Exit Do   ' *if quiet for 2 seconds, consider the finger lifted*
         Else
             quiet = -1
         End If
@@ -6100,213 +6100,213 @@ Private Sub TestWaitEscReleased(ByVal maxSec As Single)
     Loop
 
     Application.EnableCancelKey = savedKey
-    Wv2Log.LogI "  (Esc が静まった。再開します)"
+    Wv2Log.LogI "  (Esc has gone quiet. Resuming)"
 End Sub
 
 ' ============================================================
-' Test_D7_StatusBar (D-7b のプローブ)
+' Test_D7_StatusBar (probe of D-7b)
 '
-'   ★製品コードを通さずに Excel の生の挙動だけを測る★ (設計原則103)
-'   D-7 の実機で「★ステータスバーが戻っている★」が 3 箇所とも FAIL した。
-'   判定の書き方 (TypeName で見る) が悪いのか、Excel が実行中は制御を返さないのか
-'   を切り分ける。★判定はしない。事実だけ出す。★
+'   *Measures only Excel's raw behavior without going through product code* (design principle 103)
+'   In the D-7 real-machine run, "*the status bar is restored*" FAILed in all 3 places.
+'   Separates whether the way the verdict is written (looking with TypeName) is bad, or Excel does not return control
+'   during execution. *No verdict is made. Only facts are output.*
 '
-'   ネットワークもブラウザも要らない。
+'   Needs neither the network nor the browser.
 ' ============================================================
 Public Sub Test_D7_StatusBar()
     Wv2Log.LogI ""
-    Wv2Log.LogI "================ Test_D7_StatusBar 開始 ================"
-    Wv2Log.LogI "  ★D-7b の実測: False を入れると文字列 ""FALSE"" が残った★"
-    Wv2Log.LogI "  正しい戻し方を候補ごとに測る。★型が Boolean に戻れば当たり★"
+    Wv2Log.LogI "================ Test_D7_StatusBar start ================"
+    Wv2Log.LogI "  *Measured in D-7b: putting False left the string ""FALSE""*"
+    Wv2Log.LogI "  Measure the correct way to restore, candidate by candidate. *If the type returns to Boolean, it is the right one*"
     Wv2Log.LogI ""
 
-    TestDumpStatusBar "(0) 何もしていないとき"
+    TestDumpStatusBar "(0) when nothing has been done"
     Wv2Log.LogI ""
 
     TestStatusTry "(1) False       ", False
     TestStatusTry "(2) Empty       ", Empty
-    TestStatusTry "(3) 空文字 """"   ", ""
+    TestStatusTry "(3) empty string """"   ", ""
     TestStatusTry "(4) vbNullString", vbNullString
     TestStatusTry "(5) CVar(False) ", CVar(False)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  ★どれかで 型=Boolean になっていれば、それが正しい戻し方★"
-    Wv2Log.LogI "  すべて String なら、この Excel では制御を返せない ―― その場合は"
-    Wv2Log.LogI "  ★空文字にしておく★ のが実害が小さい (FALSE と表示されるよりよい)。"
+    Wv2Log.LogI "  *Whichever gives type=Boolean is the correct way to restore*"
+    Wv2Log.LogI "  If all are String, this Excel cannot return control -- in that case"
+    Wv2Log.LogI "  *leaving it as an empty string* does less real harm (better than displaying FALSE)."
 
-    ' ★測り終えたら Empty で戻す★ (D-7d の実測で当たりだったのがこれ)
+    ' *Restore with Empty when the measurement is done* (this is what turned out right in the D-7d measurement)
     Application.StatusBar = Empty
-    TestDumpStatusBar "(9) 後始末に Empty"
+    TestDumpStatusBar "(9) Empty for cleanup"
 
-    Wv2Log.LogI "================ Test_D7_StatusBar 終了 ================"
+    Wv2Log.LogI "================ Test_D7_StatusBar end ================"
     Wv2Log.LogI ""
 End Sub
 
 ' ============================================================
-' TestStatusTry (D-7c、Private) - 戻し方の候補を 1 つ試す
+' TestStatusTry (D-7c, Private) - try one candidate way of restoring
 '
-'   ★毎回「文字列を入れてから戻す」★ 入れずに戻しても、元から Excel が
-'   制御を持っている状態なので何も測ったことにならない (設計原則103)。
-'   DoEvents を挟んだ後の値も見る ―― Excel が後から取り戻す可能性があるため。
+'   *Each time, "put a string in and then restore"* Restoring without putting one in leaves Excel
+'   in the state where it already holds control, so nothing has been measured (design principle 103).
+'   Also look at the value after DoEvents -- because Excel may take it back later.
 ' ============================================================
 Private Sub TestStatusTry(ByVal tag As String, ByVal v As Variant)
     Dim before As String
     Dim after As String
 
-    Application.StatusBar = "テスト中 12/100"
+    Application.StatusBar = "Testing 12/100"
     Application.StatusBar = v
-    before = "[" & CStr(Application.StatusBar) & "] 型=" & _
+    before = "[" & CStr(Application.StatusBar) & "] type=" & _
              TypeName(Application.StatusBar)
 
     DoEvents
-    after = "[" & CStr(Application.StatusBar) & "] 型=" & _
+    after = "[" & CStr(Application.StatusBar) & "] type=" & _
             TypeName(Application.StatusBar)
 
-    Wv2Log.LogI "        " & tag & " → 直後 " & before & " / DoEvents 後 " & after
+    Wv2Log.LogI "        " & tag & " -> immediately after " & before & " / after DoEvents " & after
 End Sub
 
 ' ============================================================
-' TestDumpStatusBar (D-7b、Private) - ステータスバーの実測値を出す
-'   ★値そのものと型の両方を残す★ どちらか片方では切り分けられない。
+' TestDumpStatusBar (D-7b, Private) - output the measured value of the status bar
+'   *Keep both the value itself and the type* Neither one alone can isolate the cause.
 ' ============================================================
 Private Sub TestDumpStatusBar(ByVal tag As String)
     Wv2Log.LogI "        " & tag & " = [" & CStr(Application.StatusBar) & _
-                "] 型=" & TypeName(Application.StatusBar)
+                "] type=" & TypeName(Application.StatusBar)
 End Sub
 
 ' ============================================================
-' Test_D7_Help (D-7 の手順)
+' Test_D7_Help (procedure for D-7)
 ' ============================================================
 Public Sub Test_D7_Help()
     Debug.Print ""
     Debug.Print "=========================================================="
-    Debug.Print " D-7 検証手順 (進捗表示と中断)"
+    Debug.Print " D-7 verification procedure (progress display and abort)"
     Debug.Print "=========================================================="
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
+    Debug.Print "  --- Preparation ---"
     Debug.Print "  1) Wv2Log.LogStart"
-    Debug.Print "  2) UserForm1.Show vbModeless して StartWebView2_Full を実行する"
-    Debug.Print "  3) ★イベントバーストが静まるまで待つ★ (仕様事実 20)"
+    Debug.Print "  2) Run UserForm1.Show vbModeless, then run StartWebView2_Full"
+    Debug.Print "  3) *Wait until the event burst settles* (spec fact 20)"
     Debug.Print ""
-    Debug.Print "  --- 実行 (上から順に) ---"
-    Debug.Print "  4) Test_D7_Key … ★プローブ★ GetAsyncKeyState が Esc を"
-    Debug.Print "     見えているか。★押されるまで待つ★ (最大 30 秒)。"
-    Debug.Print "     ネットワーク不要。イミディエイトに残り秒数が出る。"
-    Debug.Print "  4b) Test_D7_StatusBar … ★プローブ★ ステータスバーの戻し方を"
-    Debug.Print "     候補ごとに実測する。ネットワーク不要・数秒。"
-    Debug.Print "     ★判定はしない。事実だけ出す★ (設計原則103)。"
-    Debug.Print "  5) Test_D7_Cancel … ★ネットワーク不要★ 中断の口と分母 (すぐ終わる)"
-    Debug.Print "  6) Test_D7_Resume … ★自動★ 中断後の状態からの再開 (2 件・15 秒)"
-    Debug.Print "  7) Test_D7_Sheet  … ★実サイト★ 4 件を処理する。"
-    Debug.Print "     ★2 件目あたりで Esc を押す★ ステータスバーを見ながら。"
-    Debug.Print "     ★連打しなくてよい。1 回で効く★ (連打すると再開にも効く)。"
-    Debug.Print "     押しっぱなしでなくてよく、焦点はどこにあってもよい。"
-    Debug.Print "     止まったらイミディエイトに ★★★ 止まりました ★★★ と出る。"
-    Debug.Print "     ★D-7c からは中断ダイアログも実行時エラー 18 も出ない★"
-    Debug.Print "     出たら効いていない。ログに ★Esc で中断が要求された★ が出る。"
-    Debug.Print "     そのあと自動で呼び直して、続きから埋まるかを見る。"
+    Debug.Print "  --- Run (from the top in order) ---"
+    Debug.Print "  4) Test_D7_Key ... *probe* whether GetAsyncKeyState can see"
+    Debug.Print "     Esc. *Waits until pressed* (at most 30 seconds)."
+    Debug.Print "     No network needed. The remaining seconds appear in the Immediate window."
+    Debug.Print "  4b) Test_D7_StatusBar ... *probe* measures how to restore the status bar"
+    Debug.Print "     candidate by candidate. No network needed, a few seconds."
+    Debug.Print "     *No verdict. Only facts are output* (design principle 103)."
+    Debug.Print "  5) Test_D7_Cancel ... *no network needed* the abort entry point and the denominator (finishes quickly)"
+    Debug.Print "  6) Test_D7_Resume ... *automatic* resuming from the post-abort state (2 items, 15 seconds)"
+    Debug.Print "  7) Test_D7_Sheet  ... *real site* processes 4 items."
+    Debug.Print "     *Press Esc around the 2nd one* while watching the status bar."
+    Debug.Print "     *No need to mash it. Once works* (mashing also takes effect on the resume)."
+    Debug.Print "     There is no need to hold it down, and the focus may be anywhere."
+    Debug.Print "     When it stops, *** It stopped *** appears in the Immediate window."
+    Debug.Print "     *From D-7c on, neither the abort dialog nor runtime error 18 appears*"
+    Debug.Print "     If they appear, it is not working. The log shows *an abort was requested with Esc*."
+    Debug.Print "     After that it calls again automatically and we see whether it fills in from where it left off."
     Debug.Print ""
-    Debug.Print "  --- 判定はログファイルで読む (設計原則105) ---"
+    Debug.Print "  --- Read the verdicts in the log file (design principle 105) ---"
     Debug.Print "  ?Wv2Log.LogPath"
     Debug.Print ""
-    Debug.Print "  --- 実務での使い方 ---"
-    Debug.Print "  Wv2Maps.MapsGeocodeSheet Sheets(""住所録"")"
-    Debug.Print "    処理中はステータスバーに 12/100 (ok 11 / 失敗 1) と出る。"
-    Debug.Print "    ★Esc でいつでも止まる★ 止めた行には何も書かれない。"
-    Debug.Print "    もう一度呼べば ok の行を飛ばして続きから進む。"
-    Debug.Print "  ?Wv2Maps.MapsCanceled   ' 中断で終わったか"
-    Debug.Print "  ?Wv2Maps.MapsCountRows(Sheets(""住所録""))  ' 何件あるか先に数える"
-    Debug.Print "  Wv2Maps.MapsCancel = True  ' 外から止める (イミディエイトから)"
+    Debug.Print "  --- How to use it in practice ---"
+    Debug.Print "  Wv2Maps.MapsGeocodeSheet Sheets(""AddressBook"")"
+    Debug.Print "    During processing the status bar shows 12/100 (ok 11 / failed 1)."
+    Debug.Print "    *It can be stopped any time with Esc* Nothing is written to the row where it stopped."
+    Debug.Print "    Calling it again skips the ok rows and goes on from where it left off."
+    Debug.Print "  ?Wv2Maps.MapsCanceled   ' did it end by an abort?"
+    Debug.Print "  ?Wv2Maps.MapsCountRows(Sheets(""AddressBook""))  ' count first how many there are"
+    Debug.Print "  Wv2Maps.MapsCancel = True  ' stop from outside (from the Immediate window)"
     Debug.Print ""
 End Sub
 
 ' ============================================================
-' Test_D4_Help (D-4 の手順)
+' Test_D4_Help (procedure for D-4)
 ' ============================================================
 Public Sub Test_D4_Help()
     Debug.Print ""
     Debug.Print "=========================================================="
-    Debug.Print " D-4 検証手順 (プローブと静穏待ち)"
+    Debug.Print " D-4 verification procedure (probe and quiescence wait)"
     Debug.Print "=========================================================="
     Debug.Print ""
-    Debug.Print "  --- 準備 ---"
+    Debug.Print "  --- Preparation ---"
     Debug.Print "  1) Wv2Log.LogStart"
-    Debug.Print "  2) UserForm1.Show vbModeless して StartWebView2_Full を実行する"
-    Debug.Print "  3) ★イベントバーストが静まるまで待つ★ (仕様事実 20)"
+    Debug.Print "  2) Run UserForm1.Show vbModeless, then run StartWebView2_Full"
+    Debug.Print "  3) *Wait until the event burst settles* (spec fact 20)"
     Debug.Print ""
-    Debug.Print "  --- 実行 ---"
-    Debug.Print "  4) Test_D4_Probe  … ★済★ プローブと健康診断 (28 件 OK)"
-    Debug.Print "  5) Test_D4_Settle … ★済★ 静穏待ち (22 件 OK)"
-    Debug.Print "  6) Test_D4_Signal … ★済★ 明示シグナル (31 件 OK)"
-    Debug.Print "  7) Test_D4_Log    … ★D-4e の検証★ 診断ログ / in-flight / URL シグナル"
-    Debug.Print "  8) Test_D4_Site   … ★D-4d の偵察★ Google Maps (70 秒ほど)"
-    Debug.Print "  9) Test_D5_Geocode … ★D-5★ 住所 → 座標 を 3 件続けて (60 秒ほど)"
-    Debug.Print "     Wv2Maps.MapsOpen / MapsGeocode の実演。業務で使う形そのもの。"
-    Debug.Print " 10) Test_D5_Sheet   … ★D-5b★ シート連携 (新しいブックを作って試す)"
-    Debug.Print " 11) Test_D6_All     … ★D-6★ QuerySelectorAll と寿命管理"
-    Debug.Print " 12) Test_D6_Pick    … ★D-6b★ 候補一覧から 1 番目を採る (実サイト)"
-    Debug.Print " 13) Test_D7_Cancel  … ★D-7★ 中断の口と分母 (ネットワーク不要)"
-    Debug.Print " 14) Test_D7_Resume  … ★D-7b★ 中断後の状態からの再開 (自動)"
-    Debug.Print " 15) Test_D7_Sheet   … ★D-7b★ 進捗と中断 (実行中に Esc を押す)"
-    Debug.Print "     ★外部サイトに実アクセスする唯一の Test_*★ ネットワークが要る。"
-    Debug.Print "     住所を変えたいときは Test_D4_Site ""別の住所"" と打つ。"
+    Debug.Print "  --- Run ---"
+    Debug.Print "  4) Test_D4_Probe  ... *done* probe and health check (28 OK)"
+    Debug.Print "  5) Test_D4_Settle ... *done* quiescence wait (22 OK)"
+    Debug.Print "  6) Test_D4_Signal ... *done* explicit signal (31 OK)"
+    Debug.Print "  7) Test_D4_Log    ... *verification of D-4e* diagnostic log / in-flight / URL signal"
+    Debug.Print "  8) Test_D4_Site   ... *reconnaissance of D-4d* Google Maps (about 70 seconds)"
+    Debug.Print "  9) Test_D5_Geocode ... *D-5* address -> coordinates, 3 in succession (about 60 seconds)"
+    Debug.Print "     A demonstration of Wv2Maps.MapsOpen / MapsGeocode. Exactly the form used in business work."
+    Debug.Print " 10) Test_D5_Sheet   ... *D-5b* sheet integration (try it by creating a new workbook)"
+    Debug.Print " 11) Test_D6_All     ... *D-6* QuerySelectorAll and lifetime management"
+    Debug.Print " 12) Test_D6_Pick    ... *D-6b* take the first from the candidate list (real site)"
+    Debug.Print " 13) Test_D7_Cancel  ... *D-7* the abort entry point and the denominator (no network needed)"
+    Debug.Print " 14) Test_D7_Resume  ... *D-7b* resuming from the post-abort state (automatic)"
+    Debug.Print " 15) Test_D7_Sheet   ... *D-7b* progress and abort (press Esc during execution)"
+    Debug.Print "     *The only Test_* that accesses an external site for real* Needs a network."
+    Debug.Print "     To change the address, type Test_D4_Site ""another address""."
     Debug.Print ""
-    Debug.Print "  --- 実サイトを調べる道具 ---"
-    Debug.Print "  Test_D4_Dom          … ★今開いているタブに何があるか列挙する★"
-    Debug.Print "  Test_D4_Dom ""h1,h2""  … セレクタを指定して列挙"
+    Debug.Print "  --- Tools for investigating real sites ---"
+    Debug.Print "  Test_D4_Dom          ... *lists what is on the currently open tab*"
+    Debug.Print "  Test_D4_Dom ""h1,h2""  ... lists by the specified selector"
     Debug.Print ""
-    Debug.Print "  --- 診断ログ (D-4e) ―★何を待つべきかを観測で決める★ ---"
-    Debug.Print "  p.SpaProbeLogging = True   ' 溜め始める (既定 False)"
-    Debug.Print "  ... 操作する ..."
-    Debug.Print "  ?p.SpaProbeDrainLog        ' 取り出してログへ流す (60 件ずつ)"
+    Debug.Print "  --- Diagnostic log (D-4e) - *decide what to wait for by observation* ---"
+    Debug.Print "  p.SpaProbeLogging = True   ' start accumulating (default False)"
+    Debug.Print "  ... operate ..."
+    Debug.Print "  ?p.SpaProbeDrainLog        ' fetch and flush to the log (60 items at a time)"
     Debug.Print "  p.SpaProbeLogging = False"
     Debug.Print ""
-    Debug.Print "  --- URL シグナル (D-4e) ---"
-    Debug.Print "  p.ArmUrlSignal ""/place/""   ' URL が変わるのを待つ (pushState 対応)"
-    Debug.Print "    ★Maps の住所検索はこれが最も確実な目印だった★"
-    Debug.Print "    実サイトのセレクタは予告なく変わる。当てずっぽうに書く前に見る。"
+    Debug.Print "  --- URL signal (D-4e) ---"
+    Debug.Print "  p.ArmUrlSignal ""/place/""   ' wait for the URL to change (supports pushState)"
+    Debug.Print "    *For address search on Maps this was the most reliable marker*"
+    Debug.Print "    Selectors of real sites change without notice. Look before writing by guesswork."
     Debug.Print ""
-    Debug.Print "  ★判定はログファイルに残る★ 末尾の「★判定 n 件★」を見る"
-    Debug.Print "    ?Wv2Log.LogPath でファイルの場所が分かる"
+    Debug.Print "  *Verdicts remain in the log file* Look at the trailing *Verdicts n*"
+    Debug.Print "    ?Wv2Log.LogPath tells you the location of the file"
     Debug.Print ""
-    Debug.Print "  --- 見るもの ---"
-    Debug.Print "  ・(1) 設置前が undefined = 呼ばない Pane にプローブは付かない"
-    Debug.Print "  ・(2) ★往復時間の設置前後★ 数値そのものをログで見ること"
-    Debug.Print "      仕様事実52 は 38ms。観測を張って極端に落ちないかを見る"
-    Debug.Print "  ・(5) fetch と XHR が数えられ、完了で 0 に戻ること"
-    Debug.Print "  ・★(6) が D-4a の核心★ ページが window.fetch を差し替えても"
-    Debug.Print "      次に呼んだ時点で自動修復し (rp>=1)、その後も数えられること"
-    Debug.Print "  ・(8) 遷移でプローブが消え、立て直せること"
+    Debug.Print "  --- What to look at ---"
+    Debug.Print "  - (1) undefined before installation = the probe is not attached to a Pane that is not called"
+    Debug.Print "  - (2) *round-trip time before and after installation* Look at the numbers themselves in the log"
+    Debug.Print "      Spec fact 52 is 38ms. Check that setting up the observation does not make it drop drastically"
+    Debug.Print "  - (5) fetch and XHR are counted and return to 0 on completion"
+    Debug.Print "  - *(6) is the heart of D-4a* Even if the page replaces window.fetch,"
+    Debug.Print "      it repairs itself automatically at the next call (rp>=1) and is still counted afterwards"
+    Debug.Print "  - (8) the probe disappears on navigation and can be set up again"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D4_Settle) ★D-4b★ ---"
-    Debug.Print "  ・★(2) が核心★ 待ち終わった時点で #target が「連鎖の結果」に"
-    Debug.Print "      なっていること = 通信の完了だけでなく、その後の DOM 更新まで"
-    Debug.Print "      待てている証拠 (fetch → 300ms 後の書き換え、を跨いでいる)"
-    Debug.Print "  ・(3) 静まらないページで False + LastEvalOk=True (失敗ではない)"
-    Debug.Print "  ・(4) ★除外を入れると同じページが静穏になる★ = ノイズ除外が効いている"
-    Debug.Print "  ・(6) 自動待ち OFF なら更新前、ON なら更新後の値が見えること"
-    Debug.Print "  ・LastSettleInfo の slack が小さい (100ms 未満) 待ちは★際どい★"
-    Debug.Print "      たまたま滑り込んだだけかもしれない。stableMs を上げるか"
-    Debug.Print "      明示シグナルを併用する"
+    Debug.Print "  --- What to look at (Test_D4_Settle) *D-4b* ---"
+    Debug.Print "  - *(2) is the heart* At the point the wait ends, #target is the 'chain result'"
+    Debug.Print "      = evidence that it waits not only for the communication to finish but also for the DOM update after it"
+    Debug.Print "      (it spans fetch -> rewrite 300ms later)"
+    Debug.Print "  - (3) on a page that does not settle, False + LastEvalOk=True (not a failure)"
+    Debug.Print "  - (4) *with an exclusion the same page becomes quiet* = the noise exclusion works"
+    Debug.Print "  - (6) with auto wait OFF the pre-update value is seen, with ON the post-update value"
+    Debug.Print "  - A wait whose slack in LastSettleInfo is small (under 100ms) is *borderline*"
+    Debug.Print "      It may just have slipped in by chance. Raise stableMs or"
+    Debug.Print "      use an explicit signal together"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D4_Signal) ★D-4c★ ---"
-    Debug.Print "  ・★(3) が核心★ arm したのに何も起きなければ、ページが静かでも"
-    Debug.Print "      False になること = ★アプリに無視されたことを検出できる★"
-    Debug.Print "      静穏待ちだけならここは成功してしまう"
-    Debug.Print "  ・(1) 無い要素・不正なセレクタは★その場で★ arm 失敗 (fail-fast)"
-    Debug.Print "  ・(4) arm はワンショット。次の待ちには持ち越さない"
-    Debug.Print "  ・(6) arm が消えたら signal-lost で失敗 (黙って再 arm しない)"
+    Debug.Print "  --- What to look at (Test_D4_Signal) *D-4c* ---"
+    Debug.Print "  - *(3) is the heart* If nothing happens after arming, it becomes False even if the page is quiet"
+    Debug.Print "      = *being ignored by the app can be detected*"
+    Debug.Print "      With the quiescence wait alone this would succeed"
+    Debug.Print "  - (1) a nonexistent element / invalid selector fails to arm *on the spot* (fail-fast)"
+    Debug.Print "  - (4) arm is one-shot. It is not carried over to the next wait"
+    Debug.Print "  - (6) if the arm vanishes, it fails with signal-lost (it does not quietly re-arm)"
     Debug.Print ""
-    Debug.Print "  --- 見るもの (Test_D4_Site) ★D-4d は観測が目的★ ---"
-    Debug.Print "  ・判定の件数は構造的な数点だけ。★中身はログ本文を読む★"
-    Debug.Print "  ・(3)(6) の毎秒の行 [01s] q=.. m=.. n=.. が主役"
-    Debug.Print "      q が伸びる  → 静穏が訪れる (静穏待ちが使える)"
-    Debug.Print "      q が伸びない → ★除外か明示シグナルが要る★"
-    Debug.Print "  ・(2) の往復コスト。軽いページでは 35.4 → 36.3 ms だった"
-    Debug.Print "  ・rp (作り直し回数) が増えていたら、Maps が fetch を差し替えている"
-    Debug.Print "  ・(7) の url に /@緯度,経度 が入るか = 座標が取れるか"
+    Debug.Print "  --- What to look at (Test_D4_Site) *D-4d aims at observation* ---"
+    Debug.Print "  - The number of verdicts is only a few structural points. *Read the body of the log for the content*"
+    Debug.Print "  - The per-second lines of (3)(6) [01s] q=.. m=.. n=.. are the stars"
+    Debug.Print "      q grows      -> quiescence comes (the quiescence wait is usable)"
+    Debug.Print "      q does not grow -> *an exclusion or an explicit signal is needed*"
+    Debug.Print "  - The round-trip cost of (2). On a light page it was 35.4 -> 36.3 ms"
+    Debug.Print "  - If rp (rebuild count) has increased, Maps is replacing fetch"
+    Debug.Print "  - Whether the url of (7) contains /@latitude,longitude = whether coordinates can be obtained"
     Debug.Print ""
-    Debug.Print "  --- 手で試したいとき ---"
+    Debug.Print "  --- If you want to try by hand ---"
     Debug.Print "  Set p = UserForm1.GetActivePane"
     Debug.Print "  ?p.SpaProbeState"
     Debug.Print "  ?p.SpaProbeHealthy"
@@ -6314,76 +6314,76 @@ Public Sub Test_D4_Help()
     Debug.Print "  ?p.WaitSettled(10)     : ?p.LastSettleInfo"
     Debug.Print "  p.IgnoreSelectors = ""#clock, .ticker"""
     Debug.Print "  p.AddIgnoreNetwork ""google-analytics"""
-    Debug.Print "  p.AutoWaitAfterAction = True   ' 操作の後に自動で待つ"
+    Debug.Print "  p.AutoWaitAfterAction = True   ' wait automatically after an operation"
     Debug.Print ""
-    Debug.Print "  --- 明示シグナル (D-4c) ―★arm してから act する★ ---"
-    Debug.Print "  p.ArmContentSignal ""#result-table""   ' 既存の器が書き変わるのを待つ"
-    Debug.Print "  p.ArmNetworkSignal ""/api/search""     ' その要求の完了を待つ"
+    Debug.Print "  --- Explicit signal (D-4c) - *arm, then act* ---"
+    Debug.Print "  p.ArmContentSignal ""#result-table""   ' wait for an existing container to be rewritten"
+    Debug.Print "  p.ArmNetworkSignal ""/api/search""     ' wait for that request to complete"
     Debug.Print "  el.Click"
     Debug.Print "  ?p.WaitSettled(10) : ?p.LastSettleInfo"
-    Debug.Print "  ?p.DisarmSignals   ' 取りやめるとき"
+    Debug.Print "  ?p.DisarmSignals   ' when withdrawing"
     Debug.Print ""
-    Debug.Print "  ★★ WaitSettled が True でも「アプリの処理が終わった」証明ではない ★★"
-    Debug.Print "    静かなだけ。無視されて静かなのか終わって静かなのかは区別できない。"
-    Debug.Print "    重要な操作では D-4c の明示シグナル (arm) を併用すること。"
+    Debug.Print "  ** Even if WaitSettled is True, it is not proof that ""the app's processing has finished"" **"
+    Debug.Print "    It is merely quiet. It cannot be told whether it is quiet because it was ignored or because it finished."
+    Debug.Print "    For important operations, use D-4c's explicit signal (arm) together."
     Debug.Print ""
-    Debug.Print "  ★静穏窓は WaitSettled を呼んだ時点から測る★ 呼ぶ前から静かでも"
-    Debug.Print "    いきなり成立させない (最短でも stableMs は見張る)。ただし"
-    Debug.Print "    stableMs より後に始まる処理は原理的に取り逃す。"
+    Debug.Print "  *The quiescence window is measured from the moment WaitSettled is called* Even if it was quiet before the call,"
+    Debug.Print "    it is not satisfied at once (it watches for stableMs at the very least). However,"
+    Debug.Print "    processing that starts after stableMs is in principle missed."
     Debug.Print ""
 End Sub
 
 
 
 ' ============================================================
-' ★N-1 : ネットワーク要求のキャプチャの検証★
+' *N-1: verification of network request capture*
 '
-'   Test_N1_Capture … ★自前 HTML だけで完結する回帰試験★ (論点8)
-'                     実サイトに頼らず、まず確実に捕まることを見る。
-'   Test_N1_Watch   … ★今開いているタブの通信を捕まえ始める★ (実用の入口)
-'   Test_N1_Drain   … 溜まった分をログへ流して空にする
-'   Test_N1_Stop    … 捕まえるのをやめる
-'   Test_N1_Help    … 手順
+'   Test_N1_Capture ... *a regression test that is self-contained with its own HTML* (issue 8)
+'                     First check that capture works reliably without relying on real sites.
+'   Test_N1_Watch   ... *start capturing the traffic of the currently open tab* (practical entry point)
+'   Test_N1_Drain   ... flush the accumulated entries to the log and empty the buffer
+'   Test_N1_Stop    ... stop capturing
+'   Test_N1_Help    ... procedure
 '
-'   ★判定は Wv2Log に出す★ (設計原則105)。イミディエイトは配管ログで流れる。
+'   *Verdicts go to Wv2Log* (design principle 105). The Immediate window is flushed away by the plumbing log.
 ' ============================================================
 
 
 ' ============================================================
-' Test_N1_Capture (N-1b の回帰試験)
+' Test_N1_Capture (regression test of N-1b)
 '
-'   ★N-1 の初回実機で分かったこと★
-'     仮想ホスト (SetVirtualHostNameToFolderMapping) で配信した要求は
-'     WebResourceRequested に乗らない。初回が全滅したのはこれが原因で、
-'     ★配線は最初から正しかった★ (実サイトでは 10 件すべて捕まった)。
+'   *What the first N-1 real-machine run revealed*
+'     Requests served through a virtual host (SetVirtualHostNameToFolderMapping)
+'     do not show up in WebResourceRequested. That was the cause of the first run's total failure, and
+'     *the wiring was correct from the start* (on a real site all 10 were captured).
 '
-'   ★そこで的を 2 系統 + 対照 1 系統にした (論点1 案G)★
+'   *So the targets were made 2 routes + 1 control route (issue 1, plan G)*
 '
-'     案F  http://127.0.0.1:59999/...   到達不能なローカルアドレス
-'          ★外部サービスに依存しない★ 接続は必ず失敗するが、
-'          WebResourceRequested は「要求を止める / 書き換える」ためのイベントなので
-'          ネットワークへ出る前に発火する ―― はず。それをここで確かめる。
-'          ・★Chromium が塞いでいるポートを避ける★ (1/7/9/11/13/…/10080 など)。
-'            59999 は塞がれていない。
-'          ・★http なのに混在コンテンツで止まらない★ 127.0.0.1 と localhost は
-'            仕様上「潜在的に信頼できるオリジン」なので、https のページから
-'            呼んでも混在コンテンツ扱いされない。
+'     Plan F  http://127.0.0.1:59999/...   unreachable local address
+'          *Does not depend on external services* The connection always fails, but
+'          WebResourceRequested is an event for "stopping / rewriting a request", so
+'          it fires before going out to the network -- supposedly. We check that here.
+'          - *Avoid the ports Chromium blocks* (1/7/9/11/13/.../10080 etc.).
+'            59999 is not blocked.
+'          - *Not stopped as mixed content despite being http* 127.0.0.1 and localhost are
+'            by spec "potentially trustworthy origins", so even when called from an https page
+'            they are not treated as mixed content.
 '
-'     案D  https://httpbingo.org/...    外部サービス
-'          ネットが要る代わりに、素直に届く経路。
+'     Plan D  https://httpbingo.org/...    external service
+'          A route that arrives cleanly, in exchange for needing the net.
 '
-'     対照 https://appassets.netprobe/data.json (仮想ホスト)
-'          ★捕まらないことを数えて確かめる★ = 見つけた仕様事実を回帰試験にする
+'     Control https://appassets.netprobe/data.json (virtual host)
+'          *Count that it is NOT captured to confirm* = turn the spec fact we found into a regression test
 '
-'   ページ自体は今までどおり仮想ホストで配信する。★配信は問題なくできる★
-'   乗らないのはイベントだけ。
+'   The page itself is served on the virtual host as before. *Serving works without problems*.
+'   Only the event does not show up.
 '
-'   ★どちらの的が届かなくても、空振りになった判定はログに明示する★
-'   (「来ない」のが当たり前の状況で OK を積み上げないため)
+'   *Whichever target does not arrive, the verdicts that came up empty are stated explicitly in the log*
+'   (so as not to pile up OKs in a situation where "not arriving" is expected)
 '
-'   ★種別は決めつけない (N-1c)★
-'     fetch() で撃っても WebView2 は XHR 種別で報告してくる。判定は「捕まったか」
-'     で行い、★実際に何の種別で届いたかはログに書き出して数える★。
+'   *Do not assume the type (N-1c)*
+'     Even when fired with fetch(), WebView2 reports it with the XHR type. The verdict is made by "was it captured",
+'     and *what type it actually arrived as is written to the log and counted*.
 ' ============================================================
 Public Sub Test_N1_Capture()
     Dim b   As Wv2Browser
@@ -6397,60 +6397,60 @@ Public Sub Test_N1_Capture()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_N1_Capture: Browser が起動していません。" & _
-                    "先に UserForm1.StartWebView2_Full を実行してください。"
+        Wv2Log.LogI "Test_N1_Capture: Browser is not started." & _
+                    "Run UserForm1.StartWebView2_Full first."
         Exit Sub
     End If
 
     folderPath = N1WriteFolder()
     If LenB(folderPath) = 0 Then
-        Wv2Log.LogI "Test_N1_Capture: 検証ページの書き出しに失敗しました。中止します。"
+        Wv2Log.LogI "Test_N1_Capture: failed to write out the verification page. Aborting."
         Exit Sub
     End If
 
     Set p = b.AddTab()
     If p Is Nothing Then
-        Wv2Log.LogI "Test_N1_Capture: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_N1_Capture: failed to create the tab."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_N1_Capture 開始 ================"
-    Wv2Log.LogI "        案F の的 = " & N1_LOCAL & "  (到達不能なローカル)"
-    Wv2Log.LogI "        案D の的 = " & N1_NET & "  (外部サービス)"
+    Wv2Log.LogI "================ Test_N1_Capture start ================"
+    Wv2Log.LogI "        plan F target = " & N1_LOCAL & "  (unreachable local)"
+    Wv2Log.LogI "        plan D target = " & N1_NET & "  (external service)"
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (0) 準備 (★Navigate の前に捕捉を始める★) ---"
+    Wv2Log.LogI "  --- (0) Preparation (*start capturing before Navigate*) ---"
 
-    TestBool "NetCaptureStart が成功する", p.NetCaptureStart()
-    TestBool "  捕捉中になっている", (p.NetCaptureOn = True)
+    TestBool "NetCaptureStart succeeds", p.NetCaptureStart()
+    TestBool "  capturing is on", (p.NetCaptureOn = True)
 
     hr = p.View3_SetVirtualHostNameToFolderMapping(N1_HOST, folderPath, 1)   ' 1 = ALLOW
-    TestBool "  仮想ホストのマッピングができる", (hr = 0)
+    TestBool "  the virtual host mapping can be made", (hr = 0)
 
     hr = p.View_Navigate("https://" & N1_HOST & "/netprobe.html")
-    TestBool "  Navigate が成功する", (hr = 0)
+    TestBool "  Navigate succeeds", (hr = 0)
 
-    If Not D2WaitTitle(p, "N-1 プローブ", 10) Then
-        Wv2Log.LogI "Test_N1_Capture: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("N-1 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_N1_Capture: could not confirm that the verification page loaded."
         p.NetLogDrain
         p.NetCaptureStop
         TestCountPrint
         Exit Sub
     End If
 
-    ' ページ内の資材 (CSS / 画像) が飛び終わるだけの間を置く
+    ' Leave enough time for the resources (CSS / images) in the page to finish going out
     D3Pump 3
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) ★仮想ホストの要求はイベントに乗らない (仕様事実の回帰)★ ---"
-    ' ★間接的な指標を使わない★ (設計原則112) ページは確かに読めている
-    ' (title が取れた) のに、その DOCUMENT が 1 件も居ないことを数える。
-    TestBool "★ページ自身の DOCUMENT が 1 件も居ない★", _
+    Wv2Log.LogI "  --- (1) *Requests to the virtual host do not show up in the event (regression of the spec fact)* ---"
+    ' *Do not use indirect indicators* (design principle 112) The page can certainly be read
+    ' (the title was obtained), yet we count that its DOCUMENT is not there even once.
+    TestBool "*the page's own DOCUMENT is not there even once*", _
              (N1Find(p, "", "", "netprobe.html") = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) fetch / XHR ― 的を 2 系統 + 対照 ---"
+    Wv2Log.LogI "  --- (2) fetch / XHR - 2 target routes + control ---"
 
     N1Fire p, "(function(){" & _
               "fetch('" & N1_LOCAL & "/n1?k=f-local').catch(function(){});" & _
@@ -6462,62 +6462,62 @@ Public Sub Test_N1_Capture()
               "/get?k=x-net',true);c.send();" & _
               "return 1;})()"
 
-    ' ★種別を条件に入れない (N-1c)★ fetch が FETCH で来るとは限らない。
+    ' *Do not put the type in the condition (N-1c)* A fetch does not necessarily arrive as FETCH.
     localOk = N1Wait(p, "GET", "", "k=f-local", 6)
-    TestBool "★案F: 到達不能なローカルへの fetch が捕まる★", localOk
-    TestBool "  案F: XHR も捕まる", N1Wait(p, "GET", "", "k=x-local", 4)
+    TestBool "*plan F: a fetch to the unreachable local is captured*", localOk
+    TestBool "  plan F: XHR is captured too", N1Wait(p, "GET", "", "k=x-local", 4)
 
     netOk = N1Wait(p, "GET", "", "k=f-net", 8)
-    TestBool "★案D: 外部への fetch が捕まる★", netOk
-    TestBool "  案D: XHR も捕まる", N1Wait(p, "GET", "", "k=x-net", 4)
+    TestBool "*plan D: a fetch to the external host is captured*", netOk
+    TestBool "  plan D: XHR is captured too", N1Wait(p, "GET", "", "k=x-net", 4)
 
-    TestBool "★対照: 仮想ホストへの fetch は捕まらない★", _
+    TestBool "*control: a fetch to the virtual host is not captured*", _
              (N1Find(p, "", "", "k=f-vhost") = 0)
 
-    ' --- ★何の種別で届いたかを数える (N-1c)★ ---
-    '   fetch で撃ったものが FETCH で来るのか XHR で来るのかは★こちらの都合では
-    '   決まらない★。実機が返した種別をそのまま書き出して判定する。
-    Wv2Log.LogI "        届いた種別: f-local=" & N1CtxOf(p, "k=f-local") & _
+    ' --- *Count what type they arrived as (N-1c)* ---
+    '   Whether what was fired with fetch arrives as FETCH or XHR is *not decided
+    '   by our convenience*. The type the real machine returned is written out as is and judged.
+    Wv2Log.LogI "        arrived types: f-local=" & N1CtxOf(p, "k=f-local") & _
                 "  x-local=" & N1CtxOf(p, "k=x-local") & _
                 "  f-net=" & N1CtxOf(p, "k=f-net") & _
                 "  x-net=" & N1CtxOf(p, "k=x-net")
-    TestBool "★fetch は FETCH ではなく XHR 種別で届く★", _
+    TestBool "*fetch arrives as the XHR type, not FETCH*", _
              (N1CtxOf(p, "k=f-local") = "XHR" Or N1CtxOf(p, "k=f-net") = "XHR")
 
     If Not localOk Then
-        Wv2Log.LogW "  ※ 案F が 1 件も届いていない。以降の案F の判定は空振りとして読むこと。"
+        Wv2Log.LogW "  NOTE: plan F did not arrive even once. Read the subsequent plan F verdicts as having come up empty."
     End If
     If Not netOk Then
-        Wv2Log.LogW "  ※ 案D が 1 件も届いていない (ネット断か httpbingo.org のダウン)。" & _
-                    "以降の案D の判定は空振りとして読むこと。"
+        Wv2Log.LogW "  NOTE: plan D did not arrive even once (no net or httpbingo.org is down)." & _
+                    "Read the subsequent plan D verdicts as having come up empty."
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★画像と CSS は来ない (既定フィルタ)★ ---"
-    ' ページは n1.css / n1.png / image/png を★両系統に対して★要求している。
-    ' 既定フィルタ (DOCUMENT / XHR / FETCH) がそれを弾いていることを数える。
-    TestBool "★n1.css が 1 件も居ない★", (N1Find(p, "", "", "n1.css") = 0)
-    TestBool "★n1.png が 1 件も居ない★", (N1Find(p, "", "", "n1.png") = 0)
-    TestBool "★image/png が 1 件も居ない★", (N1Find(p, "", "", "image/png") = 0)
+    Wv2Log.LogI "  --- (3) *Images and CSS do not arrive (default filter)* ---"
+    ' The page requests n1.css / n1.png / image/png *for both routes*.
+    ' We count that the default filter (DOCUMENT / XHR / FETCH) rejects them.
+    TestBool "*n1.css is not there even once*", (N1Find(p, "", "", "n1.css") = 0)
+    TestBool "*n1.png is not there even once*", (N1Find(p, "", "", "n1.png") = 0)
+    TestBool "*image/png is not there even once*", (N1Find(p, "", "", "image/png") = 0)
     If Not (localOk Or netOk) Then
-        Wv2Log.LogW "  ※ ★この 3 件は空振り★ 的が 1 つも届いていないので、" & _
-                    "「来ない」のはフィルタのおかげではない。"
+        Wv2Log.LogW "  NOTE: *these 3 came up empty* No target arrived at all, so " & _
+                    """not arriving"" is not thanks to the filter."
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3b) ★ここまでに捕まえたものを全部出す★ ---"
-    ' ★推測で埋めないため (N-1c)★
-    '   次の (4) で容量を 3 に落とすと中身が消える。N-1b ではそれで (2) の
-    '   記録が失われ、「seq 1/2 は f-local と f-net だったはず」と推測する
-    '   羽目になった。消える前に必ず出しておく (設計原則112)。
+    Wv2Log.LogI "  --- (3b) *Output everything captured so far* ---"
+    ' *So as not to fill in by guesswork (N-1c)*
+    '   In the next (4), dropping the capacity to 3 erases the contents. In N-1b that lost
+    '   the record of (2), and we ended up guessing "seq 1/2 should have been f-local and f-net".
+    '   Always output it before it disappears (design principle 112).
     p.NetLogDrain
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ★溢れたら黙って捨てず、捨てた数が見える★ ---"
+    Wv2Log.LogI "  --- (4) *On overflow it is not discarded silently; the number discarded is visible* ---"
 
     p.NetLogCapacity = 3
-    TestBool "容量を 3 にできる", (p.NetLogCapacity = 3)
-    TestBool "  中身も通算も 0 に戻る", (p.NetLogCount = 0 And p.NetLogTotal = 0)
+    TestBool "the capacity can be set to 3", (p.NetLogCapacity = 3)
+    TestBool "  both the contents and the total return to 0", (p.NetLogCount = 0 And p.NetLogTotal = 0)
 
     N1Fire p, "(function(){for(var i=0;i<5;i++){" & _
               "fetch('" & N1_LOCAL & "/n1?n='+i).catch(function(){});" & _
@@ -6525,110 +6525,110 @@ Public Sub Test_N1_Capture()
               "}return 10;})()"
     D3Pump 4
 
-    Wv2Log.LogI "        総発火 " & p.NetLogTotal & " 件 / 手元 " & p.NetLogCount & _
-                " 件 / 溢れ " & p.NetLogDropped & " 件"
-    TestBool "5 件以上発火した", (p.NetLogTotal >= 5)
-    TestBool "★手元は容量ぶんの 3 件だけ★", (p.NetLogCount = 3)
-    TestBool "★溢れた数が数えられている★", (p.NetLogDropped = p.NetLogTotal - 3)
+    Wv2Log.LogI "        total fired " & p.NetLogTotal & " / on hand " & p.NetLogCount & _
+                " / overflowed " & p.NetLogDropped & " items"
+    TestBool "5 or more fired", (p.NetLogTotal >= 5)
+    TestBool "*on hand is only 3, the capacity*", (p.NetLogCount = 3)
+    TestBool "*the overflow count is counted*", (p.NetLogDropped = p.NetLogTotal - 3)
 
-    ' --- ★N-1b: ドレインしても通算は残る (論点3 案Y)★ ---
-    '   初回実機のログで「総発火 0 件」と出て 10 件来ていた事実が消えた。
-    '   その再発を止める判定。
+    ' --- *N-1b: the total remains even after draining (issue 3 plan Y)* ---
+    '   In the log of the first real-machine run, "total fired 0" appeared and the fact that 10 had arrived disappeared.
+    '   A verdict to stop that from recurring.
     totalBefore = p.NetLogTotal
     p.NetLogDrain
-    TestBool "★ドレインしても総発火は残る (通算)★", (p.NetLogTotal = totalBefore)
-    TestBool "  手元だけ空になる", (p.NetLogCount = 0)
+    TestBool "*the total fired remains even after draining (cumulative)*", (p.NetLogTotal = totalBefore)
+    TestBool "  only the on-hand part becomes empty", (p.NetLogCount = 0)
     p.NetLogClear
-    TestBool "  NetLogClear なら通算も 0 に戻る", (p.NetLogTotal = 0)
+    TestBool "  with NetLogClear the total also returns to 0", (p.NetLogTotal = 0)
 
     p.NetLogCapacity = 500
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ★止めたら本当に来なくなり、張り直せる★ ---"
+    Wv2Log.LogI "  --- (5) *When stopped it really stops arriving, and can be re-cast* ---"
 
-    TestBool "NetCaptureStop が成功する", p.NetCaptureStop()
-    TestBool "  捕捉中でなくなる", (p.NetCaptureOn = False)
+    TestBool "NetCaptureStop succeeds", p.NetCaptureStop()
+    TestBool "  capturing is off", (p.NetCaptureOn = False)
 
     p.NetLogClear
     N1Fire p, "(function(){" & _
               "fetch('" & N1_LOCAL & "/n1?k=afterstop').catch(function(){});" & _
               "fetch('" & N1_NET & "/get?k=afterstop').catch(function(){});return 1;})()"
     D3Pump 3
-    ' ★フィルタも外している★ ので、止めた後は 1 件も来ないのが正しい。
-    TestBool "★止めた後は 1 件も来ない★", (p.NetLogTotal = 0)
+    ' *The filter is also removed*, so it is correct that nothing arrives after stopping.
+    TestBool "*nothing arrives after stopping*", (p.NetLogTotal = 0)
 
-    TestBool "もう一度 NetCaptureStart できる", p.NetCaptureStart()
+    TestBool "NetCaptureStart can be done again", p.NetCaptureStart()
     N1Fire p, "(function(){" & _
               "fetch('" & N1_LOCAL & "/n1?k=restart').catch(function(){});" & _
               "fetch('" & N1_NET & "/get?k=restart').catch(function(){});return 1;})()"
-    TestBool "★張り直した網でまた捕まる★", N1Wait(p, "GET", "", "k=restart", 8)
+    TestBool "*the re-cast net captures again*", N1Wait(p, "GET", "", "k=restart", 8)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★フォーム POST でのページ遷移が見える★ ---"
-    ' ★これが方式 B (ネイティブイベント) を選んだ理由そのもの★
-    '   ページ内 JS のラップでは、この 1 行はどうやっても見えない。
+    Wv2Log.LogI "  --- (6) *Page navigation by form POST is visible* ---"
+    ' *This is the very reason method B (native events) was chosen*
+    '   With wrapping of in-page JS, this one line could not be seen by any means.
 
     p.NetLogClear
     Set el = p.QuerySelector("#postbtn-local")
-    TestBool "案F: 送信ボタンを掴める", Not (el Is Nothing)
+    TestBool "plan F: the submit button can be grabbed", Not (el Is Nothing)
     If Not (el Is Nothing) Then
-        TestBool "  案F: クリックできる", el.Click()
-        TestBool "★案F: POST が DOCUMENT として捕まる★", _
+        TestBool "  plan F: it can be clicked", el.Click()
+        TestBool "*plan F: the POST is captured as a DOCUMENT*", _
                  N1Wait(p, "POST", "DOCUMENT", "127.0.0.1", 8)
     End If
 
-    ' 検証ページへ戻る (仮想ホストなのでこの遷移自体はイベントに乗らない)
+    ' Return to the verification page (it is a virtual host, so this navigation itself does not show up in the event)
     p.NetLogClear
-    If N1Nav(p, "https://" & N1_HOST & "/netprobe.html", "N-1 プローブ", 10) Then
+    If N1Nav(p, "https://" & N1_HOST & "/netprobe.html", ("N-1 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
         Set el = p.QuerySelector("#postbtn-net")
-        TestBool "案D: 送信ボタンを掴める", Not (el Is Nothing)
+        TestBool "plan D: the submit button can be grabbed", Not (el Is Nothing)
         If Not (el Is Nothing) Then
-            TestBool "  案D: クリックできる", el.Click()
-            TestBool "★案D: POST が DOCUMENT として捕まる★", _
+            TestBool "  plan D: it can be clicked", el.Click()
+            TestBool "*plan D: the POST is captured as a DOCUMENT*", _
                      N1Wait(p, "POST", "DOCUMENT", "httpbingo.org", 10)
         End If
     Else
-        Wv2Log.LogI "        検証ページへ戻れなかったので案D の POST は飛ばす"
+        Wv2Log.LogI "        could not return to the verification page, so skipping the POST of plan D"
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) ★DOCUMENT の GET★ (論点2 案a) ---"
-    ' ページ自身の DOCUMENT は仮想ホストなので取れない。的へ直接 Navigate して取る。
+    Wv2Log.LogI "  --- (7) *GET of DOCUMENT* (issue 2 plan a) ---"
+    ' The page's own DOCUMENT is on the virtual host so it cannot be captured. Navigate directly to the target to capture it.
 
     p.NetLogClear
     p.View_Navigate N1_LOCAL & "/n1-doc-get"
-    TestBool "★案F: DOCUMENT GET が捕まる★", _
+    TestBool "*plan F: DOCUMENT GET is captured*", _
              N1Wait(p, "GET", "DOCUMENT", "n1-doc-get", 8)
 
     p.NetLogClear
     p.View_Navigate N1_NET & "/get?k=doc"
-    TestBool "★案D: DOCUMENT GET が捕まる★", _
+    TestBool "*plan D: DOCUMENT GET is captured*", _
              N1Wait(p, "GET", "DOCUMENT", "k=doc", 10)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- 手元に残っているものを全部出す ---"
+    Wv2Log.LogI "  --- Output everything remaining on hand ---"
     p.NetLogDrain
     p.NetCaptureStop
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_N1_Capture 終了 ================"
+    Wv2Log.LogI "================ Test_N1_Capture end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_N1_Site (N-1 の切り分け役 兼 実サイトでの実感)
+' Test_N1_Site (the isolating role for N-1 and a feel for a real site)
 '
-'   ★外部サイトに実アクセスする★ Test_N1_Capture が仮想ホスト頼みなので、
-'   「配線が悪いのか、仮想ホストの要求だけ乗らないのか」を 1 手で切り分ける。
+'   *Accesses an external site for real* Because Test_N1_Capture depends on the virtual host,
+'   this isolates in one move "is the wiring bad, or is it only that requests to the virtual host do not show up".
 '
-'   やることは Test_N1_Capture の (1) と同じ:
-'     タブを作る → ★Navigate の前に捕捉を始める★ → 開く → 溜まった分を出す。
+'   What it does is the same as (1) of Test_N1_Capture:
+'     create a tab -> *start capturing before Navigate* -> open -> output what has accumulated.
 '
-'   実サイトなので件数は毎回変わる。★合否は「DOCUMENT が 1 件以上居るか」だけ★
-'   見る (中身の数は数えない)。
+'   It is a real site, so the count changes every time. *The verdict is only "is there at least one DOCUMENT"*
+'   (the number of contents is not counted).
 ' ============================================================
 Public Sub Test_N1_Site(Optional ByVal url As String = "https://www.google.com/")
     Dim b As Wv2Browser
@@ -6637,52 +6637,52 @@ Public Sub Test_N1_Site(Optional ByVal url As String = "https://www.google.com/"
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_N1_Site: Browser が起動していません。"
+        Wv2Log.LogI "Test_N1_Site: Browser is not started."
         Exit Sub
     End If
 
     Set p = b.AddTab()
     If p Is Nothing Then
-        Wv2Log.LogI "Test_N1_Site: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_N1_Site: failed to create the tab."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_N1_Site 開始 (" & url & ") ================"
+    Wv2Log.LogI "================ Test_N1_Site start (" & url & ") ================"
 
-    TestBool "NetCaptureStart が成功する", p.NetCaptureStart()
+    TestBool "NetCaptureStart succeeds", p.NetCaptureStart()
 
     hr = p.View_Navigate(url)
-    TestBool "  Navigate が成功する", (hr = 0)
+    TestBool "  Navigate succeeds", (hr = 0)
 
-    ' 実サイトは遅いので少し長めに待つ (件数は問わない)
+    ' Real sites are slow, so wait a little longer (the count does not matter)
     D3Pump 6
 
-    TestBool "★DOCUMENT が 1 件以上捕まっている★", _
+    TestBool "*at least one DOCUMENT is captured*", _
              (N1Find(p, "", "DOCUMENT", "") > 0)
-    TestBool "  何かしら捕まっている", (p.NetLogCount > 0)
+    TestBool "  something is captured", (p.NetLogCount > 0)
 
     Wv2Log.LogI ""
     p.NetLogDrain
     p.NetCaptureStop
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_N1_Site 終了 ================"
+    Wv2Log.LogI "================ Test_N1_Site end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_N1_Watch (N-1 の実用の入口)
+' Test_N1_Watch (practical entry point of N-1)
 '
-'   ★今開いているタブの通信を捕まえ始める★
-'   「手で 1 回操作して、何をどの順で叩いているか」を見るための道具。
+'   *Start capturing the traffic of the currently open tab*
+'   A tool for seeing "operate by hand once, and what is being hit in what order".
 '
-'   contexts を省略すると DOCUMENT / XHR / FETCH の 3 種別。
-'   画像や CSS まで見たいときは Test_N1_Watch "ALL" と打つ。
+'   If contexts is omitted, the 3 types DOCUMENT / XHR / FETCH.
+'   If you want to see images and CSS too, type Test_N1_Watch "ALL".
 ' ============================================================
 Public Sub Test_N1_Watch(Optional ByVal contexts As String = "")
     Dim b As Wv2Browser
@@ -6690,26 +6690,26 @@ Public Sub Test_N1_Watch(Optional ByVal contexts As String = "")
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Debug.Print "[N-1] Browser が起動していません。"
+        Debug.Print "[N-1] Browser is not started."
         Exit Sub
     End If
     Set p = b.ActivePane
     If p Is Nothing Then
-        Debug.Print "[N-1] アクティブなタブがありません。"
+        Debug.Print "[N-1] There is no active tab."
         Exit Sub
     End If
 
     If p.NetCaptureStart(contexts) Then
-        Debug.Print "[N-1] 捕捉を開始しました。ページを手で操作してから Test_N1_Drain を打ってください。"
-        Debug.Print "      ★判定・一覧はログファイルに出ます★ (%APPDATA%\Wv2Browser\logs)"
+        Debug.Print "[N-1] Capture started. Operate the page by hand and then type Test_N1_Drain."
+        Debug.Print "      *Verdicts and the list go to the log file* (%APPDATA%\Wv2Browser\logs)"
     Else
-        Debug.Print "[N-1] 捕捉を開始できませんでした。ログを見てください。"
+        Debug.Print "[N-1] Could not start capture. Look at the log."
     End If
 End Sub
 
 
 ' ============================================================
-' Test_N1_Drain (N-1) - 溜まった分をログへ流して空にする
+' Test_N1_Drain (N-1) - flush the accumulated entries to the log and empty the buffer
 ' ============================================================
 Public Sub Test_N1_Drain()
     Dim b As Wv2Browser
@@ -6722,12 +6722,12 @@ Public Sub Test_N1_Drain()
     If p Is Nothing Then Exit Sub
 
     n = p.NetLogDrain
-    Debug.Print "[N-1] " & n & " 件をログへ流しました (総発火 " & p.NetLogTotal & " 件)。"
+    Debug.Print "[N-1] Flushed " & n & " items to the log (total fired " & p.NetLogTotal & ")."
 End Sub
 
 
 ' ============================================================
-' Test_N1_Stop (N-1) - 捕まえるのをやめる (フィルタも外す)
+' Test_N1_Stop (N-1) - stop capturing (also removes the filter)
 ' ============================================================
 Public Sub Test_N1_Stop()
     Dim b As Wv2Browser
@@ -6740,90 +6740,90 @@ Public Sub Test_N1_Stop()
 
     p.NetLogDrain
     If p.NetCaptureStop() Then
-        Debug.Print "[N-1] 捕捉を終了しました。"
+        Debug.Print "[N-1] Capture ended."
     Else
-        Debug.Print "[N-1] 捕捉は終了しましたが、後始末で失敗があります。ログを見てください。"
+        Debug.Print "[N-1] Capture ended, but there were failures in the cleanup. Look at the log."
     End If
 End Sub
 
 
 ' ============================================================
-' Test_N1_Help (N-1 の手順)
+' Test_N1_Help (procedure for N-1)
 ' ============================================================
 Public Sub Test_N1_Help()
-    Debug.Print "==== N-1 実機手順 (ブラウザが何を叩いているかを見る) ===="
+    Debug.Print "==== N-1 real-machine procedure (seeing what the browser is hitting) ===="
     Debug.Print ""
-    Debug.Print "  【回帰試験 (外部依存ゼロ)】"
-    Debug.Print "    1) UserForm1.Show vbModeless      ' ★仕様事実54★ 先に Show する"
+    Debug.Print "  [Regression test (zero external dependency)]"
+    Debug.Print "    1) UserForm1.Show vbModeless      ' *spec fact 54* Show first"
     Debug.Print "    2) UserForm1.StartWebView2_Full"
-    Debug.Print "    3) Wv2Log.LogStart                ' このテスト 1 回分を 1 ファイルに閉じる"
+    Debug.Print "    3) Wv2Log.LogStart                ' contain this one test run in one file"
     Debug.Print "    4) Test_N1_Capture"
-    Debug.Print "    → ★判定はログファイルで読む★ %APPDATA%\Wv2Browser\logs の最新 1 本。"
-    Debug.Print "       末尾の『★判定 n 件: OK x / FAIL y★』を見ること。"
+    Debug.Print "    -> *Read the verdicts in the log file* the newest one under %APPDATA%\Wv2Browser\logs."
+    Debug.Print "       Look at the trailing '*Verdicts n: OK x / FAIL y*'."
     Debug.Print ""
-    Debug.Print "  【落ちたときの切り分け】"
-    Debug.Print "    Test_N1_Site                      ' 実サイトで同じことをする"
-    Debug.Print "    ・そちらでも 0 件      → ★配線の問題★ (vtable / IID / フィルタ)"
-    Debug.Print "    ・そちらだけ捕まる     → 検証ページの的の問題"
+    Debug.Print "  [Isolation when it fails]"
+    Debug.Print "    Test_N1_Site                      ' do the same on a real site"
+    Debug.Print "    - 0 items there too      -> *a wiring problem* (vtable / IID / filter)"
+    Debug.Print "    - only captured there    -> a problem with the targets of the verification page"
     Debug.Print ""
-    Debug.Print "  【★N-1 で確定した仕様★】"
-    Debug.Print "    仮想ホスト (SetVirtualHostNameToFolderMapping) で配信した要求は"
-    Debug.Print "    ★WebResourceRequested に乗らない★ (DOCUMENT / fetch / XHR / 画像 / CSS"
-    Debug.Print "    のすべて)。ランタイムが内部の資材ハンドラで直接返しているため。"
-    Debug.Print "    Test_N1_Capture の的はこれを避けて 2 系統に置いてある:"
-    Debug.Print "      案F  http://127.0.0.1:59999/…  到達不能なローカル (外部依存ゼロ)"
-    Debug.Print "      案D  https://httpbingo.org/…   外部サービス (ネットが要る)"
+    Debug.Print "  [*Spec confirmed in N-1*]"
+    Debug.Print "    Requests served through a virtual host (SetVirtualHostNameToFolderMapping)"
+    Debug.Print "    *do not show up in WebResourceRequested* (all of DOCUMENT / fetch / XHR / images / CSS)."
+    Debug.Print "    Because the runtime returns them directly with an internal resource handler."
+    Debug.Print "    The targets of Test_N1_Capture avoid this by being placed on 2 routes:"
+    Debug.Print "      Plan F  http://127.0.0.1:59999/...  unreachable local (zero external dependency)"
+    Debug.Print "      Plan D  https://httpbingo.org/...   external service (needs the net)"
     Debug.Print ""
-    Debug.Print "    ★fetch() は FETCH ではなく XHR 種別で届く★"
-    Debug.Print "    JS の fetch で撃った要求を WebView2 は XML_HTTP_REQUEST(7) として"
-    Debug.Print "    報告する。種別で絞り込むときに決めつけないこと。既定のフィルタは"
-    Debug.Print "    FETCH(8) も張ったままにしてある (害はなく、将来変わっても拾える)。"
+    Debug.Print "    *fetch() arrives as the XHR type, not FETCH*"
+    Debug.Print "    WebView2 reports a request fired with JS fetch as XML_HTTP_REQUEST(7)."
+    Debug.Print "    Do not assume when narrowing by type. The default filter"
+    Debug.Print "    keeps FETCH(8) cast too (harmless, and it also catches it if it changes in the future)."
     Debug.Print ""
-    Debug.Print "  【実際のサイトで使う】"
-    Debug.Print "    1) 調べたいページをタブで開く"
-    Debug.Print "    2) Test_N1_Watch                  ' 捕捉開始 (DOCUMENT / XHR / FETCH)"
-    Debug.Print "       Test_N1_Watch ""ALL""            ' 画像や CSS まで見たいとき"
-    Debug.Print "    3) ★ページを手で 1 回操作する★ (ログインする、検索する、CSV を吐かせる…)"
-    Debug.Print "    4) Test_N1_Drain                  ' 溜まった分をログへ流して空にする"
-    Debug.Print "    5) Test_N1_Stop                   ' 終わり (フィルタも外れる)"
+    Debug.Print "  [Using it on an actual site]"
+    Debug.Print "    1) Open the page you want to investigate in a tab"
+    Debug.Print "    2) Test_N1_Watch                  ' start capturing (DOCUMENT / XHR / FETCH)"
+    Debug.Print "       Test_N1_Watch ""ALL""            ' when you want to see images and CSS too"
+    Debug.Print "    3) *Operate the page by hand once* (log in, search, make it spit out a CSV...)"
+    Debug.Print "    4) Test_N1_Drain                  ' flush the accumulated entries to the log and empty the buffer"
+    Debug.Print "    5) Test_N1_Stop                   ' done (the filter is removed too)"
     Debug.Print ""
-    Debug.Print "  --- ログの読み方 ---"
-    Debug.Print "    #    経過ms  メソッド 種別       URL"
-    Debug.Print "    経過ms は捕捉開始からの時間。★順番と間隔が分かるのが眼目★。"
+    Debug.Print "  --- How to read the log ---"
+    Debug.Print "    #    elapsed ms  method type       URL"
+    Debug.Print "    The elapsed ms is the time since capture started. *The point is that you can see the order and the intervals*."
     Debug.Print ""
-    Debug.Print "  --- N-1 でできないこと (後段) ---"
-    Debug.Print "    ・リクエストのヘッダとボディ          → N-2"
-    Debug.Print "    ・レスポンスのステータスとヘッダ      → N-3"
-    Debug.Print "    ・レスポンス本文                      → N-4"
-    Debug.Print "    ・PowerShell の Invoke-WebRequest 化  → N-5"
+    Debug.Print "  --- What N-1 cannot do (later stages) ---"
+    Debug.Print "    - request headers and body          -> N-2"
+    Debug.Print "    - response status and headers      -> N-3"
+    Debug.Print "    - response body                      -> N-4"
+    Debug.Print "    - turning it into PowerShell's Invoke-WebRequest  -> N-5"
     Debug.Print ""
-    Debug.Print "  --- 注意 ---"
-    Debug.Print "  ・★捕捉は Navigate の前に始める★ さもないと初回の DOCUMENT を取り逃がす。"
-    Debug.Print "  ・既定のリングは 500 件。溢れたら NetLogDropped に出る (黙って切らない)。"
-    Debug.Print "    足りなければ p.NetLogCapacity = 5000 のように増やせる。"
-    Debug.Print "  ・★仕様事実 20★ イベントバーストが静まるまでブレーク/ステップ実行はしない。"
+    Debug.Print "  --- Cautions ---"
+    Debug.Print "  - *Start capturing before Navigate* Otherwise you miss the first DOCUMENT."
+    Debug.Print "  - The default ring is 500 entries. Overflow shows up in NetLogDropped (it is not cut silently)."
+    Debug.Print "    If that is not enough it can be increased, e.g. p.NetLogCapacity = 5000."
+    Debug.Print "  - *Spec fact 20* Do not break/step through until the event burst settles."
 End Sub
 
 
 ' ============================================================
-' N1Fire (N-1、Private) - ページ側で JS を 1 発撃つ
-'   ★JS の文字列は必ずシングルクォート★ (プロジェクト規則)
+' N1Fire (N-1, Private) - fire one JS statement on the page side
+'   *JS strings are always single quotes* (project rule)
 ' ============================================================
 Private Sub N1Fire(ByVal p As Wv2Pane, ByVal js As String)
     p.EvalSync js, 5
     If Not p.LastEvalOk Then
-        Wv2Log.LogI "        (N1Fire 失敗 err=" & p.LastEvalError & ")"
+        Wv2Log.LogI "        (N1Fire failed err=" & p.LastEvalError & ")"
     End If
 End Sub
 
 
 ' ============================================================
-' N1Find (N-1、Private) - 条件に合う 1 件目を探す
+' N1Find (N-1, Private) - find the first entry that matches the condition
 '
-'   methodWant / ctxWant / uriPart は空文字なら「問わない」。
-'   戻り値は NetLogLine に渡せる 1 起点の位置。見つからなければ 0。
+'   If methodWant / ctxWant / uriPart is an empty string it means "do not care".
+'   The return value is a 1-based position that can be passed to NetLogLine. 0 if not found.
 '
-'   ★「たぶん来たはず」で済ませないための道具★ (設計原則112)
+'   *A tool so as not to settle for "it probably arrived"* (design principle 112)
 ' ============================================================
 Private Function N1Find(ByVal p As Wv2Pane, _
                         ByVal methodWant As String, _
@@ -6850,8 +6850,8 @@ End Function
 
 
 ' ============================================================
-' N1Wait (N-1、Private) - 条件に合う 1 件が来るまで待つ
-'   来たら True。見つかった行はログに出す。
+' N1Wait (N-1, Private) - wait until one entry matching the condition arrives
+'   True when it arrives. The row found is output to the log.
 ' ============================================================
 Private Function N1Wait(ByVal p As Wv2Pane, _
                         ByVal methodWant As String, _
@@ -6876,8 +6876,8 @@ End Function
 
 
 ' ============================================================
-' N1CtxOf (N-1c、Private) - その要求が★何の種別で届いたか★を返す
-'   見つからなければ "(居ない)"。★種別を決めつけずに観察するための道具★
+' N1CtxOf (N-1c, Private) - returns *what type that request arrived as*
+'   If not found, "(absent)". *A tool for observing without assuming the type*
 ' ============================================================
 Private Function N1CtxOf(ByVal p As Wv2Pane, ByVal uriPart As String) As String
     Dim k As Long
@@ -6885,7 +6885,7 @@ Private Function N1CtxOf(ByVal p As Wv2Pane, ByVal uriPart As String) As String
 
     k = N1Find(p, "", "", uriPart)
     If k = 0 Then
-        N1CtxOf = "(居ない)"
+        N1CtxOf = "(absent)"
         Exit Function
     End If
 
@@ -6895,8 +6895,8 @@ End Function
 
 
 ' ============================================================
-' N1Nav (N-1b、Private) - 遷移してタイトルで着地を確かめる
-'   戻り値: True なら目的のページに着いた。
+' N1Nav (N-1b, Private) - navigate and confirm the landing by title
+'   Return value: True if it reached the target page.
 ' ============================================================
 Private Function N1Nav(ByVal p As Wv2Pane, _
                        ByVal url As String, _
@@ -6908,15 +6908,15 @@ End Function
 
 
 ' ============================================================
-' N1WriteFolder (N-1、Private) - 検証ページ一式を %TEMP% に書き出す
-'   戻り値: 書き出したフォルダの絶対パス。失敗なら空文字。
+' N1WriteFolder (N-1, Private) - write out the set of verification pages to %TEMP%
+'   Return value: the absolute path of the folder written. Empty string on failure.
 '
-'   置くもの:
-'     netprobe.html … 入口。両系統の的への form / fetch / CSS / 画像を持つ
-'     data.json     … ★仮想ホストの的 (対照)★ 捕まらないことを数えるために要る
+'   What goes there:
+'     netprobe.html ... the entry. Has a form / fetch / CSS / image for both routes of targets
+'     data.json     ... *the target on the virtual host (control)* Needed to count that it is not captured
 '
-'   ★N-1b で echo.html を捨てた★ フォームの送り先は仮想ホストの外 (案F / 案D)
-'   に移したので、同じフォルダに送り先を置く必要がなくなった。
+'   *echo.html was dropped in N-1b* The form's destination was moved outside the virtual host (plan F / plan D),
+'   so there is no need to place a destination in the same folder.
 ' ============================================================
 Private Function N1WriteFolder() As String
     Dim folderPath As String
@@ -6933,26 +6933,26 @@ End Function
 
 
 ' ============================================================
-' BuildN1ProbeHtml (N-1b の検証ページ)
+' BuildN1ProbeHtml (the verification page of N-1b)
 '
-'   ★静的な HTML なので引用符は VBA の "" で書いてよい★ (JS ではない)
-'   ★このページ自身には JS を一切置かない★ fetch / XHR は EvalSync で撃つので、
-'     ページ側に仕掛けを持たせない = 何が飛んだかの原因が 1 つに絞れる。
+'   *It is static HTML, so quotation marks may be written with VBA's ""* (it is not JS)
+'   *No JS at all is placed on this page itself* fetch / XHR are fired with EvalSync, so
+'     by not putting any mechanism on the page side, the cause of what was sent narrows to one.
 '
-'   ★的はすべて仮想ホストの外★ (N-1b)
-'     仮想ホストの要求は WebResourceRequested に乗らないと実機で分かったので、
-'     form / link / img の行き先を案F (127.0.0.1) と案D (httpbingo.org) の
-'     2 系統に置いた。どちらも実在しない資材を指すので 404 / 接続失敗になるが、
-'     ★見たいのは「要求が飛んだ」という 1 行だけ★ (設計原則112)。
+'   *All targets are outside the virtual host* (N-1b)
+'     It turned out on the real machine that requests to the virtual host do not show up in WebResourceRequested, so
+'     the destinations of form / link / img were placed on the 2 routes of plan F (127.0.0.1) and plan D (httpbingo.org).
+'     Both point to nonexistent resources and so give 404 / connection failure, but
+'     *all we want to see is the single line "a request went out"* (design principle 112).
 ' ============================================================
 Private Function BuildN1ProbeHtml() As String
     Dim s As String
 
     s = "<!DOCTYPE html>" & vbLf
     s = s & "<html lang=""ja""><head><meta charset=""UTF-8"">" & vbLf
-    s = s & "<title>N-1 プローブ</title>" & vbLf
+    s = s & ("<title>N-1 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&) & "</title>") & vbLf
 
-    ' --- 捕まらないはずの資材 (CSS)。両系統に 1 本ずつ ---
+    ' --- resources that should not be captured (CSS). One for each route ---
     s = s & "<link rel=""stylesheet"" href=""" & N1_LOCAL & "/n1.css"">" & vbLf
     s = s & "<link rel=""stylesheet"" href=""" & N1_NET & "/n1.css"">" & vbLf
 
@@ -6972,44 +6972,44 @@ Private Function BuildN1ProbeHtml() As String
     s = s & "  .ep{font-family:'Consolas','Courier New',monospace;font-size:11.5px;" & _
             "color:#7d8aa0;}" & vbLf
     s = s & "</style></head><body>" & vbLf
-    s = s & "<h1>N-1 プローブ</h1>" & vbLf
-    s = s & "<div class=""lead"">WebResourceRequested が本当に拾えるかを確かめるページです。" & _
-            "このページ自身は仮想ホストで配信されているので、" & _
-            "<b>ページの読み込みそのものはイベントに乗りません</b>。" & _
-            "的はすべて仮想ホストの外に置いてあります。</div>" & vbLf
+    s = s & "<h1>N-1 probe</h1>" & vbLf
+    s = s & "<div class=""lead"">A page to check whether WebResourceRequested can really pick things up." & _
+            "This page itself is served on the virtual host, so" & _
+            "<b>loading the page itself does not show up in the event</b>." & _
+            "All the targets are placed outside the virtual host.</div>" & vbLf
 
-    ' --- 案F: 到達不能なローカルへ POST ---
+    ' --- plan F: POST to the unreachable local ---
     s = s & "<div class=""row"">" & vbLf
-    s = s & "  <span class=""tag"">案F</span>" & vbLf
+    s = s & "  <span class=""tag"">Plan F</span>" & vbLf
     s = s & "  <form id=""f-local"" action=""" & N1_LOCAL & "/echo"" method=""post"">" & vbLf
     s = s & "    <input type=""hidden"" name=""probe"" value=""wv2-n1-local"">" & vbLf
-    s = s & "    <input type=""hidden"" name=""nihongo"" value=""日本語　全角スペース入り"">" & vbLf
-    s = s & "    <button type=""submit"" id=""postbtn-local"">POST する (ローカル)</button>" & vbLf
+    s = s & ("    <input type=""hidden"" name=""nihongo"" value=""" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ChrW(&H3000&) & ChrW(&H5168&) & ChrW(&H89D2&) & ChrW(&H30B9&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B9&) & ChrW(&H5165&) & ChrW(&H308A&) & """>") & vbLf
+    s = s & "    <button type=""submit"" id=""postbtn-local"">POST (local)</button>" & vbLf
     s = s & "  </form>" & vbLf
-    s = s & "  <div class=""note"">接続は必ず失敗しますが、" & _
-            "<b>要求が飛んだこと自体</b>が捕まれば合格です。" & _
+    s = s & "  <div class=""note"">The connection always fails, but" & _
+            "it passes if <b>the fact that a request went out</b> is captured." & _
             "<br><span class=""ep"">" & N1_LOCAL & "/echo</span></div>" & vbLf
     s = s & "</div>" & vbLf
 
-    ' --- 案D: 外部サービスへ POST ---
+    ' --- plan D: POST to an external service ---
     s = s & "<div class=""row"">" & vbLf
-    s = s & "  <span class=""tag"">案D</span>" & vbLf
+    s = s & "  <span class=""tag"">Plan D</span>" & vbLf
     s = s & "  <form id=""f-net"" action=""" & N1_NET & "/post"" method=""post"">" & vbLf
     s = s & "    <input type=""hidden"" name=""probe"" value=""wv2-n1-net"">" & vbLf
-    s = s & "    <input type=""hidden"" name=""nihongo"" value=""日本語　全角スペース入り"">" & vbLf
-    s = s & "    <button type=""submit"" id=""postbtn-net"">POST する (外部)</button>" & vbLf
+    s = s & ("    <input type=""hidden"" name=""nihongo"" value=""" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & ChrW(&H3000&) & ChrW(&H5168&) & ChrW(&H89D2&) & ChrW(&H30B9&) & ChrW(&H30DA&) & ChrW(&H30FC&) & ChrW(&H30B9&) & ChrW(&H5165&) & ChrW(&H308A&) & """>") & vbLf
+    s = s & "    <button type=""submit"" id=""postbtn-net"">POST (external)</button>" & vbLf
     s = s & "  </form>" & vbLf
-    s = s & "  <div class=""note"">ネットが要ります。届けば 200 の JSON が返ります。" & _
+    s = s & "  <div class=""note"">Needs the net. If it arrives, a 200 JSON is returned." & _
             "<br><span class=""ep"">" & N1_NET & "/post</span></div>" & vbLf
     s = s & "</div>" & vbLf
 
-    ' --- 捕まらないはずの資材 (画像)。両系統に 1 本ずつ ---
+    ' --- resources that should not be captured (images). One for each route ---
     s = s & "<div class=""row"">" & vbLf
     s = s & "  <img src=""" & N1_LOCAL & "/n1.png"" alt="""" width=""1"" height=""1"">" & vbLf
     s = s & "  <img src=""" & N1_NET & "/image/png"" alt="""" width=""1"" height=""1"">" & vbLf
-    s = s & "  <div class=""note"">CSS と画像は要求こそ飛びますが、" & _
-            "既定のフィルタ (DOCUMENT / XHR / FETCH) では捕まりません。" & _
-            "★捕まらないことを数えて確かめます★</div>" & vbLf
+    s = s & "  <div class=""note"">CSS and images do have requests go out, but" & _
+            "they are not captured by the default filter (DOCUMENT / XHR / FETCH)." & _
+            "*We count that they are not captured to confirm*</div>" & vbLf
     s = s & "</div>" & vbLf
 
     s = s & "</body></html>"
@@ -7024,21 +7024,21 @@ End Function
 
 
 ' ============================================================
-' Test_N2_Detail (N-2 の回帰試験)
+' Test_N2_Detail (regression test of N-2)
 '
-'   N-1 と同じ的を使う (案F = 到達不能なローカル / 案D = httpbingo.org)。
-'   ページは仮想ホスト配信のままでよい (乗らないのはイベントだけ = 仕様事実69)。
+'   Uses the same targets as N-1 (plan F = unreachable local / plan D = httpbingo.org).
+'   The page may stay served on the virtual host (only the event does not show up = spec fact 69).
 '
-'   見ているもの:
-'     (0) ★詳細は既定 OFF★ (論点8 案κ)
-'     (1) ヘッダが読める / ★GET はボディを読まない★ (論点7 案α)
-'     (2) ボディが読める。★UTF-8 の日本語が往復する★
-'     (3) ★上限で切ったことが分かる★ (黙って切らない)
-'     (4) ★Cookie 相当のヘッダが伏せられる★ (論点3 案M)
-'     (5) ★★読んでも通信が壊れていない★★ (論点2 案X / 論点9 案D')
-'         ―― N-2 でいちばん確かめたいのはこれ
-'     (6) 詳細リングは一覧とは別 (論点5 案S)
-'     (7) OFF に戻すと詳細だけ増えなくなる
+'   What it looks at:
+'     (0) *Detail is OFF by default* (issue 8 plan kappa)
+'     (1) headers can be read / *GET does not read the body* (issue 7 plan alpha)
+'     (2) the body can be read. *UTF-8 Japanese round-trips*
+'     (3) *it is known that it was cut at the limit* (not cut silently)
+'     (4) *Cookie-equivalent headers are masked* (issue 3 plan M)
+'     (5) ** reading does not break the traffic ** (issue 2 plan X / issue 9 plan D')
+'         -- this is what N-2 most wants to confirm
+'     (6) the detail ring is separate from the list (issue 5 plan S)
+'     (7) turning it back OFF stops only the detail from increasing
 ' ============================================================
 Public Sub Test_N2_Detail()
     Dim b   As Wv2Browser
@@ -7055,56 +7055,56 @@ Public Sub Test_N2_Detail()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_N2_Detail: Browser が起動していません。"
+        Wv2Log.LogI "Test_N2_Detail: Browser is not started."
         Exit Sub
     End If
 
     folderPath = N1WriteFolder()
     If LenB(folderPath) = 0 Then
-        Wv2Log.LogI "Test_N2_Detail: 検証ページの書き出しに失敗しました。中止します。"
+        Wv2Log.LogI "Test_N2_Detail: failed to write out the verification page. Aborting."
         Exit Sub
     End If
 
     Set p = b.AddTab()
     If p Is Nothing Then
-        Wv2Log.LogI "Test_N2_Detail: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_N2_Detail: failed to create the tab."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_N2_Detail 開始 ================"
-    Wv2Log.LogI "        案F の的 = " & N1_LOCAL & "  (到達不能なローカル)"
-    Wv2Log.LogI "        案D の的 = " & N1_NET & "  (外部サービス)"
+    Wv2Log.LogI "================ Test_N2_Detail start ================"
+    Wv2Log.LogI "        plan F target = " & N1_LOCAL & "  (unreachable local)"
+    Wv2Log.LogI "        plan D target = " & N1_NET & "  (external service)"
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (0) ★詳細は既定 OFF★ (論点8 案κ) ---"
+    Wv2Log.LogI "  --- (0) *Detail is OFF by default* (issue 8 plan kappa) ---"
 
-    TestBool "★NetDetailOn の既定は False★", (p.NetDetailOn = False)
-    TestBool "  詳細リングの既定容量は 50", (p.NetDetailCapacity = 50)
-    TestBool "  ボディの上限の既定は 64KB", (p.NetBodyMaxBytes = 65536)
-    TestBool "  ★秘匿の既定は ON★", (p.NetRedact = True)
+    TestBool "*the default of NetDetailOn is False*", (p.NetDetailOn = False)
+    TestBool "  the default capacity of the detail ring is 50", (p.NetDetailCapacity = 50)
+    TestBool "  the default body limit is 64KB", (p.NetBodyMaxBytes = 65536)
+    TestBool "  *the default of masking is ON*", (p.NetRedact = True)
 
-    TestBool "NetCaptureStart が成功する", p.NetCaptureStart()
+    TestBool "NetCaptureStart succeeds", p.NetCaptureStart()
     hr = p.View3_SetVirtualHostNameToFolderMapping(N1_HOST, folderPath, 1)   ' 1 = ALLOW
-    TestBool "  仮想ホストのマッピングができる", (hr = 0)
+    TestBool "  the virtual host mapping can be made", (hr = 0)
     hr = p.View_Navigate("https://" & N1_HOST & "/netprobe.html")
-    TestBool "  Navigate が成功する", (hr = 0)
+    TestBool "  Navigate succeeds", (hr = 0)
 
-    If Not D2WaitTitle(p, "N-1 プローブ", 10) Then
-        Wv2Log.LogI "Test_N2_Detail: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("N-1 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_N2_Detail: could not confirm that the verification page loaded."
         p.NetCaptureStop
         TestCountPrint
         Exit Sub
     End If
     D3Pump 2
 
-    ' ★ここから詳細を取る★
+    ' *From here we take the detail*
     p.NetDetailOn = True
     p.NetLogClear
     p.NetDetailClear
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) ヘッダが読める / ★GET はボディを読まない★ ---"
+    Wv2Log.LogI "  --- (1) Headers can be read / *GET does not read the body* ---"
 
     N1Fire p, "(function(){" & _
               "fetch('" & N1_LOCAL & "/n2h?k=hdr-local').catch(function(){});" & _
@@ -7112,78 +7112,78 @@ Public Sub Test_N2_Detail()
               "return 1;})()"
 
     localOk = N2Wait(p, "k=hdr-local", 6)
-    TestBool "★案F: 詳細が取れる★", localOk
+    TestBool "*plan F: the detail can be obtained*", localOk
     netOk = N2Wait(p, "k=hdr-net", 8)
-    TestBool "★案D: 詳細が取れる★", netOk
+    TestBool "*plan D: the detail can be obtained*", netOk
 
     If Not (localOk Or netOk) Then
-        Wv2Log.LogW "  ※ ★的が 1 つも届いていない★ 以降の判定は空振りとして読むこと。"
+        Wv2Log.LogW "  NOTE: *no target arrived at all* Read the subsequent verdicts as having come up empty."
     End If
 
     k = N2Find(p, "k=hdr-local")
     If k = 0 Then k = N2Find(p, "k=hdr-net")
     If k > 0 Then
         hdr = p.NetDetailHeaders(k)
-        Wv2Log.LogI "        ヘッダ (先頭 3 行):"
+        Wv2Log.LogI "        headers (first 3 lines):"
         Wv2Log.LogI "        " & Replace$(Left$(hdr, 240), vbLf, " / ")
-        TestBool "★ヘッダが 1 個以上読めている★", (InStr(1, hdr, ":") > 0)
-        TestBool "★User-Agent が居る★", (InStr(1, hdr, "user-agent", vbTextCompare) > 0)
-        TestBool "★GET なのでボディは 0 バイト★ (論点7 案α)", _
+        TestBool "*at least one header can be read*", (InStr(1, hdr, ":") > 0)
+        TestBool "*User-Agent is there*", (InStr(1, hdr, "user-agent", vbTextCompare) > 0)
+        TestBool "*it is a GET, so the body is 0 bytes* (issue 7 plan alpha)", _
                  (Split(p.NetDetailLine(k), vbTab)(3) = "0")
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ボディが読める / ★UTF-8 の日本語が往復する★ ---"
+    Wv2Log.LogI "  --- (2) The body can be read / *UTF-8 Japanese round-trips* ---"
 
     p.NetLogClear
     p.NetDetailClear
-    ' ★fetch に文字列ボディを渡すと Content-Type: text/plain になる★
-    '   これは CORS の「単純な要求」なのでプリフライトが挟まらない。
-    '   到達不能な的でも要求そのものは飛ぶ。
+    ' *Passing a string body to fetch gives Content-Type: text/plain*
+    '   This is a CORS "simple request" so no preflight is inserted.
+    '   Even with an unreachable target the request itself goes out.
     N1Fire p, "(function(){var o={method:'POST'," & _
-              "body:'probe=wv2-n2-local&nihongo=日本語'};" & _
+              ("body:'probe=wv2-n2-local&nihongo=" & ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&) & "'};") & _
               "fetch('" & N1_LOCAL & "/n2b',o).catch(function(){});" & _
               "return 1;})()"
 
-    TestBool "★POST の詳細が取れる★", N2Wait(p, "/n2b", 6)
+    TestBool "*the POST detail can be obtained*", N2Wait(p, "/n2b", 6)
     k = N2Find(p, "/n2b")
     If k > 0 Then
         Wv2Log.LogI "        " & Replace$(p.NetDetailLine(k), vbTab, "  ")
-        Wv2Log.LogI "        ボディ = [" & p.NetDetailBody(k) & "]"
-        TestBool "★ボディの中身が読める★", _
+        Wv2Log.LogI "        body = [" & p.NetDetailBody(k) & "]"
+        TestBool "*the contents of the body can be read*", _
                  (InStr(1, p.NetDetailBody(k), "probe=wv2-n2-local") > 0)
-        TestBool "★UTF-8 の日本語が化けずに戻る★", _
-                 (InStr(1, p.NetDetailBody(k), "日本語") > 0)
-        TestBool "  バイト数が入っている", (CLng(Split(p.NetDetailLine(k), vbTab)(3)) > 0)
-        TestBool "  切っていない", (Split(p.NetDetailLine(k), vbTab)(4) = "False")
+        TestBool "*UTF-8 Japanese comes back without garbling*", _
+                 (InStr(1, p.NetDetailBody(k), (ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&))) > 0)
+        TestBool "  the byte count is filled in", (CLng(Split(p.NetDetailLine(k), vbTab)(3)) > 0)
+        TestBool "  not truncated", (Split(p.NetDetailLine(k), vbTab)(4) = "False")
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★上限で切ったことが分かる★ ---"
+    Wv2Log.LogI "  --- (3) *It is known that it was cut at the limit* ---"
 
     p.NetLogClear
     p.NetDetailClear
     p.NetBodyMaxBytes = 100
-    TestBool "上限を 100 バイトにできる", (p.NetBodyMaxBytes = 100)
+    TestBool "the limit can be set to 100 bytes", (p.NetBodyMaxBytes = 100)
 
     N1Fire p, "(function(){var s='';for(var i=0;i<200;i++){s=s+'0123456789';}" & _
               "fetch('" & N1_LOCAL & "/n2big',{method:'POST',body:s}).catch(function(){});" & _
               "return 1;})()"
 
-    TestBool "★大きいボディの詳細が取れる★", N2Wait(p, "/n2big", 6)
+    TestBool "*the detail of the large body can be obtained*", N2Wait(p, "/n2big", 6)
     k = N2Find(p, "/n2big")
     If k > 0 Then
         Wv2Log.LogI "        " & Replace$(p.NetDetailLine(k), vbTab, "  ")
-        TestBool "★100 バイトで止まっている★", (Split(p.NetDetailLine(k), vbTab)(3) = "100")
-        TestBool "★切ったことが分かる★", (Split(p.NetDetailLine(k), vbTab)(4) = "True")
+        TestBool "*it stops at 100 bytes*", (Split(p.NetDetailLine(k), vbTab)(3) = "100")
+        TestBool "*it is known that it was cut*", (Split(p.NetDetailLine(k), vbTab)(4) = "True")
     End If
     p.NetBodyMaxBytes = 65536
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) ★秘密のヘッダが伏せられる★ (論点3 案M) ---"
-    ' ★Cookie は的が到達不能だと作れない★ ので、機構そのものを
-    '   「必ず在るヘッダ」= User-Agent で確かめる。Cookie / Authorization は
-    '   既定リストに入っている (NetRedactDefaults)。
+    Wv2Log.LogI "  --- (4) *Secret headers are masked* (issue 3 plan M) ---"
+    ' *A Cookie cannot be produced when the target is unreachable*, so the mechanism itself is
+    '   checked with "an always present header" = User-Agent. Cookie / Authorization are
+    '   in the default list (NetRedactDefaults).
 
     p.NetLogClear
     p.NetDetailClear
@@ -7191,83 +7191,83 @@ Public Sub Test_N2_Detail()
 
     N1Fire p, "(function(){fetch('" & N1_LOCAL & "/n2r?k=redact').catch(function(){});" & _
               "return 1;})()"
-    TestBool "詳細が取れる", N2Wait(p, "k=redact", 6)
+    TestBool "the detail can be obtained", N2Wait(p, "k=redact", 6)
     k = N2Find(p, "k=redact")
     If k > 0 Then
         hdr = p.NetDetailHeaders(k)
-        TestBool "★伏せ字になっている★", (InStr(1, hdr, "<伏せた") > 0)
-        TestBool "★中身が漏れていない★", (InStr(1, hdr, "Mozilla") = 0)
+        TestBool "*it is masked*", (InStr(1, hdr, "<redacted") > 0)
+        TestBool "*the content is not leaked*", (InStr(1, hdr, "Mozilla") = 0)
 
         p.NetRedact = False
         hdr = p.NetDetailHeaders(k)
-        TestBool "★NetRedact = False なら生で見られる★", (InStr(1, hdr, "Mozilla") > 0)
+        TestBool "*with NetRedact = False it can be seen raw*", (InStr(1, hdr, "Mozilla") > 0)
         p.NetRedact = True
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ★★読んでも通信が壊れていない★★ (論点2 案X / 論点9 案D') ---"
-    ' ★これが N-2 の本丸★
-    '   IStream を読むと位置が進む。Seek(0) で戻し損ねていると、
-    '   ★WebView2 が空のボディを送る★。それを「POST が成功したっぽい」で
-    '   済ませず、★送り先が返す本文と突き合わせて数える★ (設計原則112)。
-    '   httpbingo.org/post は受け取ったフォームの中身をそのまま JSON で返す。
+    Wv2Log.LogI "  --- (5) ** Reading does not break the traffic ** (issue 2 plan X / issue 9 plan D') ---"
+    ' *This is the crux of N-2*
+    '   Reading an IStream advances its position. If Seek(0) fails to put it back,
+    '   *WebView2 sends an empty body*. Rather than settling it with "the POST seemed to succeed",
+    '   *count by matching against the body the destination returns* (design principle 112).
+    '   httpbingo.org/post returns the contents of the received form as is in JSON.
 
     If Not netOk Then
-        Wv2Log.LogW "  ※ 外部が届いていないのでこの節は飛ばす。★N-2 の本丸は未確認のまま★"
+        Wv2Log.LogW "  NOTE: the external host has not arrived, so this section is skipped. *The crux of N-2 stays unconfirmed*"
     Else
         p.NetLogClear
         p.NetDetailClear
         p.NetDetailUriFilter = "httpbingo.org/post"
 
         Set el = p.QuerySelector("#postbtn-net")
-        TestBool "送信ボタンを掴める", Not (el Is Nothing)
+        TestBool "the submit button can be grabbed", Not (el Is Nothing)
         If Not (el Is Nothing) Then
-            TestBool "  クリックできる", el.Click()
+            TestBool "  it can be clicked", el.Click()
 
-            TestBool "★POST の詳細が取れる★", N2Wait(p, "httpbingo.org/post", 10)
+            TestBool "*the POST detail can be obtained*", N2Wait(p, "httpbingo.org/post", 10)
             k = N2Find(p, "httpbingo.org/post")
             If k > 0 Then
                 Wv2Log.LogI "        " & Replace$(p.NetDetailLine(k), vbTab, "  ")
-                Wv2Log.LogI "        ボディ = [" & Left$(p.NetDetailBody(k), 200) & "]"
-                TestBool "★こちらが読んだボディに probe が入っている★", _
+                Wv2Log.LogI "        body = [" & Left$(p.NetDetailBody(k), 200) & "]"
+                TestBool "*the body we read contains probe*", _
                          (InStr(1, p.NetDetailBody(k), "wv2-n1-net") > 0)
             End If
 
-            ' ★送り先が実際に受け取ったか★ を本文で確かめる
+            ' *Did the destination really receive it?* Check with the body text
             txt = N2PageText(p, 15)
-            Wv2Log.LogI "        送り先の応答 (先頭 200 字):"
+            Wv2Log.LogI "        response of the destination (first 200 chars):"
             Wv2Log.LogI "        " & Left$(Replace$(txt, vbLf, " "), 200)
-            TestBool "★★送り先にボディが壊れずに届いている★★", _
+            TestBool "** the body reached the destination unbroken **", _
                      (InStr(1, txt, "wv2-n1-net") > 0)
-            TestBool "  ★日本語も壊れずに届いている★", _
-                     (InStr(1, txt, "日本語") > 0)
+            TestBool "  *the Japanese also arrived unbroken*", _
+                     (InStr(1, txt, (ChrW(&H65E5&) & ChrW(&H672C&) & ChrW(&H8A9E&))) > 0)
         End If
 
         p.NetDetailUriFilter = ""
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) 詳細リングは一覧とは別 (論点5 案S) ---"
+    Wv2Log.LogI "  --- (6) The detail ring is separate from the list (issue 5 plan S) ---"
 
     p.NetLogClear
     p.NetDetailClear
     p.NetDetailCapacity = 2
-    TestBool "詳細の容量だけ 2 にできる", (p.NetDetailCapacity = 2)
-    TestBool "★一覧の容量は 500 のまま★", (p.NetLogCapacity = 500)
+    TestBool "only the detail capacity can be set to 2", (p.NetDetailCapacity = 2)
+    TestBool "*the list capacity stays at 500*", (p.NetLogCapacity = 500)
 
     N1Fire p, "(function(){for(var i=0;i<5;i++){" & _
               "fetch('" & N1_LOCAL & "/n2ring?n='+i).catch(function(){});}return 5;})()"
     D3Pump 3
 
-    Wv2Log.LogI "        一覧 " & p.NetLogTotal & " 件 / 詳細 " & p.NetDetailCount & " 件"
-    TestBool "★一覧は 5 件以上たまる★", (p.NetLogTotal >= 5)
-    TestBool "★詳細は容量ぶんの 2 件だけ★", (p.NetDetailCount = 2)
-    TestBool "★詳細も溢れた数を数えている★ (黙って切らない)", _
+    Wv2Log.LogI "        list " & p.NetLogTotal & " items / detail " & p.NetDetailCount & " items"
+    TestBool "*the list accumulates 5 or more*", (p.NetLogTotal >= 5)
+    TestBool "*the detail is only 2, the capacity*", (p.NetDetailCount = 2)
+    TestBool "*the detail also counts the overflow* (not cut silently)", _
              (p.NetDetailDropped > 0)
     p.NetDetailCapacity = 50
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) ★OFF に戻すと詳細だけ増えなくなる★ ---"
+    Wv2Log.LogI "  --- (7) *Turning it back OFF stops only the detail from increasing* ---"
 
     p.NetDetailOn = False
     p.NetLogClear
@@ -7277,12 +7277,12 @@ Public Sub Test_N2_Detail()
     D3Pump 3
 
     n0 = p.NetLogTotal
-    Wv2Log.LogI "        一覧 " & n0 & " 件 / 詳細 " & p.NetDetailCount & " 件"
-    TestBool "★一覧は増える (N-1 は生きている)★", (n0 > 0)
-    TestBool "★詳細は 1 件も増えない★", (p.NetDetailCount = 0)
+    Wv2Log.LogI "        list " & n0 & " items / detail " & p.NetDetailCount & " items"
+    TestBool "*the list increases (N-1 is alive)*", (n0 > 0)
+    TestBool "*the detail does not increase at all*", (p.NetDetailCount = 0)
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- 詳細を全部出す ---"
+    Wv2Log.LogI "  --- Output all the details ---"
     p.NetDetailOn = True
     p.NetDetailClear
     N1Fire p, "(function(){fetch('" & N1_LOCAL & "/n2last?k=last').catch(function(){});" & _
@@ -7293,66 +7293,66 @@ Public Sub Test_N2_Detail()
     p.NetCaptureStop
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_N2_Detail 終了 ================"
+    Wv2Log.LogI "================ Test_N2_Detail end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_N2_Help (N-2 の手順)
+' Test_N2_Help (procedure for N-2)
 ' ============================================================
 Public Sub Test_N2_Help()
-    Debug.Print "==== N-2 実機手順 (リクエストのヘッダとボディ) ===="
+    Debug.Print "==== N-2 real-machine procedure (request headers and body) ===="
     Debug.Print ""
-    Debug.Print "  【回帰試験】"
-    Debug.Print "    1) UserForm1.Show vbModeless      ' ★仕様事実54★"
+    Debug.Print "  [Regression test]"
+    Debug.Print "    1) UserForm1.Show vbModeless      ' *spec fact 54*"
     Debug.Print "    2) UserForm1.StartWebView2_Full"
     Debug.Print "    3) Wv2Log.LogStart"
     Debug.Print "    4) Test_N2_Detail"
-    Debug.Print "    → 判定はログファイルで読む。★本丸は (5) の『送り先にボディが"
-    Debug.Print "       壊れずに届いている』★ (外部が要る)。"
+    Debug.Print "    -> Read the verdicts in the log file. *The crux is (5) 'the body reached the destination"
+    Debug.Print "       unbroken'* (needs an external host)."
     Debug.Print ""
-    Debug.Print "  【実際のサイトで使う】"
-    Debug.Print "    1) 調べたいページをタブで開く"
+    Debug.Print "  [Using it on an actual site]"
+    Debug.Print "    1) Open the page you want to investigate in a tab"
     Debug.Print "    2) Set p = UserForm1.CurrentBrowser.ActivePane"
-    Debug.Print "       p.NetDetailOn = True          ' ★詳細は既定 OFF★"
+    Debug.Print "       p.NetDetailOn = True          ' *detail is OFF by default*"
     Debug.Print "       Test_N1_Watch"
-    Debug.Print "    3) ★ページを手で 1 回操作する★"
-    Debug.Print "    4) Test_N1_Drain                 ' まず一覧で当たりを付ける"
-    Debug.Print "       p.NetDetailAll                ' 詳細を全部出す"
-    Debug.Print "       p.NetDetail 3                 ' 3 番目だけ出す"
+    Debug.Print "    3) *Operate the page by hand once*"
+    Debug.Print "    4) Test_N1_Drain                 ' first find a hit in the list"
+    Debug.Print "       p.NetDetailAll                ' output all the details"
+    Debug.Print "       p.NetDetail 3                 ' output only the 3rd"
     Debug.Print "    5) Test_N1_Stop"
     Debug.Print ""
-    Debug.Print "  --- 絞り込み ---"
-    Debug.Print "    p.NetDetailUriFilter = ""/api/"" ' この URL だけ詳細を取る"
-    Debug.Print "    p.NetBodyMaxBytes = 200000       ' ボディの上限 (既定 64KB)"
-    Debug.Print "    p.NetDetailCapacity = 200        ' 詳細リングの容量 (既定 50)"
+    Debug.Print "  --- Narrowing down ---"
+    Debug.Print "    p.NetDetailUriFilter = ""/api/"" ' take details only for this URL"
+    Debug.Print "    p.NetBodyMaxBytes = 200000       ' body limit (default 64KB)"
+    Debug.Print "    p.NetDetailCapacity = 200        ' capacity of the detail ring (default 50)"
     Debug.Print ""
-    Debug.Print "  --- ★秘密の扱い★ ---"
-    Debug.Print "    既定で Cookie / Authorization / X-Api-Key などは伏せて出る。"
-    Debug.Print "    p.AddRedactHeader ""x-my-token""   ' 伏せる対象を足す"
-    Debug.Print "    p.NetRedact = False              ' ★平文で出る。ログを人に渡す前に注意★"
-    Debug.Print "    ※ リング上は生のまま持っている。伏せているのは出すときだけ。"
+    Debug.Print "  --- *Handling of secrets* ---"
+    Debug.Print "    By default Cookie / Authorization / X-Api-Key etc. are masked on output."
+    Debug.Print "    p.AddRedactHeader ""x-my-token""   ' add a target to mask"
+    Debug.Print "    p.NetRedact = False              ' *comes out in plain text. Be careful before handing the log to someone*"
+    Debug.Print "    NOTE: on the ring it is held raw. The masking is only at output time."
     Debug.Print ""
-    Debug.Print "  --- ★N-2 で気をつけたこと★ ---"
-    Debug.Print "  ・IStream は読むと位置が進む。★戻さないと空のボディが飛ぶ★ ので"
-    Debug.Print "    読んだ後に Seek(0) している。壊れていないことは (5) で数えている。"
-    Debug.Print "  ・ボディはハンドラの中で同期的に読むしかない (args は Invoke の間だけ"
-    Debug.Print "    有効)。だから★上限で必ず切る★。切ったことは詳細の行に出る。"
-    Debug.Print "  ・GET のボディは読まない (ほぼ無いので)。"
+    Debug.Print "  --- *What we were careful about in N-2* ---"
+    Debug.Print "  - An IStream advances its position when read. *If it is not put back, an empty body is sent*, so"
+    Debug.Print "    Seek(0) is done after reading. That nothing is broken is counted in (5)."
+    Debug.Print "  - The body can only be read synchronously inside the handler (args are valid"
+    Debug.Print "    only during Invoke). So *always cut at the limit*. That it was cut shows in the detail row."
+    Debug.Print "  - The body of a GET is not read (there is almost none)."
     Debug.Print ""
-    Debug.Print "  --- N-2 でできないこと (後段) ---"
-    Debug.Print "    ・レスポンスのステータスとヘッダ      → N-3"
-    Debug.Print "    ・レスポンス本文                      → N-4"
-    Debug.Print "    ・PowerShell の Invoke-WebRequest 化  → N-5"
+    Debug.Print "  --- What N-2 cannot do (later stages) ---"
+    Debug.Print "    - response status and headers      -> N-3"
+    Debug.Print "    - response body                      -> N-4"
+    Debug.Print "    - turning it into PowerShell's Invoke-WebRequest  -> N-5"
 End Sub
 
 
 ' ============================================================
-' N2Find (N-2、Private) - URL の部分一致で詳細を探す
-'   戻り値は NetDetailLine 等に渡せる 1 起点の位置。無ければ 0。
+' N2Find (N-2, Private) - find a detail by partial match of the URL
+'   The return value is a 1-based position that can be passed to NetDetailLine etc. 0 if absent.
 ' ============================================================
 Private Function N2Find(ByVal p As Wv2Pane, ByVal uriPart As String) As Long
     Dim i As Long
@@ -7371,7 +7371,7 @@ End Function
 
 
 ' ============================================================
-' N2Wait (N-2、Private) - その詳細が来るまで待つ
+' N2Wait (N-2, Private) - wait until that detail arrives
 ' ============================================================
 Private Function N2Wait(ByVal p As Wv2Pane, _
                         ByVal uriPart As String, _
@@ -7391,9 +7391,9 @@ End Function
 
 
 ' ============================================================
-' N2PageText (N-2、Private) - 今のページの本文を読む
-'   ★送り先が実際に何を受け取ったか★ を確かめるために使う。
-'   読めるようになるまで少し待つ (遷移直後は空のことがある)。
+' N2PageText (N-2, Private) - read the body text of the current page
+'   Used to confirm *what the destination actually received*.
+'   Waits a little until it becomes readable (it may be empty right after navigation).
 ' ============================================================
 Private Function N2PageText(ByVal p As Wv2Pane, ByVal timeoutSec As Single) As String
     Dim t0  As Single
@@ -7418,25 +7418,25 @@ End Function
 
 
 ' ============================================================
-' Test_N3_Status (N-3 の回帰試験)
+' Test_N3_Status (regression test of N-3)
 '
-'   ★このイベントにはフィルタが無い★ ので、一覧に居る要求に対応するものだけ
-'   記録する (論点1 案A)。的は N-1 / N-2 と同じ 2 系統。
+'   Because *this event has no filter*, only those corresponding to requests that are in the list are
+'   recorded (issue 1 plan A). The targets are the same 2 routes as N-1 / N-2.
 '
-'   見ているもの:
-'     (0) 応答イベントが張れている (NetRespOn)
-'     (1) ★ふつうの 200 が一覧の行に付く★
-'     (2) ★404 も 500 もそのまま出る★ (成功だけ見ない)
-'     (3) ★リダイレクトは 1 要求 1 応答で並ぶ★ (論点6 案Y)
-'     (4) 応答ヘッダが読める / ★応答ヘッダにも伏せ字が効く★
-'         ★応答の中身を見る節は N3WaitAny で待つ★ (N2Wait では要求が
-'         飛んだ瞬間に成立してしまい、必ず空を読む)
-'     (5) ★到達不能な的は応答が来ない = 空欄★ (論点7 案α)
-'     (6) ★一覧に居ない応答は数えるだけ★ (論点5 案W)
-'     (7) 詳細が OFF なら応答ヘッダは取らない (ステータスは付く)
+'   What it looks at:
+'     (0) the response event is cast (NetRespOn)
+'     (1) *an ordinary 200 is attached to the list row*
+'     (2) *404 and 500 appear as they are* (do not look only at success)
+'     (3) *a redirect is lined up with 1 request and 1 response* (issue 6 plan Y)
+'     (4) response headers can be read / *masking also works on response headers*
+'         *the section that looks at response contents waits with N3WaitAny* (with N2Wait it is satisfied the instant
+'         the request goes out, so it always reads empty)
+'     (5) *an unreachable target gets no response = blank* (issue 7 plan alpha)
+'     (6) *responses not in the list are only counted* (issue 5 plan W)
+'     (7) if detail is OFF, response headers are not taken (the status is attached)
 '
-'   ★(1)～(4) は外部が要る★ 到達不能ローカルには応答が来ないので、
-'   ステータスの検証には本物の送り先が要る。届かないときはその旨を出して飛ばす。
+'   *(1) to (4) need an external host* An unreachable local gets no response, so
+'   verifying the status needs a real destination. When it does not arrive, that is stated and skipped.
 ' ============================================================
 Public Sub Test_N3_Status()
     Dim b   As Wv2Browser
@@ -7450,40 +7450,40 @@ Public Sub Test_N3_Status()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_N3_Status: Browser が起動していません。"
+        Wv2Log.LogI "Test_N3_Status: Browser is not started."
         Exit Sub
     End If
 
     folderPath = N1WriteFolder()
     If LenB(folderPath) = 0 Then
-        Wv2Log.LogI "Test_N3_Status: 検証ページの書き出しに失敗しました。中止します。"
+        Wv2Log.LogI "Test_N3_Status: failed to write out the verification page. Aborting."
         Exit Sub
     End If
 
     Set p = b.AddTab()
     If p Is Nothing Then
-        Wv2Log.LogI "Test_N3_Status: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_N3_Status: failed to create the tab."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_N3_Status 開始 ================"
-    Wv2Log.LogI "        案F の的 = " & N1_LOCAL & "  (到達不能なローカル)"
-    Wv2Log.LogI "        案D の的 = " & N1_NET & "  (外部サービス)"
+    Wv2Log.LogI "================ Test_N3_Status start ================"
+    Wv2Log.LogI "        plan F target = " & N1_LOCAL & "  (unreachable local)"
+    Wv2Log.LogI "        plan D target = " & N1_NET & "  (external service)"
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (0) 応答イベントが張れている ---"
+    Wv2Log.LogI "  --- (0) The response event is cast ---"
 
-    TestBool "NetCaptureStart が成功する", p.NetCaptureStart()
-    TestBool "★応答イベントも張れている (NetRespOn)★", (p.NetRespOn = True)
+    TestBool "NetCaptureStart succeeds", p.NetCaptureStart()
+    TestBool "*the response event is also cast (NetRespOn)*", (p.NetRespOn = True)
 
     hr = p.View3_SetVirtualHostNameToFolderMapping(N1_HOST, folderPath, 1)   ' 1 = ALLOW
-    TestBool "  仮想ホストのマッピングができる", (hr = 0)
+    TestBool "  the virtual host mapping can be made", (hr = 0)
     hr = p.View_Navigate("https://" & N1_HOST & "/netprobe.html")
-    TestBool "  Navigate が成功する", (hr = 0)
+    TestBool "  Navigate succeeds", (hr = 0)
 
-    If Not D2WaitTitle(p, "N-1 プローブ", 10) Then
-        Wv2Log.LogI "Test_N3_Status: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("N-1 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_N3_Status: could not confirm that the verification page loaded."
         p.NetCaptureStop
         TestCountPrint
         Exit Sub
@@ -7495,23 +7495,23 @@ Public Sub Test_N3_Status()
     p.NetDetailClear
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) ★ふつうの 200 が一覧の行に付く★ ---"
+    Wv2Log.LogI "  --- (1) *An ordinary 200 is attached to the list row* ---"
 
     N1Fire p, "(function(){fetch('" & N1_NET & "/get?k=n3-200').catch(function(){});" & _
               "return 1;})()"
     netOk = N3Wait(p, "k=n3-200", 200, 12)
-    TestBool "★200 が付く★", netOk
+    TestBool "*200 is attached*", netOk
     If netOk Then
         k = N1Find(p, "", "", "k=n3-200")
         Wv2Log.LogI "        " & Replace$(p.NetLogLine(k), vbTab, "  ")
-        TestBool "  NetLogStatus でも読める", (p.NetLogStatus(k) = 200)
+        TestBool "  can also be read with NetLogStatus", (p.NetLogStatus(k) = 200)
     Else
-        Wv2Log.LogW "  ※ ★外部が届いていない★ (1)～(4) は空振りとして読むこと。"
+        Wv2Log.LogW "  NOTE: *the external host has not arrived* Read (1) to (4) as having come up empty."
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★404 も 500 もそのまま出る★ ---"
-    ' ★成功だけ見ない★ 失敗が失敗として見えることが調査道具の値打ち。
+    Wv2Log.LogI "  --- (2) *404 and 500 appear as they are* ---"
+    ' *Do not look only at success* The value of an investigation tool is that failures are visible as failures.
 
     If netOk Then
         p.NetLogClear
@@ -7519,16 +7519,16 @@ Public Sub Test_N3_Status()
                   "fetch('" & N1_NET & "/status/404?k=n3-404').catch(function(){});" & _
                   "fetch('" & N1_NET & "/status/500?k=n3-500').catch(function(){});" & _
                   "return 1;})()"
-        TestBool "★404 が付く★", N3Wait(p, "k=n3-404", 404, 12)
-        TestBool "★500 が付く★", N3Wait(p, "k=n3-500", 500, 12)
+        TestBool "*404 is attached*", N3Wait(p, "k=n3-404", 404, 12)
+        TestBool "*500 is attached*", N3Wait(p, "k=n3-500", 500, 12)
         k = N1Find(p, "", "", "k=n3-404")
         If k > 0 Then Wv2Log.LogI "        " & Replace$(p.NetLogLine(k), vbTab, "  ")
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) ★リダイレクトは 1 要求 1 応答で並ぶ★ (論点6 案Y) ---"
-    ' リダイレクトは要求そのものが複数回発火するので、応答も 1 対 1 で付く。
-    ' ★同じ URL に 2 つの応答が付いて上書きされる、が起きないことを見る★
+    Wv2Log.LogI "  --- (3) *A redirect is lined up with 1 request and 1 response* (issue 6 plan Y) ---"
+    ' With a redirect the request itself fires several times, so responses are also attached one to one.
+    ' *Check that "two responses get attached to the same URL and overwrite" does not happen*
 
     If netOk Then
         p.NetLogClear
@@ -7536,14 +7536,14 @@ Public Sub Test_N3_Status()
                   ".catch(function(){});return 1;})()"
         D3Pump 6
         n0 = N3CountWithStatus(p)
-        Wv2Log.LogI "        一覧 " & p.NetLogCount & " 件 / うち応答が付いたもの " & n0 & " 件"
+        Wv2Log.LogI "        list " & p.NetLogCount & " items / of which those with a response attached " & n0 & " items"
         N3DumpAll p
-        TestBool "★リダイレクトで複数の行が並ぶ★", (p.NetLogCount >= 2)
-        TestBool "★どの行にも応答が 1 つずつ付いている★", (n0 = p.NetLogCount)
+        TestBool "*a redirect lines up multiple rows*", (p.NetLogCount >= 2)
+        TestBool "*every row has exactly one response attached*", (n0 = p.NetLogCount)
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) 応答ヘッダが読める / ★応答ヘッダにも伏せ字が効く★ ---"
+    Wv2Log.LogI "  --- (4) Response headers can be read / *masking also works on response headers* ---"
 
     If netOk Then
         p.NetLogClear
@@ -7551,48 +7551,48 @@ Public Sub Test_N3_Status()
         N1Fire p, "(function(){fetch('" & N1_NET & _
                   "/response-headers?X-N3-Test=hello&k=n3-hdr').catch(function(){});" & _
                   "return 1;})()"
-        ' ★応答が付くまで待つ (N-3c)★
-        '   N2Wait は「詳細が現れるまで」= 要求が飛んだ瞬間に成立してしまう。
-        '   応答ヘッダを読みたいなら★応答が来るまで★待たなければ意味がない。
-        TestBool "★応答が付くまで待てる★", N3WaitAny(p, "k=n3-hdr", 15)
+        ' *Wait until the response is attached (N-3c)*
+        '   N2Wait is "until the detail appears" = it is satisfied the instant the request goes out.
+        '   If you want to read the response headers, it is meaningless unless you wait *until the response arrives*.
+        TestBool "*can wait until the response is attached*", N3WaitAny(p, "k=n3-hdr", 15)
         k = N2Find(p, "k=n3-hdr")
         If k > 0 Then
             hdr = p.NetDetailRespHeaders(k)
-            Wv2Log.LogI "        応答ヘッダ: " & Replace$(Left$(hdr, 300), vbLf, " / ")
-            ' ★どこまで到達したかを丸ごと出す (N-3b)★
-            '   [応答] 行が出れば NetAttachRespHeaders までは来ている。
-            '   出なければ詳細エントリの突き合わせで落ちている。
+            Wv2Log.LogI "        response headers: " & Replace$(Left$(hdr, 300), vbLf, " / ")
+            ' *Output how far it got, as a whole (N-3b)*
+            '   If the [response] line appears, it has reached at least NetAttachRespHeaders.
+            '   If it does not, it is failing at the matching of detail entries.
             p.NetDetail k
-            TestBool "★応答ヘッダが読めている★", (InStr(1, hdr, ":") > 0)
-            TestBool "★指定したヘッダが返ってきている★", _
+            TestBool "*the response headers can be read*", (InStr(1, hdr, ":") > 0)
+            TestBool "*the specified header has come back*", _
                      (InStr(1, hdr, "X-N3-Test", vbTextCompare) > 0)
-            TestBool "  要求ヘッダとは別に持っている", _
+            TestBool "  held separately from the request headers", _
                      (p.NetDetailHeaders(k) <> hdr)
         End If
 
-        ' --- ★応答ヘッダ側でも伏せ字が効くか★ ---
-        '   ★外部の Set-Cookie に頼らない★ 既に読めている content-type を
-        '   伏せ対象に足して、★同じ 1 件を伏せる前と後で読み比べる★。
-        '   これは論点3 案M (保存時ではなく出すときに伏せる) の直接の証明でもある。
+        ' --- *Does masking work on the response headers side too?* ---
+        '   *Do not rely on an external Set-Cookie* Add the content-type, which can already be read,
+        '   to the masked set and *compare the same single entry before and after masking*.
+        '   This is also direct proof of issue 3 plan M (mask at output time, not at storage time).
         If k > 0 Then
             p.AddRedactHeader "content-type"
             hdr = p.NetDetailRespHeaders(k)
-            Wv2Log.LogI "        伏せた後: " & Replace$(Left$(hdr, 240), vbLf, " / ")
-            TestBool "★応答ヘッダにも伏せ字が効く★", (InStr(1, hdr, "<伏せた") > 0)
-            TestBool "★中身 (application/json) が消えている★", _
+            Wv2Log.LogI "        after masking: " & Replace$(Left$(hdr, 240), vbLf, " / ")
+            TestBool "*masking also works on the response headers*", (InStr(1, hdr, "<redacted") > 0)
+            TestBool "*the content (application/json) is gone*", _
                      (InStr(1, hdr, "application/json") = 0)
 
-            ' ★リング上は生のまま持っている★ ので False にすれば戻る
+            ' *It is held raw on the ring*, so setting False brings it back
             p.NetRedact = False
             hdr = p.NetDetailRespHeaders(k)
-            TestBool "★リング上は生のまま (NetRedact = False で戻る)★", _
+            TestBool "*held raw on the ring (comes back with NetRedact = False)*", _
                      (InStr(1, hdr, "application/json") > 0)
             p.NetRedact = True
         End If
 
-        ' --- 本物の Set-Cookie でも試す (上乗せ。来なければ未検証と記録する) ---
-        '   ★走らなかったことを黙って通さない★ FAIL 0 に見えて実は
-        '   何も確かめていない、が一番たちが悪い。
+        ' --- Also try with a real Set-Cookie (an add-on. If it does not arrive, record it as unverified) ---
+        '   *Do not let it pass silently when it did not run* Looking like FAIL 0 while in fact
+        '   nothing was confirmed is the worst.
         p.NetLogClear
         p.NetDetailClear
         N1Fire p, "(function(){fetch('" & N1_NET & _
@@ -7601,46 +7601,46 @@ Public Sub Test_N3_Status()
         If N3WaitAny(p, "k=n3-cookie", 12) Then
             k = N2Find(p, "k=n3-cookie")
             hdr = p.NetDetailRespHeaders(k)
-            Wv2Log.LogI "        応答ヘッダ: " & Replace$(Left$(hdr, 300), vbLf, " / ")
+            Wv2Log.LogI "        response headers: " & Replace$(Left$(hdr, 300), vbLf, " / ")
             If InStr(1, hdr, "et-cookie", vbTextCompare) > 0 Then
-                TestBool "★本物の Set-Cookie の中身も伏せられている★", _
+                TestBool "*the contents of the real Set-Cookie are also masked*", _
                          (InStr(1, hdr, "topsecret123") = 0)
             Else
-                Wv2Log.LogW "  ※ ★Set-Cookie が応答ヘッダに無かった★ " & _
-                            "この上乗せの判定は走らなかった (未検証)。"
+                Wv2Log.LogW "  NOTE: *there was no Set-Cookie in the response headers* " & _
+                            "The verdict of this add-on did not run (unverified)."
             End If
         Else
-            Wv2Log.LogW "  ※ ★Set-Cookie の上乗せ判定は走らなかった (応答が来ない)★ " & _
-                        "redirect manual の要求は応答イベントに乗らないのかもしれない。" & _
-                        "断定はせず宿題に積む。伏せ字の機構そのものは上で検証済み。"
+            Wv2Log.LogW "  NOTE: *the Set-Cookie add-on verdict did not run (no response arrived)* " & _
+                        "perhaps a request with redirect manual does not show up in the response event." & _
+                        "We do not assert it and put it on the open items. The masking mechanism itself was verified above."
         End If
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ★到達不能な的は応答が来ない = 空欄★ (論点7 案α) ---"
-    ' ★0 を書かないことの確認★ 「まだ来ていない」と「本物の 0」を混ぜない。
+    Wv2Log.LogI "  --- (5) *An unreachable target gets no response = blank* (issue 7 plan alpha) ---"
+    ' *Confirming that 0 is not written* Do not mix "not arrived yet" with a real 0.
 
     p.NetLogClear
     p.NetDetailClear
     N1Fire p, "(function(){fetch('" & N1_LOCAL & "/n3none?k=n3-none').catch(function(){});" & _
               "return 1;})()"
-    TestBool "要求は一覧に載る", N1Wait(p, "", "", "k=n3-none", 8)
+    TestBool "the request appears in the list", N1Wait(p, "", "", "k=n3-none", 8)
     D3Pump 3
     k = N1Find(p, "", "", "k=n3-none")
     If k > 0 Then
         Wv2Log.LogI "        " & Replace$(p.NetLogLine(k), vbTab, "  ")
-        TestBool "★ステータスは 0 (未着) のまま★", (p.NetLogStatus(k) = 0)
-        TestBool "★表示は空欄 (0 と書かない)★", _
+        TestBool "*the status stays 0 (not arrived)*", (p.NetLogStatus(k) = 0)
+        TestBool "*the display is blank (0 is not written)*", _
                  (Split(p.NetLogLine(k), vbTab)(5) = "")
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★一覧に居ない応答は数えるだけ★ (論点5 案W) ---"
-    ' ★わざと捕捉対象外の要求を出して数える★
-    '   画像は IMAGE 種別なので一覧 (DOCUMENT / XHR / FETCH) には載らない。
-    '   だがこのイベントにはフィルタが無いので★応答だけは来る★。
-    '   それが「対応なし」として数えられ、一覧には現れないことを見る。
-    '   ★「>= 0」のような常に真の判定にしない★ (それは何も確かめていない)
+    Wv2Log.LogI "  --- (6) *Responses not in the list are only counted* (issue 5 plan W) ---"
+    ' *Deliberately fire a request outside the capture targets and count it*
+    '   An image is of the IMAGE type so it does not go on the list (DOCUMENT / XHR / FETCH).
+    '   But this event has no filter, so *the response does arrive*.
+    '   We check that it is counted as "no counterpart" and does not appear in the list.
+    '   *Do not make it an always-true verdict like ">= 0"* (that confirms nothing)
 
     If netOk Then
         p.NetLogClear
@@ -7649,16 +7649,16 @@ Public Sub Test_N3_Status()
                   "im.src='" & N1_NET & "/image/png?k=n3-orphan';" & _
                   "return 1;})()"
         D3Pump 6
-        Wv2Log.LogI "        一覧に対応が無かった応答 = " & p.NetRespUnmatched & " 件 " & _
-                    "(クリア直後は " & n0 & " 件)"
-        TestBool "★捕捉対象外の応答が数えられている★", (p.NetRespUnmatched > n0)
-        TestBool "★その画像は一覧には載っていない★", (N1Find(p, "", "", "k=n3-orphan") = 0)
-        TestBool "  一覧の取りこぼしは別勘定 (NetLogDropped)", (p.NetLogDropped = 0)
+        Wv2Log.LogI "        responses with no counterpart in the list = " & p.NetRespUnmatched & " items " & _
+                    "(right after clearing it was " & n0 & " items)"
+        TestBool "*responses outside the capture targets are counted*", (p.NetRespUnmatched > n0)
+        TestBool "*that image is not on the list*", (N1Find(p, "", "", "k=n3-orphan") = 0)
+        TestBool "  list misses are accounted separately (NetLogDropped)", (p.NetLogDropped = 0)
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) 詳細が OFF でもステータスは付く ---"
-    ' ★応答ヘッダだけが詳細扱い (論点4 案U)★ ステータスは一覧の一部。
+    Wv2Log.LogI "  --- (7) The status is attached even when detail is OFF ---"
+    ' *Only the response headers count as detail (issue 4 plan U)* The status is part of the list.
 
     If netOk Then
         p.NetDetailOn = False
@@ -7666,71 +7666,71 @@ Public Sub Test_N3_Status()
         p.NetDetailClear
         N1Fire p, "(function(){fetch('" & N1_NET & "/get?k=n3-off').catch(function(){});" & _
                   "return 1;})()"
-        TestBool "★詳細 OFF でもステータスは付く★", N3Wait(p, "k=n3-off", 200, 12)
-        TestBool "  詳細は 1 件も増えない", (p.NetDetailCount = 0)
+        TestBool "*the status is attached even with detail OFF*", N3Wait(p, "k=n3-off", 200, 12)
+        TestBool "  the detail does not increase at all", (p.NetDetailCount = 0)
         p.NetDetailOn = True
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- 手元に残っているものを全部出す ---"
+    Wv2Log.LogI "  --- Output everything remaining on hand ---"
     p.NetLogDrain
     p.NetCaptureStop
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_N3_Status 終了 ================"
+    Wv2Log.LogI "================ Test_N3_Status end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_N3_Help (N-3 の手順)
+' Test_N3_Help (procedure for N-3)
 ' ============================================================
 Public Sub Test_N3_Help()
-    Debug.Print "==== N-3 実機手順 (レスポンスのステータスとヘッダ) ===="
+    Debug.Print "==== N-3 real-machine procedure (response status and headers) ===="
     Debug.Print ""
-    Debug.Print "  【回帰試験】"
-    Debug.Print "    1) UserForm1.Show vbModeless      ' ★仕様事実54★"
+    Debug.Print "  [Regression test]"
+    Debug.Print "    1) UserForm1.Show vbModeless      ' *spec fact 54*"
     Debug.Print "    2) UserForm1.StartWebView2_Full"
     Debug.Print "    3) Wv2Log.LogStart"
     Debug.Print "    4) Test_N3_Status"
-    Debug.Print "    → ★(1)～(4) は外部 (httpbingo.org) が要る★"
-    Debug.Print "       到達不能ローカルには応答が来ないので、ステータスの検証には"
-    Debug.Print "       本物の送り先が要る。届かないときは空振りとして表示する。"
+    Debug.Print "    -> *(1) to (4) need an external host (httpbingo.org)*"
+    Debug.Print "       An unreachable local gets no response, so verifying the status"
+    Debug.Print "       needs a real destination. When it does not arrive, it is shown as having come up empty."
     Debug.Print ""
-    Debug.Print "  【一覧の読み方 (N-3 で 1 列増えた)】"
-    Debug.Print "    #   経過ms  メソッド 種別       状態  URL"
+    Debug.Print "  [How to read the list (one column added in N-3)]"
+    Debug.Print "    #   elapsed ms  method type       status  URL"
     Debug.Print "    1       94  GET      DOCUMENT    200  https://..."
     Debug.Print "    2      141  GET      XHR         404  https://..."
-    Debug.Print "    3      609  GET      XHR              https://...   ← ★空欄 = まだ来ていない★"
+    Debug.Print "    3      609  GET      XHR              https://...   <- *blank = not arrived yet*"
     Debug.Print ""
-    Debug.Print "  【応答ヘッダ】"
-    Debug.Print "    p.NetDetailOn = True             ' ★応答ヘッダは詳細扱い★"
-    Debug.Print "    p.NetDetail 3                    ' 3 番目の詳細 (要求 + 応答)"
-    Debug.Print "    p.NetDetailRespHeaders(3)        ' 応答ヘッダだけ取る"
-    Debug.Print "    ※ Set-Cookie は既定で伏せる (NetRedact)。"
+    Debug.Print "  [Response headers]"
+    Debug.Print "    p.NetDetailOn = True             ' *response headers count as detail*"
+    Debug.Print "    p.NetDetail 3                    ' the 3rd detail (request + response)"
+    Debug.Print "    p.NetDetailRespHeaders(3)        ' take only the response headers"
+    Debug.Print "    NOTE: Set-Cookie is masked by default (NetRedact)."
     Debug.Print ""
-    Debug.Print "  --- ★N-3 で気をつけたこと★ ---"
-    Debug.Print "  ・★このイベントにはフィルタが無い★ 画像も CSS も全部来る。だから"
-    Debug.Print "    一覧に既に居る要求に対応するものだけ記録する。全部見たいときは"
-    Debug.Print "    Test_N1_Watch ""ALL"" で一覧側を広げれば応答もついてくる。"
-    Debug.Print "  ・突き合わせは URI + メソッド。★同じ URL への同時並行要求は"
-    Debug.Print "    取り違えるし、取り違えたことは検出できない★ (args に紐付けの"
-    Debug.Print "    手がかりが無い)。リダイレクトは要求が複数回発火するので 1 対 1。"
-    Debug.Print "  ・★NetLogDrain するとまだ応答が来ていない行も消える★ ので、"
-    Debug.Print "    その応答は NetRespUnmatched に回る。急いで流さないこと。"
-    Debug.Print "  ・NetRespUnmatched が大きいのは★正常★ (捕捉対象外の応答)。"
-    Debug.Print "    取りこぼしを疑うときは NetLogDropped を見る。"
+    Debug.Print "  --- *What we were careful about in N-3* ---"
+    Debug.Print "  - *This event has no filter* Images and CSS all arrive. So"
+    Debug.Print "    only those corresponding to requests already in the list are recorded. If you want to see everything,"
+    Debug.Print "    widen the list side with Test_N1_Watch ""ALL"" and the responses follow."
+    Debug.Print "  - Matching is by URI + method. *Concurrent requests to the same URL"
+    Debug.Print "    get mixed up, and the mix-up cannot be detected* (args have no clue"
+    Debug.Print "    for linking). A redirect fires the request several times so it is one to one."
+    Debug.Print "  - *NetLogDrain also erases rows whose response has not yet arrived*, so"
+    Debug.Print "    those responses go to NetRespUnmatched. Do not flush in a hurry."
+    Debug.Print "  - A large NetRespUnmatched is *normal* (responses outside the capture targets)."
+    Debug.Print "    When suspecting misses, look at NetLogDropped."
     Debug.Print ""
-    Debug.Print "  --- N-3 でできないこと (後段) ---"
-    Debug.Print "    ・レスポンス本文                      → N-4 (GetContent は非同期)"
-    Debug.Print "    ・PowerShell の Invoke-WebRequest 化  → N-5"
+    Debug.Print "  --- What N-3 cannot do (later stages) ---"
+    Debug.Print "    - response body                      -> N-4 (GetContent is asynchronous)"
+    Debug.Print "    - turning it into PowerShell's Invoke-WebRequest  -> N-5"
 End Sub
 
 
 ' ============================================================
-' N3Wait (N-3、Private) - その URL に指定のステータスが付くまで待つ
+' N3Wait (N-3, Private) - wait until the specified status is attached to that URL
 ' ============================================================
 Private Function N3Wait(ByVal p As Wv2Pane, _
                         ByVal uriPart As String, _
@@ -7755,12 +7755,12 @@ End Function
 
 
 ' ============================================================
-' N3WaitAny (N-3c、Private) - ★ステータスを問わず、応答が付くまで待つ★
+' N3WaitAny (N-3c, Private) - *wait until a response is attached, whatever the status*
 '
-'   N3Wait は「このステータスが付くまで」、N2Wait は「詳細が現れるまで」。
-'   ★詳細は要求が飛んだ瞬間に作られる★ ので、N2Wait で待って応答ヘッダを
-'   読むと必ず空になる (N-3 の初回実機でこれを踏んだ)。
-'   応答の中身を見たいときは必ずこちらで待つこと。
+'   N3Wait is "until this status is attached", N2Wait is "until the detail appears".
+'   *The detail is created the instant the request goes out*, so waiting with N2Wait and reading
+'   the response headers always gives empty (we stepped on this in the first N-3 real-machine run).
+'   When you want to see the response contents, always wait with this one.
 ' ============================================================
 Private Function N3WaitAny(ByVal p As Wv2Pane, _
                            ByVal uriPart As String, _
@@ -7784,7 +7784,7 @@ End Function
 
 
 ' ============================================================
-' N3CountWithStatus (N-3、Private) - 応答が付いている行の数
+' N3CountWithStatus (N-3, Private) - the number of rows that have a response attached
 ' ============================================================
 Private Function N3CountWithStatus(ByVal p As Wv2Pane) As Long
     Dim i As Long
@@ -7795,8 +7795,8 @@ End Function
 
 
 ' ============================================================
-' N3DumpAll (N-3、Private) - 一覧をそのままログへ出す (消さない)
-'   ★NetLogDrain と違って空にしない★ 判定に使う途中で消えると困るため。
+' N3DumpAll (N-3, Private) - output the list to the log as is (does not erase)
+'   *Unlike NetLogDrain it does not empty it* because it would be a problem if it vanished midway while used for verdicts.
 ' ============================================================
 Private Sub N3DumpAll(ByVal p As Wv2Pane)
     Dim i As Long
@@ -7808,23 +7808,23 @@ End Sub
 
 
 ' ============================================================
-' Test_N4_Body (N-4 の回帰試験)
+' Test_N4_Body (regression test of N-4)
 '
-'   ★N-4 で初めて非同期になる★ GetContent はハンドラを渡して即座に戻り、
-'   本文は後から届く。だから ★必ず「本文が届くまで」待つ★ (設計原則120)。
-'   N-3 で「詳細が現れるまで」待って空を読んだ失敗を繰り返さない。
+'   *N-4 is the first stage that is asynchronous* GetContent takes a handler and returns immediately,
+'   and the body arrives later. So *always wait "until the body arrives"* (design principle 120).
+'   Do not repeat the failure of N-3 where we waited for "until the detail appears" and read empty.
 '
-'   見ているもの:
-'     (0) ★本文は既定 OFF★ (論点1 案A)
-'     (1) JSON 本文が読める / ★何が来たかを全部残す★ (論点2 案P')
-'     (2) ★圧縮の扱いがどちらか一方に確定する★ ―― N-4 の最大の未知数
-'     (3) HTML も読める
-'     (4) バイナリは中身を出さず hex で残す
-'     (5) ★上限で切ったことが分かる★
-'     (6) ★本文が無い応答 (204) と「まだ来ていない」を区別する★
-'     (7) OFF に戻すと本文だけ取らない (ステータスとヘッダは付く)
+'   What it looks at:
+'     (0) *the body is OFF by default* (issue 1 plan A)
+'     (1) the JSON body can be read / *everything that arrived is kept* (issue 2 plan P')
+'     (2) *the handling of compression settles to one or the other* -- the biggest unknown of N-4
+'     (3) HTML can be read too
+'     (4) binary is not output as contents but kept as hex
+'     (5) *it is known that it was cut at the limit*
+'     (6) *distinguish a response with no body (204) from "not arrived yet"*
+'     (7) turning it back OFF stops only the body from being taken (the status and headers are attached)
 '
-'   ★(1)～(6) は外部が要る★ 到達不能ローカルには応答が来ないので本文も来ない。
+'   *(1) to (6) need an external host* An unreachable local gets no response, so no body either.
 ' ============================================================
 Public Sub Test_N4_Body()
     Dim b   As Wv2Browser
@@ -7841,51 +7841,51 @@ Public Sub Test_N4_Body()
 
     Set b = UserForm1.CurrentBrowser
     If b Is Nothing Then
-        Wv2Log.LogI "Test_N4_Body: Browser が起動していません。"
+        Wv2Log.LogI "Test_N4_Body: Browser is not started."
         Exit Sub
     End If
 
     folderPath = N1WriteFolder()
     If LenB(folderPath) = 0 Then
-        Wv2Log.LogI "Test_N4_Body: 検証ページの書き出しに失敗しました。中止します。"
+        Wv2Log.LogI "Test_N4_Body: failed to write out the verification page. Aborting."
         Exit Sub
     End If
 
     Set p = b.AddTab()
     If p Is Nothing Then
-        Wv2Log.LogI "Test_N4_Body: タブの生成に失敗しました。"
+        Wv2Log.LogI "Test_N4_Body: failed to create the tab."
         Exit Sub
     End If
 
     Wv2Log.LogI ""
     TestCountReset
-    Wv2Log.LogI "================ Test_N4_Body 開始 ================"
+    Wv2Log.LogI "================ Test_N4_Body start ================"
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (0) ★本文は既定 OFF★ (論点1 案A) ---"
+    Wv2Log.LogI "  --- (0) *The body is OFF by default* (issue 1 plan A) ---"
 
-    TestBool "★NetRespBodyOn の既定は False★", (p.NetRespBodyOn = False)
-    TestBool "  本文の上限の既定は 64KB", (p.NetRespBodyMaxBytes = 65536)
+    TestBool "*the default of NetRespBodyOn is False*", (p.NetRespBodyOn = False)
+    TestBool "  the default body limit is 64KB", (p.NetRespBodyMaxBytes = 65536)
 
-    TestBool "NetCaptureStart が成功する", p.NetCaptureStart()
+    TestBool "NetCaptureStart succeeds", p.NetCaptureStart()
     hr = p.View3_SetVirtualHostNameToFolderMapping(N1_HOST, folderPath, 1)   ' 1 = ALLOW
-    TestBool "  仮想ホストのマッピングができる", (hr = 0)
+    TestBool "  the virtual host mapping can be made", (hr = 0)
     hr = p.View_Navigate("https://" & N1_HOST & "/netprobe.html")
-    TestBool "  Navigate が成功する", (hr = 0)
+    TestBool "  Navigate succeeds", (hr = 0)
 
-    If Not D2WaitTitle(p, "N-1 プローブ", 10) Then
-        Wv2Log.LogI "Test_N4_Body: 検証ページの読み込みを確認できませんでした。"
+    If Not D2WaitTitle(p, ("N-1 " & ChrW(&H30D7&) & ChrW(&H30ED&) & ChrW(&H30FC&) & ChrW(&H30D6&)), 10) Then
+        Wv2Log.LogI "Test_N4_Body: could not confirm that the verification page loaded."
         p.NetCaptureStop
         TestCountPrint
         Exit Sub
     End If
     D3Pump 2
 
-    ' ★本文を取るには詳細も要る★ (置き場が詳細エントリなので)
+    ' *Taking the body needs the detail as well* (because the storage place is the detail entry)
     p.NetDetailOn = True
     p.NetRespBodyOn = True
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (1) JSON 本文が読める / ★何が来たかを全部残す★ ---"
+    Wv2Log.LogI "  --- (1) The JSON body can be read / *everything that arrived is kept* ---"
 
     p.NetLogClear
     p.NetDetailClear
@@ -7893,30 +7893,30 @@ Public Sub Test_N4_Body()
               "return 1;})()"
 
     netOk = N4Wait(p, "k=n4-json", 15)
-    TestBool "★本文が届くまで待てる★", netOk
+    TestBool "*can wait until the body arrives*", netOk
     If Not netOk Then
-        Wv2Log.LogW "  ※ ★外部が届いていない★ (1)～(6) は空振りとして読むこと。"
+        Wv2Log.LogW "  NOTE: *the external host has not arrived* Read (1) to (6) as having come up empty."
     Else
         k = N2Find(p, "k=n4-json")
-        Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
-        Wv2Log.LogI "        本文 (先頭 160 字) = " & Left$(p.NetDetailRespBody(k), 160)
+        Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+        Wv2Log.LogI "        body (first 160 chars) = " & Left$(p.NetDetailRespBody(k), 160)
         f = Split(p.NetDetailRespLine(k), vbTab)
-        TestBool "★バイト数が入っている★", (CLng(f(0)) > 0)
-        TestBool "★テキストと判定している★", (f(2) = "True")
-        TestBool "★先頭 32 バイトの hex が残っている★", (LenB(f(4)) > 0)
-        TestBool "★JSON の中身が読める★", _
+        TestBool "*the byte count is filled in*", (CLng(f(0)) > 0)
+        TestBool "*it is judged to be text*", (f(2) = "True")
+        TestBool "*the hex of the first 32 bytes is kept*", (LenB(f(4)) > 0)
+        TestBool "*the contents of the JSON can be read*", _
                  (InStr(1, p.NetDetailRespBody(k), "slideshow") > 0 Or _
                   InStr(1, p.NetDetailRespBody(k), "{") > 0)
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (2) ★圧縮の扱いを確定させる★ (N-4 の最大の未知数) ---"
-    ' ★決めつけない (設計原則117)★
-    '   httpbingo の /gzip は gzip 圧縮された JSON を返す。中身には
-    '   "gzipped": true が入っている。だから
-    '     ・本文に gzipped が読めたら → GetContent は★復号済み★を返す
-    '     ・先頭 hex が 1F 8B なら     → GetContent は★圧縮されたまま★返す
-    '   のどちらか一方に必ず決まる。それを判定にする。
+    Wv2Log.LogI "  --- (2) *Settling the handling of compression* (the biggest unknown of N-4) ---"
+    ' *Do not assume (design principle 117)*
+    '   httpbingo's /gzip returns gzip-compressed JSON. Its contents
+    '   contain "gzipped": true. Therefore
+    '     - if gzipped can be read in the body -> GetContent returns *decoded*
+    '     - if the leading hex is 1F 8B       -> GetContent returns *still compressed*
+    '   exactly one of the two must hold. That is made the verdict.
 
     If netOk Then
         p.NetLogClear
@@ -7925,29 +7925,29 @@ Public Sub Test_N4_Body()
                   "return 1;})()"
         If N4Wait(p, "k=n4-gzip", 15) Then
             k = N2Find(p, "k=n4-gzip")
-            Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+            Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
             bodyTxt = p.NetDetailRespBody(k)
             f = Split(p.NetDetailRespLine(k), vbTab)
             hexHead = CStr(f(4))
-            Wv2Log.LogI "        本文 (先頭 120 字) = " & Left$(bodyTxt, 120)
+            Wv2Log.LogI "        body (first 120 chars) = " & Left$(bodyTxt, 120)
 
             isPlain = (InStr(1, bodyTxt, "gzipped") > 0)
             isGz = (Left$(hexHead, 5) = "1F 8B")
 
-            TestBool "★圧縮の扱いがどちらか一方に確定した★", (isPlain Xor isGz)
+            TestBool "*the handling of compression settled to one or the other*", (isPlain Xor isGz)
             If isPlain Then
-                Wv2Log.LogI "        → ★GetContent は復号済みの本文を返す★"
+                Wv2Log.LogI "        -> *GetContent returns the decoded body*"
             ElseIf isGz Then
-                Wv2Log.LogI "        → ★GetContent は圧縮されたまま返す★ " & _
-                            "(VBA では解凍できないので、encoding とバイト数だけを残す設計にする)"
+                Wv2Log.LogI "        -> *GetContent returns it still compressed* " & _
+                            "(VBA cannot decompress it, so design it to keep only the encoding and the byte count)"
             Else
-                Wv2Log.LogW "        → ★どちらとも言えない★ 素性と本文をそのまま読むこと。"
+                Wv2Log.LogW "        -> *Cannot say either way* Read the identity and the body as they are."
             End If
         End If
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (3) HTML も読める ---"
+    Wv2Log.LogI "  --- (3) HTML can be read too ---"
 
     If netOk Then
         p.NetLogClear
@@ -7956,15 +7956,15 @@ Public Sub Test_N4_Body()
                   "return 1;})()"
         If N4Wait(p, "k=n4-html", 15) Then
             k = N2Find(p, "k=n4-html")
-            Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
-            TestBool "★HTML の中身が読める★", _
+            Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+            TestBool "*the contents of the HTML can be read*", _
                      (InStr(1, p.NetDetailRespBody(k), "<html", vbTextCompare) > 0 Or _
                       InStr(1, p.NetDetailRespBody(k), "Melville") > 0)
         End If
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (4) バイナリは中身を出さず hex で残す ---"
+    Wv2Log.LogI "  --- (4) Binary is not output as contents but kept as hex ---"
 
     If netOk Then
         p.NetLogClear
@@ -7973,38 +7973,38 @@ Public Sub Test_N4_Body()
                   ".catch(function(){});return 1;})()"
         If N4Wait(p, "k=n4-png", 15) Then
             k = N2Find(p, "k=n4-png")
-            Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+            Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
             f = Split(p.NetDetailRespLine(k), vbTab)
-            TestBool "★バイナリと判定している★", (f(2) = "False")
-            TestBool "  本文は空 (中身を出さない)", (LenB(p.NetDetailRespBody(k)) = 0)
-            TestBool "★hex は残っている★", (LenB(f(4)) > 0)
+            TestBool "*it is judged to be binary*", (f(2) = "False")
+            TestBool "  the body is empty (contents are not output)", (LenB(p.NetDetailRespBody(k)) = 0)
+            TestBool "*the hex is kept*", (LenB(f(4)) > 0)
         End If
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (5) ★上限で切ったことが分かる★ ---"
+    Wv2Log.LogI "  --- (5) *It is known that it was cut at the limit* ---"
 
     If netOk Then
         p.NetLogClear
         p.NetDetailClear
         p.NetRespBodyMaxBytes = 100
-        TestBool "上限を 100 バイトにできる", (p.NetRespBodyMaxBytes = 100)
+        TestBool "the limit can be set to 100 bytes", (p.NetRespBodyMaxBytes = 100)
         N1Fire p, "(function(){fetch('" & N1_NET & "/json?k=n4-cut').catch(function(){});" & _
                   "return 1;})()"
         If N4Wait(p, "k=n4-cut", 15) Then
             k = N2Find(p, "k=n4-cut")
-            Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+            Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
             f = Split(p.NetDetailRespLine(k), vbTab)
-            TestBool "★100 バイトで止まっている★", (f(0) = "100")
-            TestBool "★切ったことが分かる★", (f(1) = "True")
+            TestBool "*it stops at 100 bytes*", (f(0) = "100")
+            TestBool "*it is known that it was cut*", (f(1) = "True")
         End If
         p.NetRespBodyMaxBytes = 65536
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (6) ★本文が無い応答と「まだ来ていない」を区別する★ ---"
-    ' 204 は本文が無い。0 バイトだが★届いてはいる★。
-    ' 到達不能な的は★そもそも届かない★。この 2 つを混ぜない (設計原則111)。
+    Wv2Log.LogI "  --- (6) *Distinguish a response with no body from 'not arrived yet'* ---"
+    ' 204 has no body. It is 0 bytes but *it did arrive*.
+    ' An unreachable target *does not arrive in the first place*. Do not mix these two (design principle 111).
 
     If netOk Then
         p.NetLogClear
@@ -8013,13 +8013,13 @@ Public Sub Test_N4_Body()
                   ".catch(function(){});return 1;})()"
         If N4Wait(p, "k=n4-204", 15) Then
             k = N2Find(p, "k=n4-204")
-            Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+            Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
             f = Split(p.NetDetailRespLine(k), vbTab)
-            TestBool "★0 バイトだが届いている★", (f(0) = "0" And f(5) = "True")
-            ' ★204 は ERROR_NO_DATA で完了が来る。これは失敗ではない★
-            '   「取得失敗」と書くと N-5 で『本文があるか』を誤らせる (設計原則111)。
-            TestBool "★『取得失敗』とは書かない (本文が無いだけ)★", _
-                     (InStr(1, CStr(f(3)), "取得失敗") = 0)
+            TestBool "*0 bytes but it has arrived*", (f(0) = "0" And f(5) = "True")
+            ' *204 completes with ERROR_NO_DATA. This is not a failure*
+            '   Writing "fetch failed" would mislead N-5 about 'whether there is a body' (design principle 111).
+            TestBool "*do not write 'fetch failed' (there is simply no body)*", _
+                     (InStr(1, CStr(f(3)), "fetch failed") = 0)
         End If
     End If
 
@@ -8030,14 +8030,14 @@ Public Sub Test_N4_Body()
     D3Pump 4
     k = N2Find(p, "k=n4-none")
     If k > 0 Then
-        Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+        Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
         f = Split(p.NetDetailRespLine(k), vbTab)
-        TestBool "★到達不能なら「届いていない」のまま★", (f(5) = "False")
+        TestBool "*if unreachable it stays 'not arrived'*", (f(5) = "False")
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  --- (7) ★OFF に戻すと本文だけ取らない★ ---"
-    ' ★ステータスとヘッダは付く★ = 本文だけが別のスイッチであることの確認。
+    Wv2Log.LogI "  --- (7) *Turning it back OFF stops only the body from being taken* ---"
+    ' *The status and headers are attached* = confirms that the body alone is a separate switch.
 
     If netOk Then
         p.NetRespBodyOn = False
@@ -8048,77 +8048,77 @@ Public Sub Test_N4_Body()
         If N3WaitAny(p, "k=n4-off", 15) Then
             D3Pump 3
             k = N2Find(p, "k=n4-off")
-            Wv2Log.LogI "        素性 = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
+            Wv2Log.LogI "        identity = " & Replace$(p.NetDetailRespLine(k), vbTab, "  ")
             f = Split(p.NetDetailRespLine(k), vbTab)
-            TestBool "★本文は届かない★", (f(5) = "False")
-            TestBool "★ステータスは付く★", (p.NetLogStatus(N1Find(p, "", "", "k=n4-off")) > 0)
-            TestBool "★応答ヘッダも付く★", (InStr(1, p.NetDetailRespHeaders(k), ":") > 0)
+            TestBool "*the body does not arrive*", (f(5) = "False")
+            TestBool "*the status is attached*", (p.NetLogStatus(N1Find(p, "", "", "k=n4-off")) > 0)
+            TestBool "*the response headers are attached too*", (InStr(1, p.NetDetailRespHeaders(k), ":") > 0)
         End If
         p.NetRespBodyOn = True
     End If
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "        置き場が無かった本文 = " & p.NetRespBodyOrphan & " 件"
+    Wv2Log.LogI "        bodies with no place to store = " & p.NetRespBodyOrphan & " items"
 
     p.NetCaptureStop
 
     Wv2Log.LogI ""
-    Wv2Log.LogI "  in-callback 深さ (期待 0): " & p.InCallbackDepth
+    Wv2Log.LogI "  in-callback depth (expected 0): " & p.InCallbackDepth
     TestCountPrint
-    Wv2Log.LogI "================ Test_N4_Body 終了 ================"
+    Wv2Log.LogI "================ Test_N4_Body end ================"
     Wv2Log.LogI ""
 End Sub
 
 
 ' ============================================================
-' Test_N4_Help (N-4 の手順)
+' Test_N4_Help (procedure for N-4)
 ' ============================================================
 Public Sub Test_N4_Help()
-    Debug.Print "==== N-4 実機手順 (レスポンス本文) ===="
+    Debug.Print "==== N-4 real-machine procedure (response body) ===="
     Debug.Print ""
-    Debug.Print "  【回帰試験】"
-    Debug.Print "    1) UserForm1.Show vbModeless      ' ★仕様事実54★"
+    Debug.Print "  [Regression test]"
+    Debug.Print "    1) UserForm1.Show vbModeless      ' *spec fact 54*"
     Debug.Print "    2) UserForm1.StartWebView2_Full"
     Debug.Print "    3) Wv2Log.LogStart"
     Debug.Print "    4) Test_N4_Body"
-    Debug.Print "    → ★(1)～(6) は外部 (httpbingo.org) が要る★"
+    Debug.Print "    -> *(1) to (6) need an external host (httpbingo.org)*"
     Debug.Print ""
-    Debug.Print "  【使い方】"
-    Debug.Print "    p.NetDetailOn = True             ' ★本文の置き場は詳細エントリ★"
-    Debug.Print "    p.NetRespBodyOn = True           ' ★本文は別のスイッチ (既定 OFF)★"
+    Debug.Print "  [Usage]"
+    Debug.Print "    p.NetDetailOn = True             ' *the place to store the body is the detail entry*"
+    Debug.Print "    p.NetRespBodyOn = True           ' *the body is a separate switch (default OFF)*"
     Debug.Print "    Test_N1_Watch"
-    Debug.Print "    ' ... 手で操作する ..."
-    Debug.Print "    Test_N1_Drain                    ' 一覧で当たりを付ける"
-    Debug.Print "    p.NetDetail 3                    ' 要求 + 応答 + 本文"
-    Debug.Print "    p.NetDetailRespBody(3)           ' 本文だけ取る"
-    Debug.Print "    p.NetDetailRespLine(3)           ' バイト数/切った/種類/encoding/hex/届いた"
-    Debug.Print "    p.NetRespBodyMaxBytes = 500000   ' 本文の上限 (既定 64KB)"
+    Debug.Print "    ' ... operate by hand ..."
+    Debug.Print "    Test_N1_Drain                    ' find a hit in the list"
+    Debug.Print "    p.NetDetail 3                    ' request + response + body"
+    Debug.Print "    p.NetDetailRespBody(3)           ' take only the body"
+    Debug.Print "    p.NetDetailRespLine(3)           ' byte count/cut/kind/encoding/hex/arrived"
+    Debug.Print "    p.NetRespBodyMaxBytes = 500000   ' body limit (default 64KB)"
     Debug.Print ""
-    Debug.Print "  --- ★N-4 で作りが変わったところ★ ---"
-    Debug.Print "  ・★初めて非同期★ GetContent はハンドラを渡して即座に戻り、本文は"
-    Debug.Print "    後から届く。判定するときは★本文が届くまで待つ★こと (設計原則120)。"
-    Debug.Print "  ・★N-2 と違って Seek(0) は要らない★ 応答のコピーを読むだけで、"
-    Debug.Print "    通信物には手を入れない。"
-    Debug.Print "  ・★ResponseView は完了まで保持している★ (解放してよいか SDK に"
-    Debug.Print "    書かれていないため)。NetCaptureStop で必ずほどく。"
+    Debug.Print "  --- *Where the construction changed in N-4* ---"
+    Debug.Print "  - *First asynchronous* GetContent takes a handler and returns immediately, and the body"
+    Debug.Print "    arrives later. When judging, *wait until the body arrives* (design principle 120)."
+    Debug.Print "  - *Unlike N-2, Seek(0) is not needed* It only reads a copy of the response and"
+    Debug.Print "    does not touch the traffic itself."
+    Debug.Print "  - *ResponseView is held until completion* (because the SDK does not say whether"
+    Debug.Print "    it may be released). Always untie it with NetCaptureStop."
     Debug.Print ""
-    Debug.Print "  --- ★圧縮について★ ---"
-    Debug.Print "  応答は gzip / br / zstd で来る。GetContent が復号済みを返すかは"
-    Debug.Print "  実機で確かめた (Test_N4_Body の (2))。どちらであっても"
-    Debug.Print "  ★content-encoding と先頭 32 バイトの hex は必ず残る★ ので、"
-    Debug.Print "  本文が読めないときはそこを見ること。"
+    Debug.Print "  --- *About compression* ---"
+    Debug.Print "  Responses arrive as gzip / br / zstd. Whether GetContent returns the decoded body was"
+    Debug.Print "  confirmed on the real machine ((2) of Test_N4_Body). Either way,"
+    Debug.Print "  *content-encoding and the hex of the first 32 bytes are always kept*, so"
+    Debug.Print "  when the body cannot be read, look there."
     Debug.Print ""
-    Debug.Print "  --- N-4 でできないこと (後段) ---"
-    Debug.Print "    ・PowerShell の Invoke-WebRequest 化  → N-5"
+    Debug.Print "  --- What N-4 cannot do (later stages) ---"
+    Debug.Print "    - turning it into PowerShell's Invoke-WebRequest  -> N-5"
 End Sub
 
 
 ' ============================================================
-' N4Wait (N-4、Private) - ★本文が届くまで★ 待つ
+' N4Wait (N-4, Private) - wait *until the body arrives*
 '
-'   ★「詳細が現れるまで」でも「ステータスが付くまで」でもない★
-'   本文は GetContent の完了ハンドラで最後に届くので、それを待つ。
-'   N-3 でここを取り違えて実機 3 回ぶんを溶かした (設計原則120)。
+'   *Neither "until the detail appears" nor "until the status is attached"*
+'   The body arrives last in GetContent's completion handler, so wait for that.
+'   In N-3 we mixed this up here and burned three real-machine runs (design principle 120).
 ' ============================================================
 Private Function N4Wait(ByVal p As Wv2Pane, _
                         ByVal uriPart As String, _
@@ -8134,7 +8134,7 @@ Private Function N4Wait(ByVal p As Wv2Pane, _
         If k > 0 Then
             f = Split(p.NetDetailRespLine(k), vbTab)
             If UBound(f) >= 5 Then
-                If f(5) = "True" Then          ' ★届いた★
+                If f(5) = "True" Then          ' *arrived*
                     N4Wait = True
                     Exit Function
                 End If

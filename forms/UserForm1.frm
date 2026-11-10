@@ -6,7 +6,7 @@ Begin {C62A69F0-16DC-11CE-9E98-00AA00574A4F} UserForm1
    ClientTop       =   465
    ClientWidth     =   12375
    OleObjectBlob   =   "UserForm1.frx":0000
-   StartUpPosition =   1  'オーナー フォームの中央
+   StartUpPosition =   1  'CenterOwner
 End
 Attribute VB_Name = "UserForm1"
 Attribute VB_GlobalNameSpace = False
@@ -16,301 +16,301 @@ Attribute VB_Exposed = False
 
 'UserForm UserForm1.frm
 '
-' 第9.18 段階 (設定タブ + AddHostObjectToScript による検索エンジン UI)
-'   ── 9.17 で本体の口 (UseSearchEngine / CurrentBrowser) を揃えた続きとして、
-'      タブバーに ? 設定ボタンを付け、クリックで検索エンジン選択画面を専用タブに
-'      開く。JS→VBA の連携は postMessage コマンドではなく AddHostObjectToScript を
-'      使い、設定画面の JS から VBA (Wv2SettingsBridge) を直接呼ばせる。
+' Stage 9.18 (settings tab + search engine UI via AddHostObjectToScript)
+'   -- As a continuation of aligning the entries of the main body in 9.17 (UseSearchEngine / CurrentBrowser),
+'      a ? settings button is attached to the tab bar, and clicking it opens the search engine selection screen in a dedicated tab.
+'      For the JS->VBA link we use AddHostObjectToScript rather than postMessage commands,
+'      letting the JS of the settings screen call VBA (Wv2SettingsBridge) directly.
 '
-'   ・UserForm1 側の変更は 2 点のみ:
-'       (1) 検索エンジンのプリセット定数 (SE_*) と名前解決を Wv2SettingsBridge へ
-'           移設 (DRY)。設定画面と同じ解決経路を共有する。
-'       (2) UseSearchEngine を一時ブリッジ生成 → SetEngine 委譲に書き換え。
-'           イミディエイト (UserForm1.UseSearchEngine "bing") の挙動は 9.17 と同じ。
+'   - The changes on the UserForm1 side are only 2 points:
+'       (1) The search engine preset constants (SE_*) and name resolution are moved to Wv2SettingsBridge
+'           (DRY). It shares the same resolution path as the settings screen.
+'       (2) UseSearchEngine is rewritten as create a temporary bridge -> delegate to SetEngine.
+'           The behavior from the Immediate window (UserForm1.UseSearchEngine "bing") is the same as 9.17.
 '
-'   ・設定タブの生成・ブリッジ attach・設定画面 HTML は Wv2Browser の責務
-'       (OpenSettingsTab / BuildSettingsHtml)。TabBar は ? クリックを settings
-'       コマンドで Browser に伝えるだけ (疎結合維持)。CurrentBrowser は 9.17 のまま。
+'   - Creation of the settings tab, bridge attach and the settings screen HTML are the responsibility of Wv2Browser
+'       (OpenSettingsTab / BuildSettingsHtml). TabBar only conveys the ? click to Browser with the settings
+'       command (loose coupling kept). CurrentBrowser is as in 9.17.
 '
-' 第9.17 段階 (検索エンジンの切替口 + 起動中 Browser 参照の公開)
-'   ── 9.16 で「本体 Property (SearchEngine) だけ作り、UI と実機確認は別ステージに
-'      切り出す」と保留した宿題を回収する。UI 部品 (ドロップダウン等) はまだ置かず、
-'      「起動中の Browser を外から触る足場」と「プリセット名で切り替える最小の口」を
-'      生やすところまで (案 A-1 + B-1)。GUI 組み込み (NavBar への選択 UI) は次段。
+' Stage 9.17 (search engine switching entry + exposing the running Browser reference)
+'   -- Collects the open item that was put on hold in 9.16 as "build only the main-body Property (SearchEngine), and split
+'      the UI and real-machine check into another stage". No UI parts (dropdown etc.) are placed yet;
+'      we only grow "a foothold to touch the running Browser from outside" and "a minimal entry to switch by preset name"
+'      (Plan A-1 + B-1). GUI integration (selection UI in NavBar) is the next stage.
 '
-'   ・Public Property Get CurrentBrowser() As Wv2Browser を追加 (案 A-1)。
-'       m_browser は Private WithEvents で外から触れないため、素の参照を返す口を
-'       1 本だけ公開する。WithEvents はこちら側の宣言制約であって、Get で参照を
-'       渡すのは問題ない。以後どの拡張でも「起動中 Browser を外から掴む」足場になる。
-'       起動していない (m_browser Is Nothing) 間は Nothing を返す。
+'   - Added Public Property Get CurrentBrowser() As Wv2Browser (Plan A-1).
+'       m_browser is Private WithEvents and cannot be touched from outside, so exactly one entry that returns
+'       a plain reference is exposed. WithEvents is a declaration constraint on this side, and
+'       handing out the reference through a Get is not a problem. From now on it is the foothold for "grabbing the running Browser from outside" in any extension.
+'       While not started (m_browser Is Nothing) it returns Nothing.
 '
-'   ・検索エンジンのプリセット定数 (SE_GOOGLE / SE_BING / SE_DUCKDUCKGO /
-'       SE_YAHOO) をモジュール冒頭に追加。いずれも「クエリ前置型テンプレート」
-'       (末尾にエンコード済み検索語を連結するだけ、9.16 の案1-A と同形)。
+'   - Added the search engine preset constants (SE_GOOGLE / SE_BING / SE_DUCKDUCKGO /
+'       SE_YAHOO) at the top of the module. All are "query prefix type templates"
+'       (just concatenate the encoded search term at the end, the same form as Plan 1-A of 9.16).
 '
-'   ・Public Sub UseSearchEngine(ByVal engineName As String) を追加 (案 B-1)。
-'       "google"/"bing"/"duckduckgo"/"yahoo" (大小・前後空白は無視) を
-'       プリセットのテンプレートに解決し、CurrentBrowser.SearchEngine へ Let する。
-'       未知の名前は既定 (Google) に落として警告を Debug.Print (空ガードは
-'       Browser 側 Property Let が担保)。Browser 未起動なら何もせず注意を出す。
-'       ★UI ではなくロジックの口★ 実機では StartWebView2_Full 起動後に
-'       イミディエイトで  UserForm1.UseSearchEngine "bing"  と打つだけで切り替わる。
+'   - Added Public Sub UseSearchEngine(ByVal engineName As String) (Plan B-1).
+'       Resolves "google"/"bing"/"duckduckgo"/"yahoo" (case and leading/trailing whitespace ignored) to
+'       the preset's template and does Let to CurrentBrowser.SearchEngine.
+'       An unknown name falls to the default (Google) with a warning by Debug.Print (the empty guard is
+'       guaranteed by the Browser-side Property Let). If Browser is not started, it does nothing and gives a notice.
+'       *It is a logic entry, not a UI.* On the real machine, after starting StartWebView2_Full, just type
+'       UserForm1.UseSearchEngine "bing" in the Immediate window to switch.
 '
-'   ・実機確認が「参照の口が無い」で詰まっていた点 (9.16 の Help の但し書き) を
-'       CurrentBrowser で解消。9.17 の検証は Wv2Tests.Test_9_17_* に集約。
+'   - The point where real-machine checks were stuck on "there is no entry for the reference" (the proviso in the 9.16 Help)
+'       is resolved with CurrentBrowser. The 9.17 verification is gathered in Wv2Tests.Test_9_17_*.
 '
-' 第9.13 段階 (整理: JSON ヘルパー共通化 + 検証コードの撤去)
-'   ・9.11a?9.12d で積み上げた使い捨ての検証 Sub を全撤去 (35 個)。
-'     タブバーとナビバーが GUI で全機能を提供している以上、検証 Sub の役目は
-'     終わっている。必要になれば再生成すればよく、記録は開発メモに残っている。
-'   ・旧起動 Sub も撤去し、実運用の起動口を 2 つに絞った:
-'       StartWebView2_Full … 3 タブ + タブバー + ナビバー (通常の起動口)
-'       StartWebView2_Spa  … SPA 雛形 (9.10e で「1 つだけ残す」と決めたもの)
-'     撤去: StartWebView2 / StartWebView2_WithTabBar / StartWebView2_WithTabBar_3
-'   ・行数: 1456 → 700 行
+' Stage 9.13 (tidying: sharing the JSON helpers + removal of verification code)
+'   - Removed all of the throwaway verification Subs accumulated in 9.11a?9.12d (35 of them).
+'     Now that the tab bar and nav bar provide all functions through the GUI, the role of the verification Subs
+'     is over. They can be regenerated if needed, and the record remains in the dev notes.
+'   - The old startup Subs were also removed, narrowing the practical startup entries to 2:
+'       StartWebView2_Full ... 3 tabs + tab bar + nav bar (the normal startup entry)
+'       StartWebView2_Spa  ... SPA template (the one decided in 9.10e to "leave just one")
+'     Removed: StartWebView2 / StartWebView2_WithTabBar / StartWebView2_WithTabBar_3
+'   - Line count: 1456 -> 700 lines
 '
-'   ※Wv2TabBar / Wv2NavBar 側では JSON ヘルパー (JsonEscape / GetJsonStr /
-'     GetJsonNum / BoolToJson) の重複を Wv2Json.bas に共通化した。
-'     UserForm 自体は JSON を触らないので影響なし。
+'   Note: on the Wv2TabBar / Wv2NavBar side the duplicated JSON helpers (JsonEscape / GetJsonStr /
+'     GetJsonNum / BoolToJson) were shared in Wv2Json.bas.
+'     The UserForm itself does not touch JSON, so it is unaffected.
 '
-' 第9.12d 段階 (JS->VBA: 入力・クリックの有効化) ? 9.12 完結
-'   ・コード変更は検証用のみ (本体ロジックは Wv2NavBar 側)。
-'   ・Test_9_12d_Help / Test_9_12d_Inject* を追加。起動は StartWebView2_Full を流用。
+' Stage 9.12d (JS->VBA: enabling input and clicks) ? 9.12 complete
+'   - Code changes are for verification only (the main-body logic is on the Wv2NavBar side).
+'   - Added Test_9_12d_Help / Test_9_12d_Inject*. Startup reuses StartWebView2_Full.
 '
-' 第9.12c 段階 (VBA->JS: URL とボタン状態の表示)
-'   ・コード変更は検証用のみ (本体ロジックは Wv2NavBar 側)。
-'   ・Test_9_12c_Help を追加。起動は StartWebView2_Full を流用。
+' Stage 9.12c (VBA->JS: display of the URL and button states)
+'   - Code changes are for verification only (the main-body logic is on the Wv2NavBar side).
+'   - Added Test_9_12c_Help. Startup reuses StartWebView2_Full.
 '
-' 第9.12b 段階 (Wv2NavBar の骨格 + レイアウト 3 分割)
-'   ・m_navBar フィールドを追加。Wv2TabBar と同じ扱い (生成・Resize・Shutdown)。
-'   ・UserForm_Resize が 3 分割になる:
-'       1 段目 = タブバー   (高さ TABBAR_HEIGHT_PX)
-'       2 段目 = ナビバー   (高さ NAVBAR_HEIGHT_PX) ★9.12b で追加
-'       3 段目 = コンテンツ (残り全部)
-'     ★分割の計算はここ (UserForm) の責務★ Browser も TabBar も NavBar も
-'     互いを知らない。UserForm が矩形を配って回る (疎結合)。
-'   ・StartWebView2_Full を追加 (3 タブ + タブバー + ナビバー)。
-'   ・9.12b ではナビバーは静的表示のみ (ボタン押せず、URL 欄も更新されない)。
+' Stage 9.12b (skeleton of Wv2NavBar + 3-way layout split)
+'   - Added the m_navBar field. Treated the same as Wv2TabBar (creation, Resize, Shutdown).
+'   - UserForm_Resize becomes a 3-way split:
+'       1st row = tab bar   (height TABBAR_HEIGHT_PX)
+'       2nd row = nav bar   (height NAVBAR_HEIGHT_PX) *added in 9.12b
+'       3rd row = content (all the rest)
+'     *The split calculation is the responsibility of here (the UserForm)* Browser, TabBar and NavBar
+'     do not know each other. The UserForm goes around handing out rectangles (loose coupling).
+'   - Added StartWebView2_Full (3 tabs + tab bar + nav bar).
+'   - In 9.12b the nav bar is static display only (buttons cannot be pressed, and the URL field is not updated).
 '
-' 第9.12a 段階 (アドレスバー/ナビボタンの土台 ? UI なし、イミディエイト検証)
-'   ・Wv2Browser の新イベント TabUrlChanged を UserForm でも購読してログ出力。
-'   ・アクティブタブ委譲メソッド (NavigateActive / GoBackActive / GoForwardActive /
-'     ReloadActive / StopActive / GetActiveUrl 等) をイミディエイトから検証する。
-'   ・9.12b で Wv2NavBar (WebView2 製ナビバー) を載せる。ここはその土台。
+' Stage 9.12a (foundation for the address bar/nav buttons ? no UI, Immediate window verification)
+'   - The UserForm also subscribes to Wv2Browser's new event TabUrlChanged and logs it.
+'   - Verify the active-tab delegation methods (NavigateActive / GoBackActive / GoForwardActive /
+'     ReloadActive / StopActive / GetActiveUrl etc.) from the Immediate window.
+'   - In 9.12b Wv2NavBar (the WebView2-based nav bar) is mounted. This is its foundation.
 '
-' 第9.11d 段階 (JS->VBA クリック有効化の検証)
-'   ・コード変更は検証用のみ (本体ロジックは Wv2TabBar 側)。
-'   ・Test_9_11d_Help: 手動クリック検証の手順を表示。
-'   ・Test_9_11d_Inject*: JS を介さず OnPaneWebMessage に直接コマンド文字列を
-'     流し込む。パーサ (GetJsonStr/GetJsonNum) とコマンド処理だけを切り分けて
-'     検証できる (クリック操作なしでイミディエイトから叩ける)。
-'   ・タブバーの再利用のため StartWebView2_WithTabBar_3 を 9.11d でも使う。
+' Stage 9.11d (verification of enabling JS->VBA clicks)
+'   - Code changes are for verification only (the main-body logic is on the Wv2TabBar side).
+'   - Test_9_11d_Help: shows the procedure for manual click verification.
+'   - Test_9_11d_Inject*: pours command strings directly into OnPaneWebMessage without going through JS.
+'     Only the parser (GetJsonStr/GetJsonNum) and command handling can be separated
+'     and verified (can be hit from the Immediate window without click operations).
+'   - To reuse the tab bar, StartWebView2_WithTabBar_3 is also used in 9.11d.
 '
-' 第9.11c 段階 (VBA->JS タブ一覧描画の検証)
-'   ・コード変更は検証用のみ (本体ロジックは Wv2TabBar / Wv2Pane 側)。
-'   ・StartWebView2_WithTabBar_3 を追加: bing/example/msn の 3 タブ + タブバー。
-'     タブバー JS が 3 タブ分を描画し、各タブのタイトルが反映されるのを見る。
-'   ・Test_9_11c_Help / Test_9_11c_AddTab / Test_9_11c_CloseActive を追加。
-'     AddTab/CloseTab の後にタブバー描画が全体同期で追従することを確認する。
+' Stage 9.11c (verification of VBA->JS tab list drawing)
+'   - Code changes are for verification only (the main-body logic is on the Wv2TabBar / Wv2Pane side).
+'   - Added StartWebView2_WithTabBar_3: 3 tabs of bing/example/msn + tab bar.
+'     We see the tab bar JS draw the 3 tabs and each tab's title reflected.
+'   - Added Test_9_11c_Help / Test_9_11c_AddTab / Test_9_11c_CloseActive.
+'     Confirm that after AddTab/CloseTab the tab bar drawing follows via full sync.
 '
-' 第9.11b 段階 (WebView2 製タブバー Wv2TabBar の統合)
-'   ・新規フィールド: m_tabBar As Wv2TabBar (タブバー UI。使わなければ生成
-'     しないだけ = 疎結合)。
-'   ・UserForm_Resize を 2 分割対応に: m_tabBar があれば上部にタブバー帯
-'     (高さ TABBAR_HEIGHT_PX) を確保し、コンテンツ領域をその下にずらす。
-'     タブバー帯の矩形は m_tabBar.Resize、コンテンツ領域は m_browser.ResizeAll。
-'     m_tabBar が無ければ従来通り全域をコンテンツに (★Browser はタブバーを
-'     知らない★ 分割計算は UserForm 側の責務)。
-'   ・UserForm_Terminate に m_tabBar.Shutdown を追加 (m_browser.Shutdown より前)。
-'   ・検証用: StartWebView2_WithTabBar / Test_9_11b_* を追加。
+' Stage 9.11b (integration of the WebView2-based tab bar Wv2TabBar)
+'   - New field: m_tabBar As Wv2TabBar (tab bar UI. If not used it is simply not
+'     created = loose coupling).
+'   - UserForm_Resize supports a 2-way split: if m_tabBar exists, a tab bar band is secured at the top
+'     (height TABBAR_HEIGHT_PX) and the content area is shifted below it.
+'     The rectangle of the tab bar band goes to m_tabBar.Resize, the content area to m_browser.ResizeAll.
+'     If there is no m_tabBar, the whole area goes to content as before (*Browser does not
+'     know the tab bar*; the split calculation is the UserForm's responsibility).
+'   - Added m_tabBar.Shutdown to UserForm_Terminate (before m_browser.Shutdown).
+'   - For verification: added StartWebView2_WithTabBar / Test_9_11b_*.
 '
-' 第9.11a 段階 (疎結合タブバー用イベント受信)
-'   ・m_browser を WithEvents 化し、Wv2Browser の 4 イベント (TabAdded /
-'     TabClosed / ActiveChanged / TabTitleChanged) を受信するハンドラを追加。
-'   ・検証用: Test_9_11a_* 群 (Setup / CloseActiveMiddle / CloseActiveLast /
-'     CloseBeforeActive / CloseAll / Help) と内部ヘルパ DumpState を追加。
+' Stage 9.11a (receiving events for the loosely coupled tab bar)
+'   - Made m_browser WithEvents and added handlers that receive the 4 events of Wv2Browser (TabAdded /
+'     TabClosed / ActiveChanged / TabTitleChanged).
+'   - For verification: added the Test_9_11a_* group (Setup / CloseActiveMiddle / CloseActiveLast /
+'     CloseBeforeActive / CloseAll / Help) and the internal helper DumpState.
 '
-' 第9.10e 段階 (NewWindowRequested 新タブ化)
-'   ・UserForm_Terminate に m_browser.Shutdown を追加 (循環参照 Browser?Pane を
-'     断ってから解放。案Y。UserForm 側の実装コストはこの 1 行のみ、設計原則 58)
-'   ・第9.10 整理: 検証 Sub 群 (SpaSmoke / SpaMapping / SpaFull 等) を撤去。
-'     SPA 起動は StartWebView2_Spa (雛形) に集約、m_env/m_pane フィールドも撤去した
+' Stage 9.10e (NewWindowRequested to new tab)
+'   - Added m_browser.Shutdown to UserForm_Terminate (cut the circular reference Browser?Pane
+'     and then release. Plan Y. The implementation cost on the UserForm side is just this 1 line, design principle 58)
+'   - 9.10 tidying: removed the verification Sub group (SpaSmoke / SpaMapping / SpaFull etc.).
+'     SPA startup is consolidated in StartWebView2_Spa (template), and the m_env/m_pane fields were also removed
 '
-' 第9.9c 段階 (補完群一括処理)
-'   ・新規 Public Sub: OnExecuteScriptResult
-'     Wv2Pane.OnExecuteScriptCompleted から直接呼ばれる結果通知の受け口。
-'     現状の第一実装はログ出力のみ (将来 SPA 連携時に Form 上のコントロールへ
-'     反映する形に拡張可能)。
-'   ・GetActivePane プロパティに Nothing チェック警告を追加
-'     m_pane が Nothing の場合、Debug.Print で警告を出してから Nothing を返す
-'     (Immediate 検証で「オブジェクト変数が設定されていません」エラーで
-'      迷子になるのを防ぐ、案 G1-a)。
+' Stage 9.9c (batch handling of the supplementary group)
+'   - New Public Sub: OnExecuteScriptResult
+'     The receiving end of result notifications called directly from Wv2Pane.OnExecuteScriptCompleted.
+'     For now the first implementation is log output only (it can be extended to reflect in controls on the Form
+'     when SPA integration happens in the future).
+'   - Added a Nothing-check warning to the GetActivePane property
+'     If m_pane is Nothing, a warning is given by Debug.Print and then Nothing is returned
+'     (prevents getting lost in the "Object variable not set" error during Immediate
+'      verification, Plan G1-a).
 '
-' 第9.9b 段階 (SPA 対応)
-'   ・新規 Public Sub: StartWebView2_SpaTest
-'     SPA テストページ (BuildSpaTestHtml) を表示する生成チェーン。
-'     7 種類のハンドラを登録:
+' Stage 9.9b (SPA support)
+'   - New Public Sub: StartWebView2_SpaTest
+'     A creation chain that displays the SPA test page (BuildSpaTestHtml).
+'     Registers 7 kinds of handlers:
 '       NavigationStarting / NavigationCompleted / DocumentTitleChanged /
 '       WebMessageReceived / NewWindowRequested /
-'       HistoryChanged (第9.9b 基底) / DOMContentLoaded (第9.9b 派生 _2)
-'   ・StartWebView2 / StartWebView2_LocalHtml は本体変更なし
-'   ・実機検証は標準モジュールの Test_SpaTest_Real から呼ぶ
+'       HistoryChanged (9.9b base) / DOMContentLoaded (9.9b derived _2)
+'   - StartWebView2 / StartWebView2_LocalHtml have no main-body change
+'   - Real-machine verification is called from Test_SpaTest_Real in the standard module
 '
-' 第9.9a 段階 (ICoreWebView2_2 取り出し基盤)
-'   ・UserForm 側はノータッチ。検証は Immediate から
-'     ?UserForm1.GetActivePane.View2_Ensure で実施した
+' Stage 9.9a (foundation for extracting ICoreWebView2_2)
+'   - The UserForm side is untouched. Verification was done from the Immediate window with
+'     ?UserForm1.GetActivePane.View2_Ensure
 '
-' 第9.8b 段階 (View 基底 IF 網羅 + Settings 系 + Ctrl_Close)
-'   ・新規 Public プロパティ: GetActivePane (Immediate 検証用、m_pane を露出)
-'   ・StartWebView2 / StartWebView2_LocalHtml 本体は変更なし
-'   ・Wv2Pane 側で追加された View_/Settings_/Ctrl_ メソッドの叩き方は
-'     GetActivePane プロパティのコメント (本ファイル内) を参照
+' Stage 9.8b (exhaustive View base IF + Settings group + Ctrl_Close)
+'   - New Public property: GetActivePane (for Immediate window verification, exposes m_pane)
+'   - The bodies of StartWebView2 / StartWebView2_LocalHtml are unchanged
+'   - For how to hit the View_/Settings_/Ctrl_ methods added on the Wv2Pane side, see
+'     the comment of the GetActivePane property (in this file)
 '
-' 第9.8a 段階 (クラス名正式固定、改名のみ、ロジック変更なし)
-'   ・モジュール変数 m_ctrl → m_pane に改名 (Wv2Pane への型変更と整合)
-'   ・As Class8 → As Wv2Environment / As Class9 → As Wv2Pane に型変更
-'   ・New Class8 / New Class9 → New Wv2Environment / New Wv2Pane に変更
-'   ・ヘッダ・本文の Class7 / Class8 / Class9 への言及を
-'     ComCallbackHandler / Wv2Environment / Wv2Pane に置換
-'   ・古いヘッダコメント (9.4c → 9.6a の改名一覧、TabWebView2 移行時の
-'     役割変化説明等) は本ヘッダから削除し、詳細は開発メモ.md 参照
+' Stage 9.8a (class names formally fixed, rename only, no logic change)
+'   - Module variable m_ctrl -> renamed to m_pane (consistent with the type change to Wv2Pane)
+'   - Type changed: As Class8 -> As Wv2Environment / As Class9 -> As Wv2Pane
+'   - Changed New Class8 / New Class9 -> New Wv2Environment / New Wv2Pane
+'   - References to Class7 / Class8 / Class9 in the header and body were replaced with
+'     ComCallbackHandler / Wv2Environment / Wv2Pane
+'   - The old header comments (the rename list from 9.4c -> 9.6a, the explanation of the role
+'     change at the TabWebView2 migration, etc.) were deleted from this header; for details see docs/dev-notes-*.md
 '
-' 第9.7b 段階で追加済みの機構 (継続):
-'   ・モジュール変数: hWnd_Form, m_gap{Left,Right,Top,Bottom}, m_resizeReady
-'   ・UserForm_Initialize: WS_THICKFRAME 付与 + gap 保存 + フラグ立て
-'   ・UserForm_Resize: gap を再現する形で Frame1 をリサイズ、その後
-'     Ctrl_PutBounds 再発行で WebView2 レンダリング領域を追従
-'   ・Me.Width / Me.Height の代入は撤廃済み (設計原則 36)
+' Mechanisms already added in stage 9.7b (continued):
+'   - Module variables: hWnd_Form, m_gap{Left,Right,Top,Bottom}, m_resizeReady
+'   - UserForm_Initialize: grant WS_THICKFRAME + save the gaps + raise the flag
+'   - UserForm_Resize: resize Frame1 in a way that reproduces the gaps, then
+'     reissue Ctrl_PutBounds so the WebView2 rendering area follows
+'   - The assignments to Me.Width / Me.Height have been abolished (design principle 36)
 '
-' 第9.7b で確立した設計原則 (再掲、開発メモ.md 参照):
-'   ・設計原則 34: UserForm リサイズ追従は「隙間 (gap) を保存して再現」方式
-'   ・設計原則 35: UserForm_Resize は Initialize 中の偽イベントに注意
-'                  (m_resizeReady フラグで早期 return)
-'   ・設計原則 36: UserForm のサイズはデザイナで決め、Initialize では
-'                  Me.Width / Me.Height に代入しない
-'   ・設計原則 37: WebView2 のリサイズ追従は UserForm_Resize から
-'                  Ctrl_PutBounds 発行だけで滑らかに動作 (DWM 任せ)
+' Design principles established in 9.7b (restated, see docs/dev-notes-*.md):
+'   - Design principle 34: UserForm resize following uses the "save the gaps and reproduce them" method
+'   - Design principle 35: beware the fake events of UserForm_Resize during Initialize
+'                  (return early with the m_resizeReady flag)
+'   - Design principle 36: decide the UserForm size in the designer, and do not assign to
+'                  Me.Width / Me.Height in Initialize
+'   - Design principle 37: WebView2 resize following works smoothly just by issuing
+'                  Ctrl_PutBounds from UserForm_Resize (left to DWM)
 '
-' VBE での手作業セットアップ:
-'   1. プロジェクトに UserForm を 1 個追加 (名前は UserForm1)
-'   2. ツールボックスから Frame コントロールを 1 個ドロップ (名前は Frame1)
-'      (サイズは適当でよい、デザイナで決めた値が gap 計算の元になる)
-'   3. 以下のコードを UserForm のコードモジュールに貼り付け
+' Manual setup in the VBE:
+'   1. Add one UserForm to the project (name it UserForm1)
+'   2. Drop one Frame control from the toolbox (name it Frame1)
+'      (any size is fine; the value decided in the designer is the basis of the gap calculation)
+'   3. Paste the following code into the UserForm's code module
 '
-' UserForm の役割:
-'   ・hWnd_Frame に Frame1 のウィンドウハンドルを保持
-'   ・hWnd_Form に UserForm 自身のウィンドウハンドルを保持 (リサイズ用)
-'   ・m_gap{L,R,T,B} に Frame1 と UserForm の四方の隙間を保持
-'   ・StartWebView2 で Bing 表示用の生成チェーン (4 種類のハンドラ:
+' Role of the UserForm:
+'   - Holds the window handle of Frame1 in hWnd_Frame
+'   - Holds the UserForm's own window handle in hWnd_Form (for resizing)
+'   - Holds the gaps on all four sides between Frame1 and the UserForm in m_gap{L,R,T,B}
+'   - The creation chain for Bing display in StartWebView2 (4 kinds of handlers:
 '     NavigationStarting / NavigationCompleted / DocumentTitleChanged /
 '     NewWindowRequested)
-'   ・StartWebView2_LocalHtml でテスト HTML 表示用の生成チェーン (5 種類:
-'     上記 + WebMessageReceived)
-'   ・StartWebView2_SpaTest で SPA テスト用の生成チェーン (7 種類:
-'     上記 5 種類 + HistoryChanged + DOMContentLoaded、第9.9b)
-'   ・SendMessageToJS で外部から VBA → JS 送信を撃てる
-'   ・IsPageLoaded プロパティで NavigationCompleted を観測
-'   ・UserForm_Terminate で m_pane → m_env を Nothing に倒し、
-'     ComRelease チェーンを起動 (Wv2Pane.Class_Terminate 内で
-'     全永続ハンドラの remove_ も走る)
+'   - The creation chain for test HTML display in StartWebView2_LocalHtml (5 kinds:
+'     the above + WebMessageReceived)
+'   - The creation chain for SPA testing in StartWebView2_SpaTest (7 kinds:
+'     the above 5 kinds + HistoryChanged + DOMContentLoaded, 9.9b)
+'   - SendMessageToJS lets you fire VBA -> JS sending from outside
+'   - The IsPageLoaded property observes NavigationCompleted
+'   - UserForm_Terminate sets m_pane -> m_env to Nothing and
+'     starts the ComRelease chain (the remove_ of all persistent handlers also runs
+'     inside Wv2Pane.Class_Terminate)
 '
-' 将来 (TabWebView2 クラス導入後、9.10 以降) の役割:
-'   ・m_env / m_pane は m_tab 1 個に集約され、UserForm のフィールドが減る
-'   ・IsPageLoaded は m_tab.IsPageLoaded へ移管
-'   ・StartWebView2 / StartWebView2_LocalHtml / StartWebView2_SpaTest は
-'     m_tab.Init / m_tab.LoadHtml 等に置き換わる
+' Future role (after the TabWebView2 class is introduced, 9.10 onward):
+'   - m_env / m_pane are consolidated into a single m_tab, reducing the UserForm's fields
+'   - IsPageLoaded moves to m_tab.IsPageLoaded
+'   - StartWebView2 / StartWebView2_LocalHtml / StartWebView2_SpaTest are replaced by
+'     m_tab.Init / m_tab.LoadHtml etc.
 
 
 Option Explicit
 
-' WebView2 を配置するターゲットとなるウィンドウハンドル
+' The target window handle on which WebView2 is placed
 Private hWnd_Frame As LongPtr
 
-' --- 第9.7b 段階で追加 (マウスリサイズ用) ---
-'   UserForm 自身の HWND (GA_ROOT で Frame1.HWND から遡って取得)
-'   ・WS_THICKFRAME を付与してマウスリサイズ可能化する対象
-'   ・通常の UserForm_Resize の中で SetWindowLongPtrW を再発行する必要は
-'     ないので、Initialize 時に 1 回取得して保持するだけ
+' --- Added in stage 9.7b (for mouse resizing) ---
+'   The UserForm's own HWND (obtained by tracing up from Frame1.HWND with GA_ROOT)
+'   - The target to which WS_THICKFRAME is granted to make mouse resizing possible
+'   - There is no need to reissue SetWindowLongPtrW inside the normal UserForm_Resize, so
+'     it is obtained once at Initialize time and just held
 Private hWnd_Form    As LongPtr
 
-' --- 第9.7b 段階で追加 (UserForm と Frame1 の隙間、設計原則 34) ---
-'   Initialize 時のデザイン状態で「Frame1 と UserForm の四方の隙間」を
-'   ポイント単位で保存しておく。UserForm_Resize ではこれを再現する形で
-'   Frame1 をリサイズすることで、Frame1 以外のコントロール (将来追加予定)
-'   の位置を破壊せずに済む。
+' --- Added in stage 9.7b (gaps between the UserForm and Frame1, design principle 34) ---
+'   The "gaps on all four sides between Frame1 and the UserForm" in the design state at Initialize time are saved
+'   in point units. By resizing Frame1 in a way that reproduces them in UserForm_Resize,
+'   the positions of controls other than Frame1 (planned to be added in the future)
+'   are not destroyed.
 '
-'   ポイント単位なのは Frame1.Left/Top/Width/Height や Me.InsideWidth/Height
-'   と単位を揃えるため (= MSForms 標準座標系)。WebView2 ICoreWebView2Controller
-'   の put_Bounds はピクセル単位だが、そちらは GetClientRect (ピクセル) で
-'   取り直すので変換式は登場しない。
+'   The point units are to match the units of Frame1.Left/Top/Width/Height and Me.InsideWidth/Height
+'   (= the MSForms standard coordinate system). WebView2 ICoreWebView2Controller's
+'   put_Bounds is in pixels, but that is re-obtained with GetClientRect (pixels),
+'   so no conversion formula appears.
 Private m_gapLeft    As Single
 Private m_gapRight   As Single
 Private m_gapTop     As Single
 Private m_gapBottom  As Single
 
-' --- 第9.7b 段階で追加 (Initialize 中の偽 Resize イベント対策、設計原則 35) ---
-'   VBA UserForm は Me.Width/Me.Height を設定すると Resize イベントが
-'   発火するが、その時点ではまだ m_gap* が未確定。フラグで早期 return する。
+' --- Added in stage 9.7b (countermeasure for fake Resize events during Initialize, design principle 35) ---
+'   The VBA UserForm fires a Resize event when Me.Width/Me.Height are set,
+'   but at that point m_gap* is not yet determined. Return early with a flag.
 Private m_resizeReady As Boolean
-Private Const TABBAR_HEIGHT_PX As Long = 36   ' 第9.11b: タブバー帯の高さ (px)
-Private Const NAVBAR_HEIGHT_PX As Long = 34   ' 第9.12b: ナビバー帯の高さ (px)
+Private Const TABBAR_HEIGHT_PX As Long = 36   ' 9.11b: height of the tab bar band (px)
+Private Const NAVBAR_HEIGHT_PX As Long = 34   ' 9.12b: height of the nav bar band (px)
 
-' UserForm が保持する Wv2Browser (全タブを束ねる包括クラス、9.10c で正式接続)。
-'   Environment 1 個 + 複数タブ (Wv2Pane) を管理する本体フィールド。
-'   (第9.10 整理: 旧 m_env / m_pane フィールドは撤去し m_browser に一本化した)
-Private WithEvents m_browser As Wv2Browser   ' 第9.11a: イベント受信のため WithEvents 化
+' The Wv2Browser held by the UserForm (the comprehensive class that bundles all tabs, formally connected in 9.10c).
+'   The main field that manages 1 Environment + multiple tabs (Wv2Pane).
+'   (9.10 tidying: the old m_env / m_pane fields were removed and unified into m_browser)
+Private WithEvents m_browser As Wv2Browser   ' 9.11a: made WithEvents to receive events
 Attribute m_browser.VB_VarHelpID = -1
-Private m_tabBar As Wv2TabBar                ' 第9.11b: WebView2 製タブバー (任意)
-Private m_navBar As Wv2NavBar   ' 第9.12b: WebView2 製ナビゲーションバー
+Private m_tabBar As Wv2TabBar                ' 9.11b: WebView2-based tab bar (optional)
+Private m_navBar As Wv2NavBar   ' 9.12b: WebView2-based navigation bar
 
-' --- 第9.18: 検索エンジンのプリセット定数は Wv2SettingsBridge へ移設した ---
-'   9.17 まで UserForm1 が持っていた SE_GOOGLE / SE_BING / SE_DUCKDUCKGO /
-'   SE_YAHOO と名前解決ロジックは、設定画面と共有するため Wv2SettingsBridge に
-'   集約した (DRY)。UseSearchEngine は一時ブリッジを生成して委譲する。
+' --- 9.18: the search engine preset constants were moved to Wv2SettingsBridge ---
+'   SE_GOOGLE / SE_BING / SE_DUCKDUCKGO / SE_YAHOO and the name resolution logic that
+'   UserForm1 held until 9.17 were consolidated in Wv2SettingsBridge to share them with the settings screen
+'   (DRY). UseSearchEngine creates a temporary bridge and delegates.
 
 
 ' ============================================================
 ' UserForm_Initialize
-'   UserForm のサイズを設定し、Frame1 の HWND を取得して保持する。
-'   Frame1 のサイズはデザイン時に UserForm のクライアント領域いっぱいに
-'   合わせておく前提 (= Width=792, Height=572 程度を目安)。
-'   生成チェーンの起動は StartWebView2 を別途呼ぶ方式。
+'   Sets the UserForm size and obtains and holds Frame1's HWND.
+'   Premise: Frame1's size is matched at design time to fill the UserForm's client area
+'   (a guideline of about Width=792, Height=572).
+'   The creation chain is started by calling StartWebView2 separately.
 '
-'   第9.7b 段階で追加:
-'     ・UserForm 自身の HWND を GetAncestor(hWnd_Frame, GA_ROOT) で取得
-'     ・WS_THICKFRAME を付与してマウスリサイズ可能化
-'     ・Frame1 と UserForm の四方の隙間 (gap) を保存
-'     ・m_resizeReady フラグを True にして、これ以降の Resize イベントを有効化
-'   注意: Me.Width / Me.Height の代入で Resize イベントが発火するが、
-'         m_resizeReady = False なので UserForm_Resize は早期 return する。
+'   Added in stage 9.7b:
+'     - Obtain the UserForm's own HWND with GetAncestor(hWnd_Frame, GA_ROOT)
+'     - Grant WS_THICKFRAME to make mouse resizing possible
+'     - Save the gaps on all four sides between Frame1 and the UserForm
+'     - Set the m_resizeReady flag to True and enable Resize events from here on
+'   Note: assigning Me.Width / Me.Height fires a Resize event, but
+'         m_resizeReady = False so UserForm_Resize returns early.
 ' ============================================================
 Private Sub UserForm_Initialize()
-    ' --- 第9.7b 修正: Me.Width / Me.Height の代入を撤廃 ---
-    '   起動時の UserForm サイズはデザイン時に設定された値を尊重する。
-    '   デザイン時に決めたサイズを Initialize で上書きすると、
-    '   ・コードがデザイナを上書きする = 設計時の整合性が崩れる
-    '   ・Frame1 はデザイン時のままなので gap 計算が壊れる
-    '   ・「デザイン時のレイアウトを堅持」する設計原則 34 と矛盾する
-    '   起動時に異なるサイズで表示したい場合はデザイナで UserForm のサイズ
-    '   (および Frame1 のサイズ・位置) を併せて調整する。
+    ' --- 9.7b fix: abolished the assignments to Me.Width / Me.Height ---
+    '   The UserForm size at startup respects the value set at design time.
+    '   If the size decided at design time is overwritten in Initialize,
+    '   - code overwrites the designer = design-time consistency collapses
+    '   - Frame1 stays as at design time so the gap calculation breaks
+    '   - it contradicts design principle 34, "uphold the design-time layout"
+    '   If you want to display at a different size at startup, adjust the UserForm size
+    '   (and Frame1's size and position) together in the designer.
 
     hWnd_Frame = Frame1.[_GethWnd]
     Debug.Print "UserForm1.Initialize: Frame1.[_GethWnd] = " & hWnd_Frame
 
-    ' --- 第9.7b: UserForm 自身の HWND を取得 ---
+    ' --- 9.7b: obtain the UserForm's own HWND ---
     hWnd_Form = GetAncestor(hWnd_Frame, GA_ROOT)
     Debug.Print "UserForm1.Initialize: UserForm hWnd = " & hWnd_Form
 
-    ' --- 第9.7b: WS_THICKFRAME を付与してマウスリサイズ可能に ---
+    ' --- 9.7b: grant WS_THICKFRAME to make mouse resizing possible ---
     Dim style As LongPtr
     style = GetWindowLongPtrW(hWnd_Form, GWL_STYLE)
     SetWindowLongPtrW hWnd_Form, GWL_STYLE, style Or WS_THICKFRAME
     SetWindowPos hWnd_Form, 0, 0, 0, 0, 0, _
                  SWP_NOMOVE Or SWP_NOSIZE Or SWP_NOZORDER Or SWP_FRAMECHANGED
-    Debug.Print "UserForm1.Initialize: WS_THICKFRAME 付与済み (style was &H" & _
+    Debug.Print "UserForm1.Initialize: WS_THICKFRAME granted (style was &H" & _
                 Hex(style) & ")"
 
-    ' --- 第9.7b: Frame1 と UserForm の四方の隙間を保存 (設計原則 34) ---
+    ' --- 9.7b: save the gaps on all four sides between Frame1 and the UserForm (design principle 34) ---
     m_gapLeft = Frame1.Left
     m_gapTop = Frame1.Top
     m_gapRight = Me.InsideWidth - (Frame1.Left + Frame1.width)
@@ -320,57 +320,57 @@ Private Sub UserForm_Initialize()
                 " R=" & m_gapRight & _
                 " B=" & m_gapBottom
 
-    ' --- 第9.7b: ここ以降の Resize イベントを有効化 (設計原則 35) ---
+    ' --- 9.7b: enable Resize events from here on (design principle 35) ---
     m_resizeReady = True
 End Sub
 
 
 ' ============================================================
-' UserForm_Resize (第9.7b 段階で新規)
+' UserForm_Resize (new in stage 9.7b)
 '
-'   マウスでフォームをリサイズしたときに呼ばれる。
-'   設計原則 34 に従い、保存しておいた gap を再現する形で Frame1 を
-'   リサイズし、その後 GetClientRect で取得したピクセル単位の rc を
-'   Ctrl_PutBounds に渡して WebView2 レンダリング領域を追従させる。
+'   Called when the form is resized with the mouse.
+'   Following design principle 34, Frame1 is resized in a way that reproduces the saved gaps,
+'   and then the pixel-unit rc obtained with GetClientRect is passed to
+'   Ctrl_PutBounds so the WebView2 rendering area follows.
 '
-'   設計原則 35 に従い、Initialize 中の偽 Resize イベントは
-'   m_resizeReady フラグで早期 return する。
+'   Following design principle 35, fake Resize events during Initialize
+'   return early with the m_resizeReady flag.
 '
-'   WebView2 controller (m_pane) がまだ準備中の場合 (Initialize 直後で
-'   StartWebView2 が呼ばれる前、あるいは StartWebView2 の途中でリサイズ
-'   イベントが入った場合) は Frame1 だけ追従させて Ctrl_PutBounds は
-'   スキップする。
+'   If the WebView2 controller (m_pane) is still being prepared (right after Initialize
+'   before StartWebView2 is called, or when a resize event comes in the middle of StartWebView2),
+'   only Frame1 follows and Ctrl_PutBounds is
+'   skipped.
 ' ============================================================
 Private Sub UserForm_Resize()
     If Not m_resizeReady Then Exit Sub
 
-    ' --- Frame1 を「隙間を保ったまま」リサイズ ---
+    ' --- Resize Frame1 "while keeping the gaps" ---
     Frame1.width = Me.InsideWidth - m_gapLeft - m_gapRight
     Frame1.Height = Me.InsideHeight - m_gapTop - m_gapBottom
 
-    ' --- Wv2Browser がまだ無ければ Frame1 リサイズのみで終了 (第9.10c-2) ---
+    ' --- If there is no Wv2Browser yet, finish with only the Frame1 resize (9.10c-2) ---
     If m_browser Is Nothing Then Exit Sub
 
-    ' --- Frame1 のクライアント領域をピクセル単位で取得し、全タブに再発行 ---
-    '   ResizeAll が全タブ (可視/不可視問わず) に Ctrl_PutBounds を再発行する
-    '   (論点⑧ a)。不可視タブも更新しておくことで、後でアクティブ化された時に
-    '   サイズがずれない。
+    ' --- Get Frame1's client area in pixels and reissue to all tabs ---
+    '   ResizeAll reissues Ctrl_PutBounds to all tabs (visible or invisible)
+    '   (point 8 a). By updating invisible tabs too, the size does not
+    '   drift when they are activated later.
     Dim rc As RECT
     GetClientRect hWnd_Frame, rc
 
-    ' --- 第9.11b: タブバーがあれば上部帯を確保し、コンテンツ領域を下にずらす ---
-    '   ★Browser はタブバーを知らない★ 分割はここ (UserForm) で計算し、
-    '   タブバー帯の矩形は m_tabBar.Resize に、コンテンツ領域の矩形は
-    '   m_browser.ResizeAll に渡す。タブバーが無ければ従来通り全域をコンテンツに。
-    ' --- 第9.12b: 上から順に帯を積み、残りをコンテンツにする (3 分割) ---
-    '   ★分割の計算はここ (UserForm) の責務★ Browser / TabBar / NavBar は
-    '   互いを知らない。UserForm が矩形を配って回る (疎結合)。
-    '   バーが無ければその段を飛ばすので、タブバーだけ / ナビバーだけ / 両方なし
-    '   のいずれの構成でも正しく動く。
+    ' --- 9.11b: if there is a tab bar, secure the top band and shift the content area down ---
+    '   *Browser does not know the tab bar* The split is calculated here (UserForm), and
+    '   the rectangle of the tab bar band goes to m_tabBar.Resize and the rectangle of the content area to
+    '   m_browser.ResizeAll. If there is no tab bar, the whole area goes to content as before.
+    ' --- 9.12b: stack bands from the top and make the rest content (3-way split) ---
+    '   *The split calculation is the responsibility of here (the UserForm)* Browser / TabBar / NavBar
+    '   do not know each other. The UserForm goes around handing out rectangles (loose coupling).
+    '   If there is no bar, that row is skipped, so it works correctly in any configuration:
+    '   tab bar only / nav bar only / neither.
     Dim y As Long
-    y = rc.Top          ' 次に帯を置く y 座標 (上から積み上げる)
+    y = rc.Top          ' The y coordinate at which to place the next band (stack from the top)
 
-    ' --- 1 段目: タブバー ---
+    ' --- 1st row: tab bar ---
     If Not m_tabBar Is Nothing Then
         Dim barRect As RECT
         barRect.Left = rc.Left
@@ -382,7 +382,7 @@ Private Sub UserForm_Resize()
         y = barRect.Bottom
     End If
 
-    ' --- 2 段目: ナビバー (第9.12b) ---
+    ' --- 2nd row: nav bar (9.12b) ---
     If Not m_navBar Is Nothing Then
         Dim navRect As RECT
         navRect.Left = rc.Left
@@ -394,7 +394,7 @@ Private Sub UserForm_Resize()
         y = navRect.Bottom
     End If
 
-    ' --- 3 段目: コンテンツ領域 (残り全部) ---
+    ' --- 3rd row: content area (all the rest) ---
     Dim contentRect As RECT
     contentRect.Left = rc.Left
     contentRect.Top = y
@@ -404,31 +404,31 @@ Private Sub UserForm_Resize()
     m_browser.ResizeAll contentRect
 End Sub
 ' ============================================================
-' SendMessageToJS (第9.4c 段階で新規)
+' SendMessageToJS (new in stage 9.4c)
 '
-'   外部 (Test_MessageEcho_Real 等) から VBA → JS の文字列送信を撃つための
-'   公開メソッド。Wv2Pane.View_PostWebMessageAsString の薄いラッパ。
+'   A public method for firing VBA -> JS string sending from outside (Test_MessageEcho_Real etc.).
+'   A thin wrapper of Wv2Pane.View_PostWebMessageAsString.
 '
-'   呼び出し前に IsPageLoaded で読み込み完了を確認しているのが望ましい
-'   (まだリスナーが登録されていない時点で撃つとメッセージが消える)。
+'   It is desirable to confirm that loading is complete with IsPageLoaded before calling
+'   (firing when the listener is not yet registered makes the message vanish).
 ' ============================================================
 Public Sub SendMessageToJS(ByVal text As String)
-    ' 第9.10 整理: m_pane 直参照から m_browser.ActivePane (GetActivePane) 経由へ。
+    ' 9.10 tidying: from direct m_pane reference to via m_browser.ActivePane (GetActivePane).
     Dim pane As Wv2Pane
     Set pane = GetActivePane
     If pane Is Nothing Then
-        Debug.Print "UserForm1.SendMessageToJS: アクティブな Pane が無い"
+        Debug.Print "UserForm1.SendMessageToJS: no active Pane"
         Exit Sub
     End If
     If Not pane.IsReady Then
-        Debug.Print "UserForm1.SendMessageToJS: Pane が Ready でない"
+        Debug.Print "UserForm1.SendMessageToJS: Pane is not Ready"
         Exit Sub
     End If
 
     Dim hr As Long
     hr = pane.View_PostWebMessageAsString(text)
     If hr <> 0 Then
-        Debug.Print "UserForm1.SendMessageToJS: 失敗 hr=&H" & Hex(hr)
+        Debug.Print "UserForm1.SendMessageToJS: failed hr=&H" & Hex(hr)
     Else
         Debug.Print "UserForm1.SendMessageToJS OK: """ & text & """"
     End If
@@ -436,20 +436,20 @@ End Sub
 
 
 ' ============================================================
-' IsPageLoaded (第9.4c 段階で新規)
+' IsPageLoaded (new in stage 9.4c)
 '
-'   現在表示中のページが NavigationCompleted まで進んでいるかを返す。
-'   実体は m_pane.IsPageLoaded を委譲しているだけ (薄いラッパ)。
+'   Returns whether the currently displayed page has progressed to NavigationCompleted.
+'   The substance just delegates m_pane.IsPageLoaded (a thin wrapper).
 '
-'   Test_MessageEcho_Real が「ページ読み込み完了を待ってから PostMessage」
-'   の同期に使う。
+'   Used by Test_MessageEcho_Real for the synchronization of
+'   "wait for page loading to complete, then PostMessage".
 '
-'   暫定設計の注意:
-'     初回ナビゲーション完了 1 回しか意味を持たない。SPA 対応 (pushState
-'     による画面更新追跡など) は将来の包括クラス導入時に再設計する。
+'   Note on the provisional design:
+'     It has meaning only for the first navigation completion, once. SPA support (tracking screen updates
+'     by pushState etc.) will be redesigned when the comprehensive class is introduced in the future.
 ' ============================================================
 Public Property Get IsPageLoaded() As Boolean
-    ' 第9.10 整理: m_pane 直参照から GetActivePane 経由へ。
+    ' 9.10 tidying: from direct m_pane reference to via GetActivePane.
     Dim pane As Wv2Pane
     Set pane = GetActivePane
     If pane Is Nothing Then
@@ -461,10 +461,10 @@ End Property
 
 
 ' ============================================================
-' GetActivePane プロパティ (第9.8b 段階で追加、Immediate 検証用、第9.9c で改善)
+' GetActivePane property (added in stage 9.8b, for Immediate verification, improved in 9.9c)
 '
-'   現在 UserForm が保持している Wv2Pane インスタンスへの参照を返す。
-'   Immediate ウィンドウから以下のように Wv2Pane のメソッドを直接叩ける:
+'   Returns a reference to the Wv2Pane instance the UserForm currently holds.
+'   From the Immediate window you can hit Wv2Pane's methods directly as follows:
 '
 '     ?UserForm1.GetActivePane.View_GetSource()
 '     ?UserForm1.GetActivePane.View_GetCanGoBack()
@@ -478,24 +478,24 @@ End Property
 '     UserForm1.GetActivePane.View_ExecuteScript "1+2"
 '     UserForm1.GetActivePane.View_ExecuteScriptSafe "throw new Error('x')"  (9.9c)
 '
-'   第9.9c 改善 (案 G1-a):
-'     m_pane が Nothing の場合に Debug.Print で警告を出すようにした。
-'     これにより Immediate 検証で
+'   9.9c improvement (Plan G1-a):
+'     When m_pane is Nothing, a warning is now given by Debug.Print.
+'     With this, during Immediate verification when you hit
 '       ?UserForm1.GetActivePane.View_ExecuteScript "x"
-'     を叩いたとき「オブジェクト変数が設定されていません」エラーで迷子になる
-'     代わりに、「m_pane が Nothing です」と警告が出るようになる。
-'     Nothing 自体は変わらず返すので、利用者が Is Nothing チェックする経路も
-'     維持される。
+'     instead of getting lost in the "Object variable not set" error,
+'     a warning "m_pane is Nothing" now appears.
+'     Nothing itself is still returned unchanged, so the path where the user does an Is Nothing check
+'     is also maintained.
 '
-'   将来 TabWebView2 が入ったら GetActivePane は m_tab.ActivePane 等の
-'   薄いラッパに変わる予定 (= 「アクティブタブの Pane を取る」意味)。
+'   When TabWebView2 comes in, GetActivePane is planned to become a thin wrapper such as m_tab.ActivePane
+'   (= meaning "get the active tab's Pane").
 ' ============================================================
 Public Property Get GetActivePane() As Wv2Pane
-    ' 第9.10c-2: m_pane 直参照から m_browser.ActivePane 経由へ繋ぎ替え。
-    '   「アクティブタブの Pane を取る」という本来の意味になった。
+    ' 9.10c-2: re-pointed from direct m_pane reference to via m_browser.ActivePane.
+    '   It now has its original meaning of "get the active tab's Pane".
     If m_browser Is Nothing Then
-        Debug.Print "[UserForm1.GetActivePane] m_browser が Nothing (UserForm が未起動か、" & _
-                    "StartWebView2 系が未呼び出しか)"
+        Debug.Print "[UserForm1.GetActivePane] m_browser is Nothing (the UserForm is not started, or " & _
+                    "the StartWebView2 family has not been called)"
         Set GetActivePane = Nothing
         Exit Property
     End If
@@ -504,29 +504,29 @@ End Property
 
 
 ' ============================================================
-' OnExecuteScriptResult (第9.9c 段階で新規、案 α 第二実装の受け口)
+' OnExecuteScriptResult (new in stage 9.9c, receiving end of the second implementation of Plan alpha)
 '
-'   Wv2Pane.OnExecuteScriptCompleted から直接呼ばれる ExecuteScript 結果の通知口。
-'   Wv2Pane が UserForm1 への参照を保持しているわけではなく、グローバル
-'   UserForm 参照 (UserForm1.OnExecuteScriptResult ...) で呼ばれる
-'   (循環参照なし、案 E1-a-i)。
+'   The notification entry for ExecuteScript results, called directly from Wv2Pane.OnExecuteScriptCompleted.
+'   Wv2Pane does not hold a reference to UserForm1; it is called through the global
+'   UserForm reference (UserForm1.OnExecuteScriptResult ...)
+'   (no circular reference, Plan E1-a-i).
 '
-'   引数:
-'     callbackId : View_ExecuteScript が返した連番 ID
+'   Arguments:
+'     callbackId : the sequential ID returned by View_ExecuteScript
 '     errorCode  : HRESULT (0 = S_OK)
-'     resultJson : JS の戻り値を JSON エンコードした文字列
-'                  View_ExecuteScriptSafe (9.9c F) 経由なら {"ok":true,...} or
-'                  {"ok":false,...} の構造化 JSON が来る
+'     resultJson : the JS return value as a JSON-encoded string
+'                  Via View_ExecuteScriptSafe (9.9c F), structured JSON of the form {"ok":true,...} or
+'                  {"ok":false,...} comes
 '
-'   現状の実装:
-'     ログ出力のみ (Wv2Pane 内のログと併存、案 E2-X)。
-'     将来 SPA 連携を本格化する際は、ここから Form 上のコントロール
-'     (例: TextBox や ListBox) に結果を表示する形に拡張可能。
+'   Current implementation:
+'     Log output only (coexists with the log inside Wv2Pane, Plan E2-X).
+'     When SPA integration is taken up in earnest in the future, this can be extended to display the result
+'     in controls on the Form (e.g. a TextBox or ListBox).
 '
-'   ★ エラー時の挙動 ★
-'     Wv2Pane.OnExecuteScriptCompleted は本 Sub をエラー防御なしで呼ぶので、
-'     本 Sub 内で例外を投げてはいけない (= COM コールバック経路を破壊する)。
-'     ログだけに留め、複雑な処理は避ける。
+'   * Behavior on error *
+'     Wv2Pane.OnExecuteScriptCompleted calls this Sub without error protection, so
+'     an exception must not be thrown inside this Sub (= it would destroy the COM callback path).
+'     Keep to logging only and avoid complex processing.
 ' ============================================================
 Public Sub OnExecuteScriptResult( _
     ByVal callbackId As Long, _
@@ -540,10 +540,10 @@ End Sub
 
 
 ' ============================================================
-' FrameHwnd (第9.10b 検証専用アクセサ)
-'   Frame1 のウィンドウハンドル (hWnd_Frame) を外部に公開する。
-'   Wv2Browser.Init に渡す親フレーム HWND として使う。
-'   UserForm_Initialize が走った後 (= Show 後) でないと 0 のままな点に注意。
+' FrameHwnd (stage 9.10b verification-only accessor)
+'   Exposes Frame1's window handle (hWnd_Frame) to the outside.
+'   Used as the parent-frame HWND passed to Wv2Browser.Init.
+'   Note that it stays 0 until after UserForm_Initialize has run (= after Show).
 ' ============================================================
 Public Property Get FrameHwnd() As LongPtr
     FrameHwnd = hWnd_Frame
@@ -551,11 +551,11 @@ End Property
 
 
 ' ============================================================
-' BuildSpaAppHtml (第9.10d-2a、最小 SPA HTML を返す)
-'   ASCII のみ (日本語を含めない) にして、VBA の Print # (システムロケール)
-'   で書き出しても文字化けしないようにする。DOMContentLoaded が確実に
-'   発火する実体のあるページ。pushState 等は d-1 同様 ExecuteScript 撃ちで
-'   制御するので、HTML 側にはボタンを置かない (論点C: 最小構成)。
+' BuildSpaAppHtml (9.10d-2a, returns the minimal SPA HTML)
+'   ASCII only (no Japanese included) so that
+'   even writing out with VBA's Print # (system locale) does not garble. A real page on which
+'   DOMContentLoaded reliably fires. pushState etc. are controlled by firing ExecuteScript as in d-1,
+'   so no buttons are placed on the HTML side (point C: minimal configuration).
 ' ============================================================
 Public Function BuildSpaAppHtml() As String
     Dim s As String
@@ -574,10 +574,10 @@ Public Function BuildSpaAppHtml() As String
 End Function
 
 ' ============================================================
-' WriteSpaAppFolder (第9.10d-2a、フォルダ作成 + テキストファイル書き出し)
-'   folderPath がなければ作成 (親 C:\Temp は既存前提)。
-'   folderPath\fileName に content を書き出す (ASCII 前提、Print # で十分)。
-'   戻り値: 成功で True。
+' WriteSpaAppFolder (9.10d-2a, folder creation + text file writing)
+'   Create folderPath if it does not exist (the parent C:\Temp is assumed to exist).
+'   Write content to folderPath\fileName (ASCII assumed, Print # is enough).
+'   Return value: True on success.
 ' ============================================================
 Public Function WriteSpaAppFolder( _
     ByVal folderPath As String, _
@@ -586,10 +586,10 @@ Public Function WriteSpaAppFolder( _
 
     On Error GoTo eh
 
-    ' フォルダがなければ作成
+    ' Create the folder if it does not exist
     If Dir(folderPath, vbDirectory) = "" Then
         MkDir folderPath
-        Debug.Print "WriteSpaAppFolder: フォルダ作成 " & folderPath
+        Debug.Print "WriteSpaAppFolder: creating folder " & folderPath
     End If
 
     Dim fullPath As String
@@ -603,73 +603,74 @@ Public Function WriteSpaAppFolder( _
     Print #fnum, content
     Close #fnum
 
-    Debug.Print "WriteSpaAppFolder: 書き出し OK " & fullPath & " (" & Len(content) & " 文字)"
+    Debug.Print "WriteSpaAppFolder: write OK " & fullPath & " (" & Len(content) & " chars)"
     WriteSpaAppFolder = True
     Exit Function
 eh:
-    Debug.Print "WriteSpaAppFolder: エラー " & Err.Number & " " & Err.Description
+    Debug.Print "WriteSpaAppFolder: error " & Err.Number & " " & Err.Description
     WriteSpaAppFolder = False
 End Function
 
 ' ============================================================
-' StartWebView2_Spa (SPA 起動の雛形)
+' StartWebView2_Spa (template for SPA startup)
 '
-'   ローカルフォルダを https://appassets.example/ にマッピングし、そこの
-'   自作 SPA (index.html) を開く。AddTabWithUrlForSpa 1 本で
+'   Maps a local folder to https://appassets.example/ and opens the
+'   home-made SPA (index.html) there. With the single AddTabWithUrlForSpa
 '   SetMapping + Navigate + EnableSpaHandlers (HistoryChanged/DOMContentLoaded)
-'   まで一括で行う (仕様事実 13: Navigate 先はファイル名まで明示)。
+'   everything is done in one go (spec fact 13: specify the Navigate target down to the file name).
 '
-'   SPA (history.pushState 等) を使うアプリを WebView2 で動かすときの起動口。
-'   配信する HTML は BuildSpaAppHtml/WriteSpaAppFolder で用意する
-'   (実運用では任意の HTML をフォルダに置き換える)。
+'   The startup entry for running an app that uses an SPA (history.pushState etc.) in WebView2.
+'   The HTML to deliver is prepared with BuildSpaAppHtml/WriteSpaAppFolder
+'   (in real operation, replace with any HTML in the folder).
 '
-'   使い方:
+'   Usage:
 '     UserForm1.Show vbModeless
 '     UserForm1.StartWebView2_Spa
-'   アクティブタブの Pane は ?UserForm1.GetActivePane で取得できる。
+'   The active tab's Pane can be obtained with ?UserForm1.GetActivePane.
 ' ============================================================
 Public Sub StartWebView2_Spa()
-    Debug.Print "UserForm1.StartWebView2_Spa 開始 (SPA 起動)"
+    Debug.Print "UserForm1.StartWebView2_Spa start (SPA startup)"
+    If AlreadyStarted("StartWebView2_Spa") Then Exit Sub
 
-    ' --- 1. SPA フォルダを準備 (HTML を書き出す) ---
+    ' --- 1. Prepare the SPA folder (write out the HTML) ---
     Dim folderPath As String
-    folderPath = "C:\Temp\VBA_WebView2_SPA"
+    folderPath = Wv2Log.AppFolder("SPA")
     If Not WriteSpaAppFolder(folderPath, "index.html", BuildSpaAppHtml()) Then
-        Debug.Print "StartWebView2_Spa: SPA フォルダ準備に失敗"
+        Debug.Print "StartWebView2_Spa: failed to prepare the SPA folder"
         Exit Sub
     End If
 
-    ' --- 2. Wv2Browser を生成し Environment を初期化 ---
+    ' --- 2. Create Wv2Browser and initialize the Environment ---
     Set m_browser = New Wv2Browser
-    If Not m_browser.Init(hWnd_Frame, "C:\Temp\VBA_WebView2") Then
-        Debug.Print "StartWebView2_Spa: Wv2Browser.Init 失敗 (state=" & _
+    If Not m_browser.Init(hWnd_Frame, Wv2Log.AppFolder("Profile")) Then
+        Debug.Print "StartWebView2_Spa: Wv2Browser.Init failed (state=" & _
                     m_browser.state & ")"
         Exit Sub
     End If
     Debug.Print "StartWebView2_Spa: Wv2Browser.Init OK"
 
-    ' --- 3. SPA タブを一括生成 (AddTab→SetMapping→Navigate→EnableSpaHandlers) ---
+    ' --- 3. Create the SPA tab in one go (AddTab->SetMapping->Navigate->EnableSpaHandlers) ---
     Dim pane As Wv2Pane
     Set pane = m_browser.AddTabWithUrlForSpa("appassets.example", folderPath, "index.html")
     If pane Is Nothing Then
-        Debug.Print "StartWebView2_Spa: AddTabWithUrlForSpa に失敗"
+        Debug.Print "StartWebView2_Spa: failed in AddTabWithUrlForSpa"
         Exit Sub
     End If
-    Debug.Print "StartWebView2_Spa: SPA タブ生成 OK (ViewPtr=" & pane.ViewPtr & ")"
-    Debug.Print "  https://appassets.example/index.html が表示されたら成功。"
+    Debug.Print "StartWebView2_Spa: SPA tab creation OK (ViewPtr=" & pane.ViewPtr & ")"
+    Debug.Print "  Success if https://appassets.example/index.html is displayed."
 End Sub
 
 ' ============================================================
 ' UserForm_Terminate
-'   フォームが閉じられたら Wv2Pane → Wv2Environment の順で解放。
-'   各クラスの Class_Terminate で ComRelease チェーンが走り、
-'   ICoreWebView2Controller / ICoreWebView2Environment の参照が解放される。
+'   When the form is closed, release in the order Wv2Pane -> Wv2Environment.
+'   The ComRelease chain runs in each class's Class_Terminate,
+'   and the references of ICoreWebView2Controller / ICoreWebView2Environment are released.
 ' ============================================================
 ' ============================================================
-' ★第9.11a イベント受信ハンドラ (疎結合タブバー用イベント口の受け手)
-'   Browser の RaiseEvent をここで受けて Debug.Print するだけ。
-'   これが実際のタブバー実装 (WebView2 製/MsForms 製) に差し替わる。
-'   ★検証の見方★ イミディエイトウィンドウ (Ctrl+G) に以下のログが出る:
+' *9.11a event receiving handlers (the receivers of the loosely coupled tab bar's event entries)
+'   They just receive Browser's RaiseEvent here and Debug.Print.
+'   This will be replaced by the actual tab bar implementation (WebView2-based / MsForms-based).
+'   *How to read the verification* The following logs appear in the Immediate window (Ctrl+G):
 '     [EVT] TabAdded / [EVT] ActiveChanged / [EVT] TabClosed / [EVT] TabTitleChanged
 ' ============================================================
 Private Sub m_browser_TabAdded(ByVal index As Long)
@@ -688,111 +689,127 @@ Private Sub m_browser_TabTitleChanged(ByVal index As Long, ByVal title As String
     Debug.Print "[EVT] TabTitleChanged(index=" & index & ", title=" & title & ")"
 End Sub
 
-' --- 第9.12a: URL 状態の変化 (アドレスバー更新用イベント) ---
-'   NavigationCompleted と HistoryChanged の両方から撃たれるので、1 回の遷移で
-'   複数回出るのが正常 (全体同期方式なので無害、設計原則 60)。
+' --- 9.12a: changes in URL state (event for updating the address bar) ---
+'   It is fired from both NavigationCompleted and HistoryChanged, so multiple arrivals
+'   for one navigation are normal (harmless thanks to the full-sync method, design principle 60).
 Private Sub m_browser_TabUrlChanged(ByVal index As Long, ByVal url As String, _
                                     ByVal canGoBack As Boolean, ByVal canGoForward As Boolean)
     Debug.Print "[EVT] TabUrlChanged(index=" & index & ", url=" & url & _
                 ", back=" & canGoBack & ", fwd=" & canGoForward & ")"
 End Sub
-' --- 現在状態をダンプする内部ヘルパ ---
+' --- Internal helper that dumps the current state ---
 Private Sub DumpState(ByVal tag As String)
     If m_browser Is Nothing Then
-        Debug.Print "  [状態:" & tag & "] m_browser は Nothing"
+        Debug.Print "  [state:" & tag & "] m_browser is Nothing"
         Exit Sub
     End If
-    Debug.Print "  [状態:" & tag & "] TabCount=" & m_browser.TabCount & _
+    Debug.Print "  [state:" & tag & "] TabCount=" & m_browser.TabCount & _
                 ", ActiveIndex=" & m_browser.ActiveIndex
 End Sub
 
 
 Private Sub UserForm_Terminate()
-    Debug.Print "UserForm1.Terminate 開始"
+    Debug.Print "UserForm1.Terminate start"
 
-    ' --- 第9.12b: ナビバーを先に落とす (生成と逆順) ---
+    ' --- 9.12b: drop the nav bar first (reverse order of creation) ---
     If Not m_navBar Is Nothing Then
         m_navBar.Shutdown
         Set m_navBar = Nothing
     End If
 
-    ' 第9.11b: タブバーを先に解放 (WithEvents 購読を解除)。
+    ' 9.11b: release the tab bar first (cancel the WithEvents subscription).
     If Not m_tabBar Is Nothing Then
         m_tabBar.Shutdown
         Set m_tabBar = Nothing
     End If
 
-    ' 第9.10e: 循環参照 (Browser ? Pane) を断ってから解放する。
-    '   Shutdown が各 Pane の m_browser 後方参照を切る。これを呼ばずに
-    '   Set m_browser = Nothing すると循環参照で解放されずリークする (設計原則 58)。
+    ' 9.10e: cut the circular reference (Browser ? Pane) and then release.
+    '   Shutdown cuts each Pane's m_browser back reference. If Set m_browser = Nothing
+    '   is done without calling it, the circular reference prevents release and leaks (design principle 58).
     If Not m_browser Is Nothing Then m_browser.Shutdown
 
-    ' Wv2Browser を解放 (内部で全 Pane → Environment の順、設計原則 43)
+    ' Release Wv2Browser (internally all Panes -> Environment in that order, design principle 43)
     Set m_browser = Nothing
 
-    Debug.Print "UserForm1.Terminate 完了"
+    Debug.Print "UserForm1.Terminate done"
 End Sub
-' --- フル構成で起動 (3 タブ + タブバー + ナビバー) ---
-'   ★HTML の配信フォルダは TabBar と NavBar で別にする★
-'   仮想ホスト名も別 (appassets.tabbar / appassets.navbar)。
-Public Sub StartWebView2_Full()
-    Debug.Print "==== StartWebView2_Full 開始 (3 タブ + タブバー + ナビバー) ===="
+' ============================================================
+' AlreadyStarted (English fork)
+'   Running a StartWebView2_* sub a second time used to replace m_browser /
+'   m_tabBar / m_navBar without shutting the old ones down. Their reference
+'   cycles (Browser <-> Pane, bar pane <-> sink) kept the old WebViews alive,
+'   visible in the frame and still receiving events. Refuse instead: close
+'   the form and Show it again to restart.
+' ============================================================
+Private Function AlreadyStarted(ByVal caller As String) As Boolean
+    If Not m_browser Is Nothing Then
+        Debug.Print caller & ": already started on this form - close the form and Show it again to restart"
+        AlreadyStarted = True
+    End If
+End Function
 
-    ' --- 1. Browser を起動して 3 タブ追加 ---
+' --- Start in the full configuration (3 tabs + tab bar + nav bar) ---
+'   *The HTML delivery folders are separate for TabBar and NavBar*
+'   The virtual host names are also separate (appassets.tabbar / appassets.navbar).
+Public Sub StartWebView2_Full()
+    Debug.Print "==== StartWebView2_Full start (3 tabs + tab bar + nav bar) ===="
+    If AlreadyStarted("StartWebView2_Full") Then Exit Sub
+
+    ' --- 1. Start Browser and add 3 tabs ---
     Set m_browser = New Wv2Browser
-    If Not m_browser.Init(hWnd_Frame, "C:\Temp\VBA_WebView2") Then
-        Debug.Print "StartWebView2_Full: Browser.Init 失敗 (state=" & m_browser.state & ")"
+    If Not m_browser.Init(hWnd_Frame, Wv2Log.AppFolder("Profile")) Then
+        Debug.Print "StartWebView2_Full: Browser.Init failed (state=" & m_browser.state & ")"
         Exit Sub
     End If
     Dim p As Wv2Pane
     Set p = m_browser.AddTabWithUrl("https://www.bing.com")
-    If p Is Nothing Then Debug.Print "  タブ追加失敗 (bing)": Exit Sub
+    If p Is Nothing Then Debug.Print "  tab add failed (bing)": Exit Sub
     Set p = m_browser.AddTabWithUrl("https://example.com")
-    If p Is Nothing Then Debug.Print "  タブ追加失敗 (example)": Exit Sub
+    If p Is Nothing Then Debug.Print "  tab add failed (example)": Exit Sub
     Set p = m_browser.AddTabWithUrl("https://www.msn.com")
-    If p Is Nothing Then Debug.Print "  タブ追加失敗 (msn)": Exit Sub
+    If p Is Nothing Then Debug.Print "  tab add failed (msn)": Exit Sub
 
-    ' --- 2. タブバーを起動 ---
+    ' --- 2. Start the tab bar ---
     Set m_tabBar = New Wv2TabBar
-    If Not m_tabBar.Init(m_browser, hWnd_Frame, "C:\Temp\VBA_WebView2_TabBar") Then
-        Debug.Print "StartWebView2_Full: TabBar.Init 失敗"
+    If Not m_tabBar.Init(m_browser, hWnd_Frame, Wv2Log.AppFolder("TabBar")) Then
+        Debug.Print "StartWebView2_Full: TabBar.Init failed"
         Set m_tabBar = Nothing
         Exit Sub
     End If
 
-    ' --- 3. ナビバーを起動 (第9.12b、配信フォルダは TabBar と別) ---
+    ' --- 3. Start the nav bar (9.12b, the delivery folder is separate from TabBar) ---
     Set m_navBar = New Wv2NavBar
-    If Not m_navBar.Init(m_browser, hWnd_Frame, "C:\Temp\VBA_WebView2_NavBar") Then
-        Debug.Print "StartWebView2_Full: NavBar.Init 失敗"
+    If Not m_navBar.Init(m_browser, hWnd_Frame, Wv2Log.AppFolder("NavBar")) Then
+        Debug.Print "StartWebView2_Full: NavBar.Init failed"
         Set m_navBar = Nothing
         Exit Sub
     End If
 
-    ' --- 4. レイアウトを再計算 (3 分割) ---
+    ' --- 4. Recompute the layout (3-way split) ---
     UserForm_Resize
 
-    Debug.Print "==== StartWebView2_Full 完了 (TabCount=" & m_browser.TabCount & _
+    Debug.Print "==== StartWebView2_Full done (TabCount=" & m_browser.TabCount & _
                 ", ActiveIndex=" & m_browser.ActiveIndex & _
                 ", TabBar.IsReady=" & m_tabBar.IsReady & _
                 ", NavBar.IsReady=" & m_navBar.IsReady & ") ===="
-    Debug.Print "  3 段 (タブバー / ナビバー / コンテンツ) が重ならず並べば成功。"
+    Debug.Print "  Success if the 3 rows (tab bar / nav bar / content) line up without overlapping."
 End Sub
 
 ' ============================================================
-' CurrentBrowser (第9.17、案 A-1)
+' CurrentBrowser (9.17, Plan A-1)
 '
-'   起動中の Wv2Browser への読み取り専用参照を返す。m_browser は
-'   Private WithEvents で外 (イミディエイト / 検索エンジン切替 / 将来の UI) から
-'   触れないため、素の参照を渡す口を 1 本だけ公開する。WithEvents は宣言側の
-'   制約であって、Get で参照を返すのは問題ない。
+'   Returns a read-only reference to the running Wv2Browser. m_browser is
+'   Private WithEvents and cannot be touched from outside (Immediate window / search engine switching / future UI),
+'   so exactly one entry that hands out a plain reference is exposed. WithEvents is a constraint on the
+'   declaration side, and returning a reference with a Get is not a problem.
 '
-'   起動前 (StartWebView2_Full 未実行) は m_browser が Nothing なので
-'   Nothing を返す。呼び出し側は Is Nothing を確認すること。
+'   Before startup (StartWebView2_Full not run) m_browser is Nothing, so
+'   it returns Nothing. The caller must check Is Nothing.
 '
-'   ★用途★
-'     ・イミディエイトで  Set b = UserForm1.CurrentBrowser  として掴み、
-'       b.SearchEngine = ... で検索エンジンを実機切替する (9.16 の宿題)。
-'     ・今後の拡張全般で「起動中 Browser を外から触る」共通の足場。
+'   *Uses*
+'     - In the Immediate window, grab it with  Set b = UserForm1.CurrentBrowser  and
+'       switch the search engine on the real machine with b.SearchEngine = ... (the open item of 9.16).
+'     - A common foothold for "touching the running Browser from outside" in all future extensions.
 ' ============================================================
 Public Property Get CurrentBrowser() As Wv2Browser
     Set CurrentBrowser = m_browser
@@ -800,31 +817,31 @@ End Property
 
 
 ' ============================================================
-' UseSearchEngine (第9.17、案 B-1)
+' UseSearchEngine (9.17, Plan B-1)
 '
-'   プリセット名で検索エンジンを切り替える最小の口。GUI 部品ではなく
-'   ロジックの口 (実機ではイミディエイトから叩く)。
+'   A minimal entry for switching the search engine by preset name. Not a GUI part but
+'   a logic entry (on the real machine, hit it from the Immediate window).
 '
-'   引数 engineName: "google" / "bing" / "duckduckgo" / "yahoo"
-'     大文字小文字・前後空白は無視する。未知の名前は既定 (Google) に落として
-'     警告を出す。空文字/空白のみに対する最終ガードは Browser 側 Property Let
-'     (空なら Google へフォールバック) が担保するので、ここでは名前解決に専念する。
+'   Argument engineName: "google" / "bing" / "duckduckgo" / "yahoo"
+'     Case and leading/trailing whitespace are ignored. An unknown name falls to the default (Google)
+'     with a warning. The final guard against empty string/whitespace only is guaranteed by the Browser-side Property Let
+'     (falls back to Google if empty), so here we concentrate on name resolution.
 '
-'   Browser 未起動 (CurrentBrowser Is Nothing) の場合は何もせず注意を出す。
+'   If Browser is not started (CurrentBrowser Is Nothing), it does nothing and gives a notice.
 '
-'   使用例 (実機、StartWebView2_Full 起動後):
+'   Usage example (real machine, after StartWebView2_Full has been started):
 '     UserForm1.UseSearchEngine "bing"
-'     → その後アドレスバーに  日本 天気  と打つと Bing 検索結果が出る。
+'     -> After that, typing a search phrase (e.g.  excel vba ) in the address bar shows Bing search results.
 ' ============================================================
 Public Sub UseSearchEngine(ByVal engineName As String)
     If m_browser Is Nothing Then
-        Debug.Print "UseSearchEngine: Browser が未起動です (先に StartWebView2_Full を実行)。"
+        Debug.Print "UseSearchEngine: Browser is not started (run StartWebView2_Full first)."
         Exit Sub
     End If
 
-    ' 第9.18: プリセット名の解決は Wv2SettingsBridge に集約済み。ここでは一時
-    '   ブリッジを生成して Browser を結び付け、SetEngine に委譲する。設定画面が
-    '   使うのと全く同じ名前解決経路を通るので、イミディエイトと GUI で挙動が一致する。
+    ' 9.18: the resolution of preset names is consolidated in Wv2SettingsBridge. Here a temporary
+    '   bridge is created, Browser is bound, and it delegates to SetEngine. It passes through exactly the same
+    '   name resolution path the settings screen uses, so the behavior matches between the Immediate window and the GUI.
     Dim bridge As Wv2SettingsBridge
     Set bridge = New Wv2SettingsBridge
     bridge.BindBrowser m_browser
@@ -832,7 +849,7 @@ Public Sub UseSearchEngine(ByVal engineName As String)
     Dim applied As String
     applied = bridge.SetEngine(engineName)
 
-    Debug.Print "UseSearchEngine: 検索エンジンを '" & applied & "' に設定 (" & _
+    Debug.Print "UseSearchEngine: set the search engine to '" & applied & "' (" & _
                 m_browser.Debug_SearchEngine() & ")"
 End Sub
 

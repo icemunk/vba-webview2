@@ -1,67 +1,97 @@
-## 🚀 VBA WebView2 Integration Project
+# VBA + WebView2 for Excel
 
-<img width="1916" height="1028" alt="image" src="https://github.com/user-attachments/assets/a2bcff2c-3443-42c7-9315-f2555433a61a" />
+Host **Microsoft Edge WebView2** directly on an Excel VBA UserForm and drive it from VBA:
+no .NET wrapper, no ActiveX/COM registration, no references to set, no admin rights.
 
-### Overview
-This project is a next-generation VBA development framework that aims to directly place and control **Microsoft Edge WebView2** on UserForms—without requiring external library installations or setting ActiveX references from Excel VBA.
+English fork of [tarboh/WebView2-For-Excel-VBA](https://github.com/tarboh/WebView2-For-Excel-VBA)
+(MIT licence, original author tarboh). Translated, reviewed and patched; see
+[`docs/REVIEW.md`](docs/REVIEW.md) for the audit and the list of changes.
 
-With the end of support for Internet Explorer (IE), browser control in VBA has reached a major turning point. This repository hacks the `WebView2Loader.dll` natively embedded in modern Office installations, bypassing standard VBA limitations to provide a modern UI/UX via low-level COM manipulation using **DispCallFunc**.
+## What it does
 
----
+- Creates a WebView2 environment through `CreateCoreWebView2EnvironmentWithOptions` in
+  `WebView2Loader.dll`, then calls every COM method by vtable index with `DispCallFunc`.
+- COM callbacks (environment created, navigation completed, script results, web messages,
+  resource requests, …) are received through hand-built IUnknown vtables plus small x64
+  machine-code thunks that forward into VBA class methods.
+- On top of that sits a tabbed browser UserForm and an automation API:
+  - **Page automation** — `QuerySelector`, `QuerySelectorAll`, `GetElementById` → `Wv2Element`
+    with `.Value`, `.Click`, `.SetAttribute`; `WaitFor`, `WaitGone`, `WaitSettled`,
+    `ArmContentSignal` / `ArmNetworkSignal` / `ArmUrlSignal`; synchronous `EvalSync` for JS.
+  - **Network inspection** — capture requests/responses (`NetCaptureStart`, `NetDetail*`,
+    `NetDetailRespBody`), with cookie/auth headers redacted by default.
+  - **HTML GUI for UserForms** — tab bar, navigation bar and settings page are HTML inside WebView2.
+  - Example: `Wv2Maps.MapsGeocodeSheet` geocodes a column of addresses via Google Maps.
 
-### 🔥 Project Breakthroughs
-Previously, using WebView2 from VBA required building a .NET COM wrapper and registering it in the Windows Registry (which demands Administrator privileges)—an impractical barrier for corporate environments.
+## Requirements
 
-However, this project achieves zero-dependency operation based on the following **discoveries**:
+- Windows 10/11 with the **WebView2 Runtime** (preinstalled on current Windows).
+- **64-bit** Microsoft 365 / Office 2016+ Excel. 32-bit Office is not supported (the thunks are
+  x64 code).
+- `WebView2Loader.dll` (x64) reachable by `Declare ... Lib "WebView2Loader.dll"` — see
+  [Locating WebView2Loader.dll](#locating-webview2loaderdll).
+- Macros enabled for the workbook.
 
-* **Leveraging Pre-installed Assets**: 
-  By directly tapping into the `WebView2Loader.dll` found inside:
-  `C:\Program Files\Microsoft Office\root\Office16\ADDINS\Microsoft Power Query for Excel Integrated\bin`
-  using standard `Declare` statements, we can spin up a WebView2 Environment without altering the host OS environment.
-* **Pure vTable Hacking**: 
-  Once the `WebView2Environment` is captured, every single operation is executed via function pointer calls using `DispCallFunc`. This achieves a complete **Zero-Reference-Setting** architecture.
+## Quick start
 
----
+1. Open `book/WebView2_v0.5.2.xlsm` (keep it outside OneDrive — AutoSave fights the import tools).
+2. In the VBA editor Immediate window run `Boot` (shows `UserForm1` and starts the tabbed
+   browser: 3 tabs + tab bar + navigation bar), or do it by hand:
 
-### 🛠 Setup & Initialization Flow
-The precise, under-the-hood process to capture the WebView2 object is as follows:
+   ```vba
+   UserForm1.Show vbModeless
+   UserForm1.StartWebView2_Full
+   ```
 
-1. **Create Environment**: Call `CreateCoreWebView2EnvironmentWithOptions` from `WebView2Loader.dll`.
-2. **Await Callback**: Intercept the completion notification via a standard module.
-3. **Generate Controller**: Execute `CreateCoreWebView2Controller` to reserve the browser viewport.
-4. **Capture WebView2**: Trap the core `ICoreWebView2` instance using the `GetWebView2` method.
-5. **Window Fitting**: Use Windows APIs to find the `Chrome_WidgetWin_0` class window and fit it pixel-perfect onto the VBA UserForm.
+3. Automate a page:
 
----
+   ```vba
+   Dim p As Wv2Pane
+   Dim el As Wv2Element
+   Set p = UserForm1.CurrentBrowser.AddTabWithUrl("https://example.com")
+   Set el = p.WaitFor("h1", 10)          ' polls the DOM until the element exists
+   If Not el Is Nothing Then Debug.Print el.InnerText
+   ```
 
-### 🌟 The Future We Unlock
-By completing this project, VBA developers will unlock:
+Never break into the debugger or single-step while WebView2 is starting or busy (including while
+`EvalSync` waits) — the callback gate cannot protect that moment and Excel will crash.
 
-* **Modern GUI Integration**: Build rich user interfaces inside UserForms using modern HTML5, CSS3, and JavaScript.
-* **Moving Away from Legacy ActiveX**: Replace notoriously unstable TreeViews and ListViews with high-performance, web-based components.
-* **Full Control via Event Handlers**: Complete mastery over web scraping and automated browser manipulation by self-implementing event handlers (such as `NavigationCompleted`).
+## Locating WebView2Loader.dll
 
----
+The loader is not part of Windows. Office ships one (for example in
+`C:\Program Files\Microsoft Office\root\Office16\ADDINS\Microsoft Power Query for Excel Integrated\bin`),
+but `Declare` only finds a DLL that is on the DLL search path. Either put the x64
+`WebView2Loader.dll` from the [Microsoft.Web.WebView2](https://www.nuget.org/packages/Microsoft.Web.WebView2)
+NuGet package (`runtimes/win-x64/native/`) next to the workbook / on `PATH`, or make sure the Office
+copy is reachable. See `docs/REVIEW.md` for details.
 
-## ⚠️ Troubleshooting: Excel Crashes on Form Startup (Memory Address Table Issue)
+## Repository layout
 
-### Problem
-When you open the UserForm, Excel might crash immediately with an **"Automation error / Exception occurred"** or a silent termination. 
+| Path | Contents |
+|---|---|
+| `src/` | VBA modules and classes — the source of truth |
+| `forms/` | UserForms (imported by hand) |
+| `book/` | The workbook |
+| `tools/` | `export.ps1` / `import.ps1` round-trip, checks, `vtable.py` |
+| `docs/` | Design notes, the thunk write-up, the review |
 
-This happens because the VBA compiler sometimes fails to statically evaluate or initialize the memory address of standard module functions using `AddressOf` if they are not explicitly called or held elsewhere. If VBA doesn't map these addresses correctly, calling low-level Win32 APIs (like `DispCallFunc` or `CreateCoreWebView2EnvironmentWithOptions`) will lead to an access violation (Null/Invalid pointer crash).
+Developer rules and workflow: [`CLAUDE.md`](CLAUDE.md).
 
-### Solution
-To force the VBA compiler to evaluate `AddressOf` and keep the vTable memory address valid, add a dummy Sub at the bottom of your standard module:
+## Troubleshooting: Excel crashes when the form opens
+
+VBA sometimes does not resolve `AddressOf` targets in a standard module that are never referenced
+elsewhere, leaving a bad pointer in the hand-built vtable. Keeping a dummy reference forces it:
 
 ```vba
-' Dummy Sub to prevent VBA compiler optimization / address loss
+' Forces VBA to resolve the AddressOf target
 Public Sub RegisterNavigationCompleted_()
     Static vTable As LongPtr
     vTable = GetAddr(AddressOf Handler_QueryInterface)
 End Sub
 ```
 
----
+## Credits
 
-### 📚 謝辞
-本プロジェクトの着想にあたり、重要な技術的知見を共有してくださった **もっくん** 様（[参考記事](https://eschamali.github.io/StarterWebScrapingKit/#userform-powershell)）に深く感謝いたします。
+Original project by **tarboh**. The original author thanks **Mokkun**
+([reference article](https://eschamali.github.io/StarterWebScrapingKit/#userform-powershell))
+for the key technical idea. Licensed under MIT — see [LICENSE](LICENSE).
